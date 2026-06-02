@@ -3,7 +3,7 @@ import {
   sendMessage,
   editMessageText,
   answerCallbackQuery,
-  ADMIN_CHAT_ID,
+  getAdminChatId,
 } from "./api.server";
 import { sb, checkRateLimit } from "./db.server";
 import { getHideOutOfStockSetting, getStockByPriceId, getVisibleCatalog } from "./catalog.server";
@@ -33,7 +33,7 @@ interface TgCallback {
 }
 
 function isAdmin(telegram_id: number) {
-  return String(telegram_id) === String(ADMIN_CHAT_ID);
+  return String(telegram_id) === String(getAdminChatId());
 }
 
 function shortId(id: string) {
