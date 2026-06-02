@@ -491,6 +491,67 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // DM directo a un usuario específico
+    const msgUserMatch = replySource.match(/MSGUSER:(\d+)/);
+    if (msgUserMatch) {
+      const tgId = parseInt(msgUserMatch[1], 10);
+      const { data: target } = await sb
+        .from("bot_users")
+        .select("chat_id, display_name, username")
+        .eq("telegram_id", tgId)
+        .maybeSingle();
+      if (!target) {
+        await sendMessage("admin", msg.chat.id, `❌ Usuario no encontrado.`);
+        return;
+      }
+      const body = (msg.text ?? msg.caption ?? "").trim();
+      if (msg.photo && msg.photo.length > 0) {
+        const photo = msg.photo[msg.photo.length - 1];
+        const fileInfo = await getFile("admin", photo.file_id);
+        if (!fileInfo.ok || !fileInfo.result) {
+          await sendMessage("admin", msg.chat.id, `❌ No pude procesar la imagen.`);
+          return;
+        }
+        const bytes = await downloadFile("admin", fileInfo.result.file_path);
+        if (!bytes) {
+          await sendMessage("admin", msg.chat.id, `❌ No pude descargar la imagen.`);
+          return;
+        }
+        const caption = body ? `💬 <b>Mensaje del Admin</b>\n\n${escapeHtml(body)}` : `💬 <b>Mensaje del Admin</b>`;
+        const r = await sendPhotoMultipart("shop", target.chat_id, bytes, "admin.jpg", caption);
+        await sendMessage(
+          "admin",
+          msg.chat.id,
+          r.ok ? `✅ Imagen enviada a ${target.display_name ?? tgId}.` : `❌ No se pudo enviar.`,
+        );
+      } else {
+        if (!body) {
+          await sendMessage("admin", msg.chat.id, `❌ Mensaje vacío.`);
+          return;
+        }
+        const r = await sendMessage(
+          "shop",
+          target.chat_id,
+          `💬 <b>Mensaje del Admin</b>\n\n${escapeHtml(body)}`,
+        );
+        await sendMessage(
+          "admin",
+          msg.chat.id,
+          r.ok ? `✅ Mensaje enviado a ${target.display_name ?? tgId}.` : `❌ No se pudo enviar.`,
+        );
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "dm_user",
+        target_type: "telegram_id",
+        target_id: String(tgId),
+        details: { preview: body.slice(0, 200) } as never,
+      });
+      return;
+    }
+
+
+
     // ¿responde a una tarjeta de orden / recarga?
     const { data: ord } = await sb
       .from("orders")
