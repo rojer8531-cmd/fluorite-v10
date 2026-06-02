@@ -316,13 +316,14 @@ async function showPaymentInstructions(
     `Producto: <b>${(price as { products: { name: string } }).products.name}</b>\n` +
     `Duración: ${price.duration_label}\n` +
     `Cantidad: ${qty}\n\n` +
-    `<b>💵 Total a pagar:</b>\n` +
+    `<b>💵 Total a pagar (exacto en USD):</b>\n` +
     `$${total_usd.toFixed(2)} USD\n` +
-    `≈ ${total_local.toFixed(2)} ${pm.currency}\n\n` +
+    `≈ ${total_local.toFixed(2)} ${pm.currency} <i>(referencial)</i>\n\n` +
     `<b>${pm.country_name} — ${pm.method_name}</b>\n` +
     `👤 Titular: <code>${pm.holder_name}</code>\n` +
     `🧾 ${pm.account_info}\n` +
     `${pm.extra_info ? `📌 ${pm.extra_info}\n` : ""}` +
+    `${manualNote}\n` +
     `\n📸 <b>Enviá la foto del comprobante</b> a este chat.\n` +
     `⚠️ Solo fotos (no documentos). Imágenes duplicadas serán rechazadas.`;
   await renderScreen("shop", telegram_id, chat_id, text, [
