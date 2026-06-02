@@ -5,7 +5,7 @@ import {
   getFile,
   downloadFile,
   answerCallbackQuery,
-  ADMIN_CHAT_ID,
+  getAdminChatId,
 } from "./api.server";
 import {
   getOrCreateUser,
@@ -540,9 +540,15 @@ async function handleReceiptPhoto(msg: TgMessage) {
     `\n💳 Método: ${o.payment_methods?.country_name} ${o.payment_methods?.method_name}\n` +
     `📋 Orden: <code>${o.id}</code>`;
 
+  const adminChatId = getAdminChatId();
+  if (!adminChatId) {
+    await sendMessage("shop", chat_id, `⚠️ Admin no configurado. Avisá a soporte.`);
+    return;
+  }
+
   const sent = await sendPhotoMultipart(
     "admin",
-    ADMIN_CHAT_ID,
+    adminChatId,
     bytes,
     "comprobante.jpg",
     caption,
@@ -709,11 +715,12 @@ async function handleCallback(cb: TgCallback) {
   if (data === "menu:status") return showOrderStatus(telegram_id, chat_id);
   if (data === "menu:keys") return showMyKeys(telegram_id, chat_id);
   if (data === "menu:support") {
+    const adminChatId = getAdminChatId() ?? "soporte";
     return renderScreen(
       "shop",
       telegram_id,
       chat_id,
-      `<b>💬 Soporte</b>\n\nContactanos por Telegram: @${ADMIN_CHAT_ID}\n(o el admin te responderá ante la aprobación de tu orden)`,
+      `<b>💬 Soporte</b>\n\nContactanos por Telegram: ${adminChatId}\n(o el admin te responderá ante la aprobación de tu orden)`,
       [[{ text: "⬅️ Volver", callback_data: "menu:main" }]],
     );
   }
