@@ -187,10 +187,11 @@ export type Database = {
           currency: string | null
           id: string
           keys_qty: number
+          order_type: string
           paid_with_balance: boolean
           payment_method_id: string | null
-          price_id: string
-          product_id: string
+          price_id: string | null
+          product_id: string | null
           receipt_id: string | null
           status: Database["public"]["Enums"]["order_status"]
           telegram_id: number
@@ -206,10 +207,11 @@ export type Database = {
           currency?: string | null
           id?: string
           keys_qty?: number
+          order_type?: string
           paid_with_balance?: boolean
           payment_method_id?: string | null
-          price_id: string
-          product_id: string
+          price_id?: string | null
+          product_id?: string | null
           receipt_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           telegram_id: number
@@ -225,10 +227,11 @@ export type Database = {
           currency?: string | null
           id?: string
           keys_qty?: number
+          order_type?: string
           paid_with_balance?: boolean
           payment_method_id?: string | null
-          price_id?: string
-          product_id?: string
+          price_id?: string | null
+          product_id?: string | null
           receipt_id?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           telegram_id?: number
