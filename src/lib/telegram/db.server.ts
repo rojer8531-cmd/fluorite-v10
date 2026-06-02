@@ -90,7 +90,7 @@ export async function setState(
   await sb.from("user_state").upsert({
     telegram_id,
     state,
-    context,
+    context: context as never,
     last_action_at: new Date().toISOString(),
   });
 }
@@ -106,7 +106,7 @@ export async function patchContext(
     .upsert({
       telegram_id,
       state: cur?.state ?? "idle",
-      context: merged,
+      context: merged as never,
       last_action_at: new Date().toISOString(),
     });
 }
@@ -122,7 +122,7 @@ export async function tryAcquireStartLock(telegram_id: number): Promise<boolean>
   await sb.from("user_state").upsert({
     telegram_id,
     state: cur?.state ?? "idle",
-    context: cur?.context ?? {},
+    context: (cur?.context ?? {}) as never,
     start_lock_at: new Date(now).toISOString(),
     last_action_at: new Date(now).toISOString(),
   });
