@@ -220,10 +220,133 @@ async function adminPendientes(chat_id: number) {
   );
 }
 
-async function adminUsuarios(chat_id: number) {
+const USERS_PAGE_SIZE = 8;
+
+async function adminUsuarios(chat_id: number, page = 0) {
   const { count } = await sb.from("bot_users").select("id", { count: "exact", head: true });
-  await sendMessage("admin", chat_id, `👥 Total usuarios: <b>${count ?? 0}</b>`);
+  const total = count ?? 0;
+  const from = page * USERS_PAGE_SIZE;
+  const to = from + USERS_PAGE_SIZE - 1;
+  const { data: users } = await sb
+    .from("bot_users")
+    .select("telegram_id, username, display_name, balance, total_recharged, rank, last_seen_at")
+    .order("last_seen_at", { ascending: false })
+    .range(from, to);
+
+  if (!users || users.length === 0) {
+    await sendMessage("admin", chat_id, `👥 Total usuarios: <b>${total}</b>\n\nNo hay usuarios en esta página.`);
+    return;
+  }
+
+  const lines = users.map((u, i) => {
+    const idx = from + i + 1;
+    const uname = u.username ? `@${u.username}` : "(sin username)";
+    return (
+      `${idx}. <b>${escapeHtml(u.display_name ?? "—")}</b> · ${uname}\n` +
+      `   🆔 <code>${u.telegram_id}</code> · 💰 $${Number(u.balance).toFixed(2)} · ⬆️ $${Number(u.total_recharged).toFixed(2)} · ${u.rank}`
+    );
+  });
+
+  const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = users.map((u) => [
+    { text: `👁 ${u.display_name ?? u.telegram_id}`, callback_data: `akusr:${u.telegram_id}` },
+  ]);
+
+  const nav: Array<{ text: string; callback_data: string }> = [];
+  if (page > 0) nav.push({ text: "⬅️ Anterior", callback_data: `akusrp:${page - 1}` });
+  if (to + 1 < total) nav.push({ text: "Siguiente ➡️", callback_data: `akusrp:${page + 1}` });
+  if (nav.length > 0) kb.push(nav);
+
+  await sendMessage(
+    "admin",
+    chat_id,
+    `👥 <b>Usuarios</b> — Total: ${total}\nPágina ${page + 1} de ${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n\n")}`,
+    { reply_markup: { inline_keyboard: kb } },
+  );
 }
+
+async function adminUserDetail(chat_id: number, telegram_id: number) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("*")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  if (!u) {
+    await sendMessage("admin", chat_id, `❌ Usuario no encontrado.`);
+    return;
+  }
+  const [{ count: ordersCount }, { count: deliveredCount }, { data: lastOrders }] = await Promise.all([
+    sb.from("orders").select("id", { count: "exact", head: true }).eq("telegram_id", telegram_id),
+    sb
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("telegram_id", telegram_id)
+      .eq("status", "delivered"),
+    sb
+      .from("orders")
+      .select("id, status, total_usd, created_at, products(name)")
+      .eq("telegram_id", telegram_id)
+      .order("created_at", { ascending: false })
+      .limit(5),
+  ]);
+
+  const { data: blocked } = await sb
+    .from("blocked_users")
+    .select("blocked_until, reason")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  const blockedTxt = blocked
+    ? blocked.blocked_until
+      ? `🚫 Bloqueado hasta ${new Date(blocked.blocked_until).toLocaleString("es")}`
+      : `🚫 Bloqueado permanente`
+    : `✅ Activo`;
+
+  const ordersLines =
+    (lastOrders ?? [])
+      .map((o) => {
+        const name = (o as { products: { name: string } | null }).products?.name ?? "—";
+        return `• ${o.status} — $${Number(o.total_usd).toFixed(2)} — ${name} — ${new Date(o.created_at).toLocaleDateString("es")}`;
+      })
+      .join("\n") || "Sin órdenes.";
+
+  const usernameLine = u.username
+    ? `📨 Username: <a href="https://t.me/${u.username}">@${escapeHtml(u.username)}</a>`
+    : `📨 Username: <i>no disponible</i>`;
+
+  const text =
+    `<b>👤 Detalle de usuario</b>\n\n` +
+    `Nombre: <b>${escapeHtml(u.display_name ?? "—")}</b>\n` +
+    `${usernameLine}\n` +
+    `🆔 Telegram ID: <code>${u.telegram_id}</code>\n` +
+    `💬 Chat ID: <code>${u.chat_id}</code>\n` +
+    `💰 Saldo: <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
+    `⬆️ Total recargado: $${Number(u.total_recharged).toFixed(2)} USD\n` +
+    `🏷 Rango: ${u.rank}\n` +
+    `🛒 Órdenes: ${ordersCount ?? 0} · Entregadas: ${deliveredCount ?? 0}\n` +
+    `📅 Registro: ${new Date(u.registered_at).toLocaleString("es")}\n` +
+    `👁 Último visto: ${new Date(u.last_seen_at).toLocaleString("es")}\n` +
+    `${blockedTxt}\n\n` +
+    `<b>Últimas órdenes:</b>\n${ordersLines}`;
+
+  const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+  if (u.username) {
+    buttons.push([{ text: `✉️ Escribirle a @${u.username}`, url: `https://t.me/${u.username}` }]);
+  }
+  buttons.push([
+    { text: "💬 Enviar mensaje directo", callback_data: `akusrmsg:${u.telegram_id}` },
+  ]);
+  buttons.push(
+    blocked
+      ? [{ text: "♻️ Desbloquear", callback_data: `akusrunblock:${u.telegram_id}` }]
+      : [{ text: "🚫 Bloquear", callback_data: `adm:block:${u.telegram_id}` }],
+  );
+  buttons.push([{ text: "⬅️ Volver a Usuarios", callback_data: "akp:users" }]);
+
+  await sendMessage("admin", chat_id, text, {
+    reply_markup: { inline_keyboard: buttons },
+    disable_web_page_preview: true,
+  });
+}
+
 
 async function adminPromptAnuncio(chat_id: number) {
   await sendMessage(
@@ -367,6 +490,67 @@ async function handleMessage(msg: TgMessage) {
       await handleBroadcast(msg);
       return;
     }
+
+    // DM directo a un usuario específico
+    const msgUserMatch = replySource.match(/MSGUSER:(\d+)/);
+    if (msgUserMatch) {
+      const tgId = parseInt(msgUserMatch[1], 10);
+      const { data: target } = await sb
+        .from("bot_users")
+        .select("chat_id, display_name, username")
+        .eq("telegram_id", tgId)
+        .maybeSingle();
+      if (!target) {
+        await sendMessage("admin", msg.chat.id, `❌ Usuario no encontrado.`);
+        return;
+      }
+      const body = (msg.text ?? msg.caption ?? "").trim();
+      if (msg.photo && msg.photo.length > 0) {
+        const photo = msg.photo[msg.photo.length - 1];
+        const fileInfo = await getFile("admin", photo.file_id);
+        if (!fileInfo.ok || !fileInfo.result) {
+          await sendMessage("admin", msg.chat.id, `❌ No pude procesar la imagen.`);
+          return;
+        }
+        const bytes = await downloadFile("admin", fileInfo.result.file_path);
+        if (!bytes) {
+          await sendMessage("admin", msg.chat.id, `❌ No pude descargar la imagen.`);
+          return;
+        }
+        const caption = body ? `💬 <b>Mensaje del Admin</b>\n\n${escapeHtml(body)}` : `💬 <b>Mensaje del Admin</b>`;
+        const r = await sendPhotoMultipart("shop", target.chat_id, bytes, "admin.jpg", caption);
+        await sendMessage(
+          "admin",
+          msg.chat.id,
+          r.ok ? `✅ Imagen enviada a ${target.display_name ?? tgId}.` : `❌ No se pudo enviar.`,
+        );
+      } else {
+        if (!body) {
+          await sendMessage("admin", msg.chat.id, `❌ Mensaje vacío.`);
+          return;
+        }
+        const r = await sendMessage(
+          "shop",
+          target.chat_id,
+          `💬 <b>Mensaje del Admin</b>\n\n${escapeHtml(body)}`,
+        );
+        await sendMessage(
+          "admin",
+          msg.chat.id,
+          r.ok ? `✅ Mensaje enviado a ${target.display_name ?? tgId}.` : `❌ No se pudo enviar.`,
+        );
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "dm_user",
+        target_type: "telegram_id",
+        target_id: String(tgId),
+        details: { preview: body.slice(0, 200) } as never,
+      });
+      return;
+    }
+
+
 
     // ¿responde a una tarjeta de orden / recarga?
     const { data: ord } = await sb
@@ -605,6 +789,42 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminPromptKeys(chat_id, data.slice(6));
     return;
   }
+  if (data.startsWith("akusrp:")) {
+    await answerCallbackQuery("admin", cb.id);
+    if (chat_id) await adminUsuarios(chat_id, parseInt(data.slice(7), 10) || 0);
+    return;
+  }
+  if (data.startsWith("akusr:")) {
+    await answerCallbackQuery("admin", cb.id);
+    if (chat_id) await adminUserDetail(chat_id, parseInt(data.slice(6), 10));
+    return;
+  }
+  if (data.startsWith("akusrmsg:")) {
+    await answerCallbackQuery("admin", cb.id);
+    if (chat_id) {
+      const tgId = parseInt(data.slice(9), 10);
+      await sendMessage(
+        "admin",
+        chat_id,
+        `✉️ <b>MSGUSER:${tgId}</b>\n\nRespondé a este mensaje con el texto que querés enviarle al usuario <code>${tgId}</code>.`,
+      );
+    }
+    return;
+  }
+  if (data.startsWith("akusrunblock:")) {
+    const tgId = parseInt(data.slice(13), 10);
+    await sb.from("blocked_users").delete().eq("telegram_id", tgId);
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: cb.from.id,
+      action: "unblock_user",
+      target_type: "telegram_id",
+      target_id: String(tgId),
+    });
+    await answerCallbackQuery("admin", cb.id, `Usuario ${tgId} desbloqueado ✅`, true);
+    if (chat_id) await adminUserDetail(chat_id, tgId);
+    return;
+  }
+
 
   // ---- acciones sobre comprobantes ----
   const [, action, target] = data.split(":");
