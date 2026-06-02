@@ -415,13 +415,21 @@ async function showRechargeInstructions(
 
   await setState(telegram_id, "awaiting_recharge_receipt", { order_id: order.id });
 
+  const rate = Number(pm.usd_rate);
+  const conv =
+    rate === 1
+      ? `💱 Pago en <b>${pm.currency}</b> (mismo valor que USD).`
+      : `💱 Tipo de cambio referencial: <b>1 USD ≈ ${rate.toFixed(2)} ${pm.currency}</b>\n` +
+        `Ejemplos: $5 ≈ ${(5 * rate).toFixed(2)} · $20 ≈ ${(20 * rate).toFixed(2)} · $30 ≈ ${(30 * rate).toFixed(2)} ${pm.currency}`;
+
   const text =
     `<b>💳 Recarga de saldo</b>\n\n` +
     `<b>${pm.country_name} — ${pm.method_name}</b>\n` +
     `👤 Titular: <code>${pm.holder_name}</code>\n` +
     `🧾 ${pm.account_info}\n` +
     `${pm.extra_info ? `📌 ${pm.extra_info}\n` : ""}` +
-    `\n1️⃣ Realizá el pago por el monto que quieras recargar.\n` +
+    `\n${conv}\n` +
+    `\n1️⃣ Realizá el pago por el <b>monto exacto en USD</b> que quieras recargar.\n` +
     `2️⃣ Enviá la <b>foto del comprobante</b> a este chat.\n\n` +
     `⚠️ Solo fotos (no documentos). Imágenes duplicadas serán rechazadas.`;
   await renderScreen("shop", telegram_id, chat_id, text, [
