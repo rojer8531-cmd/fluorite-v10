@@ -16,6 +16,8 @@ import {
   tryAcquireStartLock,
   checkRateLimit,
   isBlocked,
+  getActiveMessage,
+  setActiveMessage,
   sb,
 } from "./db.server";
 import { renderScreen, silentDelete } from "./ui.server";
@@ -52,24 +54,54 @@ const RANK_LABEL: Record<string, string> = {
 // =====================================================
 // MENÚ PRINCIPAL
 // =====================================================
+// Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
+const BOTTOM_MENU = {
+  products: "📦 Productos",
+  status: "📊 Estado",
+  profile: "👤 Perfil",
+  keys: "🔑 Mis Keys",
+  recharge: "💳 Recargar",
+  support: "💬 Soporte",
+};
+
+function bottomKeyboard() {
+  return {
+    keyboard: [
+      [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.status }],
+      [{ text: BOTTOM_MENU.profile }, { text: BOTTOM_MENU.keys }],
+      [{ text: BOTTOM_MENU.recharge }, { text: BOTTOM_MENU.support }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+    one_time_keyboard: false,
+  };
+}
+
 async function showMainMenu(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "menu", {});
+  const active = await getActiveMessage(telegram_id);
+  if (active && active.chat_id === chat_id) {
+    await silentDelete("shop", chat_id, active.message_id);
+  }
+  const sent = await sendMessage(
+    "shop",
+    chat_id,
+    `<b>🛒 Tienda Principal</b>\n\nUsá el menú de abajo 👇`,
+    { reply_markup: bottomKeyboard() },
+  );
+  if (sent.ok && sent.result) {
+    await setActiveMessage(telegram_id, chat_id, sent.result.message_id);
+  }
+}
+
+async function showSupport(telegram_id: number, chat_id: number) {
+  const adminChatId = getAdminChatId() ?? "soporte";
   await renderScreen(
     "shop",
     telegram_id,
     chat_id,
-    `<b>🛒 Tienda Principal</b>\n\nElegí una opción del menú:`,
-    [
-      [{ text: "📦 Productos", callback_data: "menu:products" }],
-      [
-        { text: "📊 Estado", callback_data: "menu:status" },
-        { text: "🔑 Mis Keys", callback_data: "menu:keys" },
-      ],
-      [
-        { text: "👤 Perfil", callback_data: "menu:profile" },
-        { text: "💬 Soporte", callback_data: "menu:support" },
-      ],
-    ],
+    `<b>💬 Soporte</b>\n\nContactanos por Telegram: ${adminChatId}\n(o el admin te responderá ante la aprobación de tu orden)`,
+    [[{ text: "⬅️ Volver", callback_data: "menu:main" }]],
   );
 }
 
@@ -312,6 +344,141 @@ async function showPaymentInstructions(
 }
 
 // =====================================================
+// RECARGA DE SALDO
+// =====================================================
+async function startRecharge(telegram_id: number, chat_id: number) {
+  await setState(telegram_id, "recharge_country", {});
+  const { data: countries } = await sb
+    .from("payment_methods")
+    .select("id, country_name, method_name")
+    .eq("active", true)
+    .order("sort_order");
+  if (!countries || countries.length === 0) {
+    await renderScreen("shop", telegram_id, chat_id, `💳 No hay métodos de pago disponibles.`, [
+      [{ text: "⬅️ Volver", callback_data: "menu:main" }],
+    ]);
+    return;
+  }
+  const kb: Array<Array<{ text: string; callback_data: string }>> = countries.map((c) => [
+    { text: `${c.country_name} — ${c.method_name}`, callback_data: `rc:${c.id}` },
+  ]);
+  kb.push([{ text: "⬅️ Volver", callback_data: "menu:main" }]);
+  await renderScreen(
+    "shop",
+    telegram_id,
+    chat_id,
+    `<b>💳 Recargar saldo</b>\n\nElegí tu país y método de pago:`,
+    kb,
+  );
+}
+
+async function showRechargeInstructions(
+  telegram_id: number,
+  chat_id: number,
+  payment_method_id: string,
+) {
+  const { data: pm } = await sb
+    .from("payment_methods")
+    .select("*")
+    .eq("id", payment_method_id)
+    .single();
+  if (!pm) return;
+  const { data: user } = await sb
+    .from("bot_users")
+    .select("id")
+    .eq("telegram_id", telegram_id)
+    .single();
+  if (!user) return;
+
+  const { count: activeOrders } = await sb
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .in("status", ["pending_receipt", "pending_approval"]);
+  if ((activeOrders ?? 0) >= 3) {
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `⚠️ Ya tenés <b>3 solicitudes activas</b>. Esperá a que se aprueben antes de crear otra.`,
+      [[{ text: "⬅️ Volver", callback_data: "menu:main" }]],
+    );
+    return;
+  }
+
+  const { data: order, error } = await sb
+    .from("orders")
+    .insert({
+      user_id: user.id,
+      telegram_id,
+      order_type: "recharge",
+      payment_method_id: pm.id,
+      keys_qty: 0,
+      total_usd: 0,
+      currency: pm.currency,
+      status: "pending_receipt",
+    })
+    .select()
+    .single();
+  if (error || !order) {
+    console.error("Error creando recarga:", error);
+    return;
+  }
+
+  await setState(telegram_id, "awaiting_recharge_receipt", { order_id: order.id });
+
+  const text =
+    `<b>💳 Recarga de saldo</b>\n\n` +
+    `<b>${pm.country_name} — ${pm.method_name}</b>\n` +
+    `👤 Titular: <code>${pm.holder_name}</code>\n` +
+    `🧾 ${pm.account_info}\n` +
+    `${pm.extra_info ? `📌 ${pm.extra_info}\n` : ""}` +
+    `\n1️⃣ Realizá el pago por el monto que quieras recargar.\n` +
+    `2️⃣ Enviá la <b>foto del comprobante</b> a este chat.\n\n` +
+    `⚠️ Solo fotos (no documentos). Imágenes duplicadas serán rechazadas.`;
+  await renderScreen("shop", telegram_id, chat_id, text, [
+    [{ text: "❌ Cancelar", callback_data: "menu:main" }],
+  ]);
+}
+
+// Enrutado del menú inferior fijo. Devuelve true si manejó el texto.
+async function routeBottomMenu(
+  text: string,
+  telegram_id: number,
+  chat_id: number,
+  message_id: number,
+): Promise<boolean> {
+  switch (text) {
+    case BOTTOM_MENU.products:
+      await silentDelete("shop", chat_id, message_id);
+      await showProducts(telegram_id, chat_id);
+      return true;
+    case BOTTOM_MENU.status:
+      await silentDelete("shop", chat_id, message_id);
+      await showOrderStatus(telegram_id, chat_id);
+      return true;
+    case BOTTOM_MENU.profile:
+      await silentDelete("shop", chat_id, message_id);
+      await showProfile(telegram_id, chat_id);
+      return true;
+    case BOTTOM_MENU.keys:
+      await silentDelete("shop", chat_id, message_id);
+      await showMyKeys(telegram_id, chat_id);
+      return true;
+    case BOTTOM_MENU.recharge:
+      await silentDelete("shop", chat_id, message_id);
+      await startRecharge(telegram_id, chat_id);
+      return true;
+    case BOTTOM_MENU.support:
+      await silentDelete("shop", chat_id, message_id);
+      await showSupport(telegram_id, chat_id);
+      return true;
+    default:
+      return false;
+  }
+}
+
+// =====================================================
 // PAGO CON SALDO — entrega automática si hay stock
 // =====================================================
 async function payWithBalance(telegram_id: number, chat_id: number) {
@@ -449,16 +616,18 @@ async function handleReceiptPhoto(msg: TgMessage) {
     return;
   }
 
-  // estado: debe estar esperando comprobante
+  // estado: debe estar esperando comprobante (compra o recarga)
   const st = await getState(telegram_id);
-  if (st?.state !== "awaiting_receipt" || !st.context?.order_id) {
+  const validReceiptStates = ["awaiting_receipt", "awaiting_recharge_receipt"];
+  if (!st || !validReceiptStates.includes(st.state) || !st.context?.order_id) {
     await sendMessage(
       "shop",
       chat_id,
-      `⚠️ No tenés una orden pendiente. Iniciá una compra primero con /start.`,
+      `⚠️ No tenés una orden pendiente. Iniciá una compra o recarga primero.`,
     );
     return;
   }
+  const isRecharge = st.state === "awaiting_recharge_receipt";
   const order_id = st.context.order_id as string;
 
   const { data: user } = await sb
@@ -523,22 +692,33 @@ async function handleReceiptPhoto(msg: TgMessage) {
     total_local: number | null;
     currency: string | null;
     keys_qty: number;
-    products: { name: string };
-    product_prices: { duration_label: string };
+    products: { name: string } | null;
+    product_prices: { duration_label: string } | null;
     payment_methods: { country_name: string; method_name: string } | null;
   };
 
-  const caption =
-    `🧾 <b>NUEVO COMPROBANTE</b>\n\n` +
-    `👤 Usuario: ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
-    `🆔 Telegram ID: <code>${telegram_id}</code>\n` +
-    `📦 Producto: ${o.products.name}\n` +
-    `⏱ Duración: ${o.product_prices.duration_label}\n` +
-    `🔢 Cantidad: ${o.keys_qty}\n` +
-    `💵 Total: $${Number(o.total_usd).toFixed(2)} USD` +
-    (o.total_local ? ` (${Number(o.total_local).toFixed(2)} ${o.currency})` : "") +
-    `\n💳 Método: ${o.payment_methods?.country_name} ${o.payment_methods?.method_name}\n` +
-    `📋 Orden: <code>${o.id}</code>`;
+  let caption: string;
+  if (isRecharge) {
+    caption =
+      `💰 <b>NUEVA RECARGA</b>\n\n` +
+      `👤 Usuario: ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
+      `🆔 Telegram ID: <code>${telegram_id}</code>\n` +
+      `💳 Método: ${o.payment_methods?.country_name ?? "—"} ${o.payment_methods?.method_name ?? ""}\n` +
+      `📋 Orden: <code>${o.id}</code>\n\n` +
+      `✍️ <b>Respondé a este mensaje con el monto en USD a acreditar</b> (ej: 10).`;
+  } else {
+    caption =
+      `🧾 <b>NUEVO COMPROBANTE</b>\n\n` +
+      `👤 Usuario: ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
+      `🆔 Telegram ID: <code>${telegram_id}</code>\n` +
+      `📦 Producto: ${o.products?.name ?? "—"}\n` +
+      `⏱ Duración: ${o.product_prices?.duration_label ?? "—"}\n` +
+      `🔢 Cantidad: ${o.keys_qty}\n` +
+      `💵 Total: $${Number(o.total_usd).toFixed(2)} USD` +
+      (o.total_local ? ` (${Number(o.total_local).toFixed(2)} ${o.currency})` : "") +
+      `\n💳 Método: ${o.payment_methods?.country_name ?? "—"} ${o.payment_methods?.method_name ?? ""}\n` +
+      `📋 Orden: <code>${o.id}</code>`;
+  }
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) {
@@ -577,13 +757,23 @@ async function handleReceiptPhoto(msg: TgMessage) {
   }
 
   await setState(telegram_id, "menu", {});
-  await renderScreen(
-    "shop",
-    telegram_id,
-    chat_id,
-    `✅ <b>Comprobante recibido</b>\n\nTu pago está siendo verificado. Te avisaremos cuando se acredite el saldo o la key.`,
-    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
-  );
+  if (isRecharge) {
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `⏳ Comprobante En Revisión\n\nSi Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\nSe Paciente Y Espera.`,
+      [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    );
+  } else {
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `✅ <b>Comprobante recibido</b>\n\nTu pago está siendo verificado. Te avisaremos cuando se acredite el saldo o la key.`,
+      [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    );
+  }
 }
 
 // =====================================================
@@ -664,6 +854,19 @@ async function handleMessage(msg: TgMessage) {
     return;
   }
 
+  // menú inferior fijo (solo usuarios autenticados)
+  const { data: authUser } = await sb
+    .from("bot_users")
+    .select("is_authenticated")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  if (
+    authUser?.is_authenticated &&
+    (await routeBottomMenu(text, telegram_id, chat_id, msg.message_id))
+  ) {
+    return;
+  }
+
   // estados de login
   const st = await getState(telegram_id);
   await silentDelete("shop", chat_id, msg.message_id);
@@ -729,6 +932,7 @@ async function handleCallback(cb: TgCallback) {
   if (data.startsWith("qty:")) return showCountries(telegram_id, chat_id, parseInt(data.slice(4), 10));
   if (data === "pay:balance") return payWithBalance(telegram_id, chat_id);
   if (data.startsWith("pm:")) return showPaymentInstructions(telegram_id, chat_id, data.slice(3));
+  if (data.startsWith("rc:")) return showRechargeInstructions(telegram_id, chat_id, data.slice(3));
 }
 
 async function showOrderStatus(telegram_id: number, chat_id: number) {
