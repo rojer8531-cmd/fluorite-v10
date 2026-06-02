@@ -54,9 +54,12 @@ const RANK_LABEL: Record<string, string> = {
 // =====================================================
 // MENÚ PRINCIPAL
 // =====================================================
+const SUPPORT_USERNAME = "@smallffx7";
+
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
   products: "📦 Productos",
+  buy: "🛒 Comprar",
   status: "📊 Estado",
   profile: "👤 Perfil",
   keys: "🔑 Mis Keys",
@@ -67,9 +70,10 @@ const BOTTOM_MENU = {
 function bottomKeyboard() {
   return {
     keyboard: [
-      [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.status }],
-      [{ text: BOTTOM_MENU.profile }, { text: BOTTOM_MENU.keys }],
-      [{ text: BOTTOM_MENU.recharge }, { text: BOTTOM_MENU.support }],
+      [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.buy }],
+      [{ text: BOTTOM_MENU.status }, { text: BOTTOM_MENU.profile }],
+      [{ text: BOTTOM_MENU.keys }, { text: BOTTOM_MENU.recharge }],
+      [{ text: BOTTOM_MENU.support }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -95,15 +99,58 @@ async function showMainMenu(telegram_id: number, chat_id: number) {
 }
 
 async function showSupport(telegram_id: number, chat_id: number) {
-  const adminChatId = getAdminChatId() ?? "soporte";
   await renderScreen(
     "shop",
     telegram_id,
     chat_id,
-    `<b>💬 Soporte</b>\n\nContactanos por Telegram: ${adminChatId}\n(o el admin te responderá ante la aprobación de tu orden)`,
+    `<b>💬 Soporte</b>\n\nEscribinos directamente por Telegram: <b>${SUPPORT_USERNAME}</b>\n\nTe respondemos a la brevedad.`,
     [[{ text: "⬅️ Volver", callback_data: "menu:main" }]],
   );
 }
+
+async function showBuyWithBalance(telegram_id: number, chat_id: number) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("balance")
+    .eq("telegram_id", telegram_id)
+    .single();
+  const balance = Number(u?.balance ?? 0);
+  if (balance <= 0) {
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `🛒 <b>Comprar con saldo</b>\n\n❌ No tenés saldo disponible.\nTu saldo actual: <b>$0.00 USD</b>\n\nRecargá desde el menú para empezar a comprar.`,
+      [[{ text: "⬅️ Volver", callback_data: "menu:main" }]],
+    );
+    return;
+  }
+  const { grouped } = await getVisibleCatalog();
+  const products = grouped.flatMap((s) => s.products);
+  if (products.length === 0) {
+    await renderScreen("shop", telegram_id, chat_id, `📦 No hay productos disponibles.`, [
+      [{ text: "⬅️ Volver", callback_data: "menu:main" }],
+    ]);
+    return;
+  }
+  await setState(telegram_id, "choose_product", {});
+  await renderScreen(
+    "shop",
+    telegram_id,
+    chat_id,
+    `<b>🛒 Comprar con saldo</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí un producto y al finalizar tocá <b>"💰 Pagar con saldo"</b>:`,
+    [
+      ...grouped.flatMap((section) => [
+        [{ text: `— ${section.category} —`, callback_data: "noop" }],
+        ...section.products.map((p) => [
+          { text: `${p.name} (${p.total_stock})`, callback_data: `prod:${p.id}` },
+        ]),
+      ]),
+      [{ text: "⬅️ Volver", callback_data: "menu:main" }],
+    ],
+  );
+}
+
 
 async function showProfile(telegram_id: number, chat_id: number) {
   const { data: u } = await sb
