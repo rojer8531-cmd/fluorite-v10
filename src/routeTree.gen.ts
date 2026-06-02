@@ -10,33 +10,76 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicTelegramShopRouteImport } from './routes/api/public/telegram/shop'
+import { Route as ApiPublicTelegramSetupRouteImport } from './routes/api/public/telegram/setup'
+import { Route as ApiPublicTelegramAdminRouteImport } from './routes/api/public/telegram/admin'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicTelegramShopRoute = ApiPublicTelegramShopRouteImport.update({
+  id: '/api/public/telegram/shop',
+  path: '/api/public/telegram/shop',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicTelegramSetupRoute = ApiPublicTelegramSetupRouteImport.update({
+  id: '/api/public/telegram/setup',
+  path: '/api/public/telegram/setup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicTelegramAdminRoute = ApiPublicTelegramAdminRouteImport.update({
+  id: '/api/public/telegram/admin',
+  path: '/api/public/telegram/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
+  '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
+  '/api/public/telegram/shop': typeof ApiPublicTelegramShopRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
+  '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
+  '/api/public/telegram/shop': typeof ApiPublicTelegramShopRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
+  '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
+  '/api/public/telegram/shop': typeof ApiPublicTelegramShopRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/api/public/telegram/admin'
+    | '/api/public/telegram/setup'
+    | '/api/public/telegram/shop'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/api/public/telegram/admin'
+    | '/api/public/telegram/setup'
+    | '/api/public/telegram/shop'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/public/telegram/admin'
+    | '/api/public/telegram/setup'
+    | '/api/public/telegram/shop'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPublicTelegramAdminRoute: typeof ApiPublicTelegramAdminRoute
+  ApiPublicTelegramSetupRoute: typeof ApiPublicTelegramSetupRoute
+  ApiPublicTelegramShopRoute: typeof ApiPublicTelegramShopRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,12 +91,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/telegram/shop': {
+      id: '/api/public/telegram/shop'
+      path: '/api/public/telegram/shop'
+      fullPath: '/api/public/telegram/shop'
+      preLoaderRoute: typeof ApiPublicTelegramShopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/telegram/setup': {
+      id: '/api/public/telegram/setup'
+      path: '/api/public/telegram/setup'
+      fullPath: '/api/public/telegram/setup'
+      preLoaderRoute: typeof ApiPublicTelegramSetupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/telegram/admin': {
+      id: '/api/public/telegram/admin'
+      path: '/api/public/telegram/admin'
+      fullPath: '/api/public/telegram/admin'
+      preLoaderRoute: typeof ApiPublicTelegramAdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPublicTelegramAdminRoute: ApiPublicTelegramAdminRoute,
+  ApiPublicTelegramSetupRoute: ApiPublicTelegramSetupRoute,
+  ApiPublicTelegramShopRoute: ApiPublicTelegramShopRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
