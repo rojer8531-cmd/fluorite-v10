@@ -14,7 +14,572 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      active_messages: {
+        Row: {
+          chat_id: number
+          message_id: number
+          telegram_id: number
+          updated_at: string
+        }
+        Insert: {
+          chat_id: number
+          message_id: number
+          telegram_id: number
+          updated_at?: string
+        }
+        Update: {
+          chat_id?: number
+          message_id?: number
+          telegram_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      admin_logs: {
+        Row: {
+          action: string
+          admin_telegram_id: number
+          created_at: string
+          details: Json | null
+          id: string
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action: string
+          admin_telegram_id: number
+          created_at?: string
+          details?: Json | null
+          id?: string
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action?: string
+          admin_telegram_id?: number
+          created_at?: string
+          details?: Json | null
+          id?: string
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: []
+      }
+      blocked_users: {
+        Row: {
+          blocked_at: string
+          id: string
+          reason: string | null
+          telegram_id: number
+        }
+        Insert: {
+          blocked_at?: string
+          id?: string
+          reason?: string | null
+          telegram_id: number
+        }
+        Update: {
+          blocked_at?: string
+          id?: string
+          reason?: string | null
+          telegram_id?: number
+        }
+        Relationships: []
+      }
+      bot_users: {
+        Row: {
+          balance: number
+          chat_id: number
+          created_at: string
+          display_name: string | null
+          id: string
+          is_authenticated: boolean
+          last_seen_at: string
+          password_hash: string | null
+          rank: Database["public"]["Enums"]["user_rank"]
+          registered_at: string
+          telegram_id: number
+          total_recharged: number
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          balance?: number
+          chat_id: number
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          is_authenticated?: boolean
+          last_seen_at?: string
+          password_hash?: string | null
+          rank?: Database["public"]["Enums"]["user_rank"]
+          registered_at?: string
+          telegram_id: number
+          total_recharged?: number
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          balance?: number
+          chat_id?: number
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          is_authenticated?: boolean
+          last_seen_at?: string
+          password_hash?: string | null
+          rank?: Database["public"]["Enums"]["user_rank"]
+          registered_at?: string
+          telegram_id?: number
+          total_recharged?: number
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      order_keys: {
+        Row: {
+          created_at: string
+          delivered_at: string
+          id: string
+          key_value: string
+          order_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          delivered_at?: string
+          id?: string
+          key_value: string
+          order_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          delivered_at?: string
+          id?: string
+          key_value?: string
+          order_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_keys_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "bot_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          admin_message_id: number | null
+          admin_note: string | null
+          created_at: string
+          currency: string | null
+          id: string
+          keys_qty: number
+          paid_with_balance: boolean
+          payment_method_id: string | null
+          price_id: string
+          product_id: string
+          receipt_id: string | null
+          status: Database["public"]["Enums"]["order_status"]
+          telegram_id: number
+          total_local: number | null
+          total_usd: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_message_id?: number | null
+          admin_note?: string | null
+          created_at?: string
+          currency?: string | null
+          id?: string
+          keys_qty?: number
+          paid_with_balance?: boolean
+          payment_method_id?: string | null
+          price_id: string
+          product_id: string
+          receipt_id?: string | null
+          status?: Database["public"]["Enums"]["order_status"]
+          telegram_id: number
+          total_local?: number | null
+          total_usd: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_message_id?: number | null
+          admin_note?: string | null
+          created_at?: string
+          currency?: string | null
+          id?: string
+          keys_qty?: number
+          paid_with_balance?: boolean
+          payment_method_id?: string | null
+          price_id?: string
+          product_id?: string
+          receipt_id?: string | null
+          status?: Database["public"]["Enums"]["order_status"]
+          telegram_id?: number
+          total_local?: number | null
+          total_usd?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_payment_method_id_fkey"
+            columns: ["payment_method_id"]
+            isOneToOne: false
+            referencedRelation: "payment_methods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_price_id_fkey"
+            columns: ["price_id"]
+            isOneToOne: false
+            referencedRelation: "product_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "bot_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_methods: {
+        Row: {
+          account_info: string
+          active: boolean
+          country_code: string
+          country_name: string
+          created_at: string
+          currency: string
+          extra_info: string | null
+          holder_name: string
+          id: string
+          method_name: string
+          sort_order: number
+          updated_at: string
+          usd_rate: number
+        }
+        Insert: {
+          account_info: string
+          active?: boolean
+          country_code: string
+          country_name: string
+          created_at?: string
+          currency?: string
+          extra_info?: string | null
+          holder_name: string
+          id?: string
+          method_name: string
+          sort_order?: number
+          updated_at?: string
+          usd_rate?: number
+        }
+        Update: {
+          account_info?: string
+          active?: boolean
+          country_code?: string
+          country_name?: string
+          created_at?: string
+          currency?: string
+          extra_info?: string | null
+          holder_name?: string
+          id?: string
+          method_name?: string
+          sort_order?: number
+          updated_at?: string
+          usd_rate?: number
+        }
+        Relationships: []
+      }
+      product_prices: {
+        Row: {
+          active: boolean
+          created_at: string
+          duration_days: number
+          duration_label: string
+          id: string
+          price_usd: number
+          product_id: string
+          sort_order: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          duration_days: number
+          duration_label: string
+          id?: string
+          price_usd: number
+          product_id: string
+          sort_order?: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          duration_days?: number
+          duration_label?: string
+          id?: string
+          price_usd?: number
+          product_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_prices_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_stock_keys: {
+        Row: {
+          created_at: string
+          id: string
+          key_value: string
+          price_id: string
+          product_id: string
+          used: boolean
+          used_at: string | null
+          used_by_order_id: string | null
+          used_by_user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          key_value: string
+          price_id: string
+          product_id: string
+          used?: boolean
+          used_at?: string | null
+          used_by_order_id?: string | null
+          used_by_user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          key_value?: string
+          price_id?: string
+          product_id?: string
+          used?: boolean
+          used_at?: string | null
+          used_by_order_id?: string | null
+          used_by_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_stock_keys_price_id_fkey"
+            columns: ["price_id"]
+            isOneToOne: false
+            referencedRelation: "product_prices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_stock_keys_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_stock_keys_used_by_user_id_fkey"
+            columns: ["used_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "bot_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      rate_limits: {
+        Row: {
+          bucket: string
+          count: number
+          telegram_id: number
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          count?: number
+          telegram_id: number
+          window_start?: string
+        }
+        Update: {
+          bucket?: string
+          count?: number
+          telegram_id?: number
+          window_start?: string
+        }
+        Relationships: []
+      }
+      receipt_fingerprints: {
+        Row: {
+          created_at: string
+          file_id: string
+          file_unique_id: string
+          id: string
+          telegram_id: number
+        }
+        Insert: {
+          created_at?: string
+          file_id: string
+          file_unique_id: string
+          id?: string
+          telegram_id: number
+        }
+        Update: {
+          created_at?: string
+          file_id?: string
+          file_unique_id?: string
+          id?: string
+          telegram_id?: number
+        }
+        Relationships: []
+      }
+      receipts: {
+        Row: {
+          admin_message_id: number | null
+          created_at: string
+          file_id: string
+          file_size: number | null
+          file_unique_id: string | null
+          height: number | null
+          id: string
+          order_id: string | null
+          status: Database["public"]["Enums"]["receipt_status"]
+          telegram_id: number
+          updated_at: string
+          user_id: string
+          width: number | null
+        }
+        Insert: {
+          admin_message_id?: number | null
+          created_at?: string
+          file_id: string
+          file_size?: number | null
+          file_unique_id?: string | null
+          height?: number | null
+          id?: string
+          order_id?: string | null
+          status?: Database["public"]["Enums"]["receipt_status"]
+          telegram_id: number
+          updated_at?: string
+          user_id: string
+          width?: number | null
+        }
+        Update: {
+          admin_message_id?: number | null
+          created_at?: string
+          file_id?: string
+          file_size?: number | null
+          file_unique_id?: string | null
+          height?: number | null
+          id?: string
+          order_id?: string | null
+          status?: Database["public"]["Enums"]["receipt_status"]
+          telegram_id?: number
+          updated_at?: string
+          user_id?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipts_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "bot_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_state: {
+        Row: {
+          context: Json
+          last_action_at: string
+          start_lock_at: string | null
+          state: string
+          telegram_id: number
+          updated_at: string
+        }
+        Insert: {
+          context?: Json
+          last_action_at?: string
+          start_lock_at?: string | null
+          state?: string
+          telegram_id: number
+          updated_at?: string
+        }
+        Update: {
+          context?: Json
+          last_action_at?: string
+          start_lock_at?: string | null
+          state?: string
+          telegram_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +588,15 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      order_status:
+        | "pending_receipt"
+        | "pending_approval"
+        | "approved"
+        | "rejected"
+        | "delivered"
+        | "cancelled"
+      receipt_status: "pending" | "approved" | "rejected" | "duplicate"
+      user_rank: "normal" | "pro" | "leyenda"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +723,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      order_status: [
+        "pending_receipt",
+        "pending_approval",
+        "approved",
+        "rejected",
+        "delivered",
+        "cancelled",
+      ],
+      receipt_status: ["pending", "approved", "rejected", "duplicate"],
+      user_rank: ["normal", "pro", "leyenda"],
+    },
   },
 } as const
