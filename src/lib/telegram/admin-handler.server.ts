@@ -220,10 +220,133 @@ async function adminPendientes(chat_id: number) {
   );
 }
 
-async function adminUsuarios(chat_id: number) {
+const USERS_PAGE_SIZE = 8;
+
+async function adminUsuarios(chat_id: number, page = 0) {
   const { count } = await sb.from("bot_users").select("id", { count: "exact", head: true });
-  await sendMessage("admin", chat_id, `👥 Total usuarios: <b>${count ?? 0}</b>`);
+  const total = count ?? 0;
+  const from = page * USERS_PAGE_SIZE;
+  const to = from + USERS_PAGE_SIZE - 1;
+  const { data: users } = await sb
+    .from("bot_users")
+    .select("telegram_id, username, display_name, balance, total_recharged, rank, last_seen_at")
+    .order("last_seen_at", { ascending: false })
+    .range(from, to);
+
+  if (!users || users.length === 0) {
+    await sendMessage("admin", chat_id, `👥 Total usuarios: <b>${total}</b>\n\nNo hay usuarios en esta página.`);
+    return;
+  }
+
+  const lines = users.map((u, i) => {
+    const idx = from + i + 1;
+    const uname = u.username ? `@${u.username}` : "(sin username)";
+    return (
+      `${idx}. <b>${escapeHtml(u.display_name ?? "—")}</b> · ${uname}\n` +
+      `   🆔 <code>${u.telegram_id}</code> · 💰 $${Number(u.balance).toFixed(2)} · ⬆️ $${Number(u.total_recharged).toFixed(2)} · ${u.rank}`
+    );
+  });
+
+  const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = users.map((u) => [
+    { text: `👁 ${u.display_name ?? u.telegram_id}`, callback_data: `akusr:${u.telegram_id}` },
+  ]);
+
+  const nav: Array<{ text: string; callback_data: string }> = [];
+  if (page > 0) nav.push({ text: "⬅️ Anterior", callback_data: `akusrp:${page - 1}` });
+  if (to + 1 < total) nav.push({ text: "Siguiente ➡️", callback_data: `akusrp:${page + 1}` });
+  if (nav.length > 0) kb.push(nav);
+
+  await sendMessage(
+    "admin",
+    chat_id,
+    `👥 <b>Usuarios</b> — Total: ${total}\nPágina ${page + 1} de ${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n\n")}`,
+    { reply_markup: { inline_keyboard: kb } },
+  );
 }
+
+async function adminUserDetail(chat_id: number, telegram_id: number) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("*")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  if (!u) {
+    await sendMessage("admin", chat_id, `❌ Usuario no encontrado.`);
+    return;
+  }
+  const [{ count: ordersCount }, { count: deliveredCount }, { data: lastOrders }] = await Promise.all([
+    sb.from("orders").select("id", { count: "exact", head: true }).eq("telegram_id", telegram_id),
+    sb
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("telegram_id", telegram_id)
+      .eq("status", "delivered"),
+    sb
+      .from("orders")
+      .select("id, status, total_usd, created_at, products(name)")
+      .eq("telegram_id", telegram_id)
+      .order("created_at", { ascending: false })
+      .limit(5),
+  ]);
+
+  const { data: blocked } = await sb
+    .from("blocked_users")
+    .select("blocked_until, reason")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  const blockedTxt = blocked
+    ? blocked.blocked_until
+      ? `🚫 Bloqueado hasta ${new Date(blocked.blocked_until).toLocaleString("es")}`
+      : `🚫 Bloqueado permanente`
+    : `✅ Activo`;
+
+  const ordersLines =
+    (lastOrders ?? [])
+      .map((o) => {
+        const name = (o as { products: { name: string } | null }).products?.name ?? "—";
+        return `• ${o.status} — $${Number(o.total_usd).toFixed(2)} — ${name} — ${new Date(o.created_at).toLocaleDateString("es")}`;
+      })
+      .join("\n") || "Sin órdenes.";
+
+  const usernameLine = u.username
+    ? `📨 Username: <a href="https://t.me/${u.username}">@${escapeHtml(u.username)}</a>`
+    : `📨 Username: <i>no disponible</i>`;
+
+  const text =
+    `<b>👤 Detalle de usuario</b>\n\n` +
+    `Nombre: <b>${escapeHtml(u.display_name ?? "—")}</b>\n` +
+    `${usernameLine}\n` +
+    `🆔 Telegram ID: <code>${u.telegram_id}</code>\n` +
+    `💬 Chat ID: <code>${u.chat_id}</code>\n` +
+    `💰 Saldo: <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
+    `⬆️ Total recargado: $${Number(u.total_recharged).toFixed(2)} USD\n` +
+    `🏷 Rango: ${u.rank}\n` +
+    `🛒 Órdenes: ${ordersCount ?? 0} · Entregadas: ${deliveredCount ?? 0}\n` +
+    `📅 Registro: ${new Date(u.registered_at).toLocaleString("es")}\n` +
+    `👁 Último visto: ${new Date(u.last_seen_at).toLocaleString("es")}\n` +
+    `${blockedTxt}\n\n` +
+    `<b>Últimas órdenes:</b>\n${ordersLines}`;
+
+  const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+  if (u.username) {
+    buttons.push([{ text: `✉️ Escribirle a @${u.username}`, url: `https://t.me/${u.username}` }]);
+  }
+  buttons.push([
+    { text: "💬 Enviar mensaje directo", callback_data: `akusrmsg:${u.telegram_id}` },
+  ]);
+  buttons.push(
+    blocked
+      ? [{ text: "♻️ Desbloquear", callback_data: `akusrunblock:${u.telegram_id}` }]
+      : [{ text: "🚫 Bloquear", callback_data: `adm:block:${u.telegram_id}` }],
+  );
+  buttons.push([{ text: "⬅️ Volver a Usuarios", callback_data: "akp:users" }]);
+
+  await sendMessage("admin", chat_id, text, {
+    reply_markup: { inline_keyboard: buttons },
+    disable_web_page_preview: true,
+  });
+}
+
 
 async function adminPromptAnuncio(chat_id: number) {
   await sendMessage(
