@@ -496,6 +496,10 @@ async function routeBottomMenu(
       await silentDelete("shop", chat_id, message_id);
       await showProducts(telegram_id, chat_id);
       return true;
+    case BOTTOM_MENU.buy:
+      await silentDelete("shop", chat_id, message_id);
+      await showBuyWithBalance(telegram_id, chat_id);
+      return true;
     case BOTTOM_MENU.status:
       await silentDelete("shop", chat_id, message_id);
       await showOrderStatus(telegram_id, chat_id);
@@ -520,6 +524,7 @@ async function routeBottomMenu(
       return false;
   }
 }
+
 
 // =====================================================
 // PAGO CON SALDO — entrega automática si hay stock
