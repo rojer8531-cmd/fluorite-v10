@@ -195,7 +195,6 @@ async function showQty(telegram_id: number, chat_id: number, price_id: string) {
 
 async function showCountries(telegram_id: number, chat_id: number, qty: number) {
   await patchContext(telegram_id, { qty });
-  // chequear saldo primero
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
   const { data: price } = await sb
     .from("product_prices")
@@ -210,16 +209,10 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
     .eq("product_id", ctx.product_id as string)
     .eq("price_id", ctx.price_id as string)
     .eq("used", false);
-  if ((availableCount ?? 0) < qty) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `❌ No hay stock suficiente para ${qty} key${qty > 1 ? "s" : ""}. Disponible ahora: <b>${availableCount ?? 0}</b>.`,
-      [[{ text: "⬅️ Volver", callback_data: "menu:products" }]],
-    );
-    return;
-  }
+  const stockNote =
+    (availableCount ?? 0) < qty
+      ? `\n⚠️ Stock actual: <b>${availableCount ?? 0}</b>. Tu compra quedará en <b>entrega manual</b> por el admin.`
+      : "";
   const { data: u } = await sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single();
   const balance = Number(u?.balance ?? 0);
 
@@ -242,7 +235,7 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
     "shop",
     telegram_id,
     chat_id,
-    `<b>💳 Método de pago</b>\n\nTotal: <b>$${total_usd.toFixed(2)} USD</b>\nSaldo actual: $${balance.toFixed(2)}`,
+    `<b>💳 Método de pago</b>\n\nTotal: <b>$${total_usd.toFixed(2)} USD</b>\nSaldo actual: $${balance.toFixed(2)}${stockNote}`,
     kb,
   );
 }
@@ -267,16 +260,10 @@ async function showPaymentInstructions(
     .eq("product_id", ctx.product_id as string)
     .eq("price_id", ctx.price_id as string)
     .eq("used", false);
-  if ((availableCount ?? 0) < qty) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `❌ Ese producto ya no tiene stock suficiente. Disponible ahora: <b>${availableCount ?? 0}</b>.`,
-      [[{ text: "⬅️ Volver", callback_data: "menu:products" }]],
-    );
-    return;
-  }
+  const manualNote =
+    (availableCount ?? 0) < qty
+      ? `\n⚠️ <b>Sin stock automático</b>. La key será entregada manualmente por el admin tras aprobar el comprobante.`
+      : "";
 
   // chequear órdenes activas (máximo 3)
   const { data: user } = await sb
@@ -329,13 +316,14 @@ async function showPaymentInstructions(
     `Producto: <b>${(price as { products: { name: string } }).products.name}</b>\n` +
     `Duración: ${price.duration_label}\n` +
     `Cantidad: ${qty}\n\n` +
-    `<b>💵 Total a pagar:</b>\n` +
+    `<b>💵 Total a pagar (exacto en USD):</b>\n` +
     `$${total_usd.toFixed(2)} USD\n` +
-    `≈ ${total_local.toFixed(2)} ${pm.currency}\n\n` +
+    `≈ ${total_local.toFixed(2)} ${pm.currency} <i>(referencial)</i>\n\n` +
     `<b>${pm.country_name} — ${pm.method_name}</b>\n` +
     `👤 Titular: <code>${pm.holder_name}</code>\n` +
     `🧾 ${pm.account_info}\n` +
     `${pm.extra_info ? `📌 ${pm.extra_info}\n` : ""}` +
+    `${manualNote}\n` +
     `\n📸 <b>Enviá la foto del comprobante</b> a este chat.\n` +
     `⚠️ Solo fotos (no documentos). Imágenes duplicadas serán rechazadas.`;
   await renderScreen("shop", telegram_id, chat_id, text, [
@@ -427,13 +415,21 @@ async function showRechargeInstructions(
 
   await setState(telegram_id, "awaiting_recharge_receipt", { order_id: order.id });
 
+  const rate = Number(pm.usd_rate);
+  const conv =
+    rate === 1
+      ? `💱 Pago en <b>${pm.currency}</b> (mismo valor que USD).`
+      : `💱 Tipo de cambio referencial: <b>1 USD ≈ ${rate.toFixed(2)} ${pm.currency}</b>\n` +
+        `Ejemplos: $5 ≈ ${(5 * rate).toFixed(2)} · $20 ≈ ${(20 * rate).toFixed(2)} · $30 ≈ ${(30 * rate).toFixed(2)} ${pm.currency}`;
+
   const text =
     `<b>💳 Recarga de saldo</b>\n\n` +
     `<b>${pm.country_name} — ${pm.method_name}</b>\n` +
     `👤 Titular: <code>${pm.holder_name}</code>\n` +
     `🧾 ${pm.account_info}\n` +
     `${pm.extra_info ? `📌 ${pm.extra_info}\n` : ""}` +
-    `\n1️⃣ Realizá el pago por el monto que quieras recargar.\n` +
+    `\n${conv}\n` +
+    `\n1️⃣ Realizá el pago por el <b>monto exacto en USD</b> que quieras recargar.\n` +
     `2️⃣ Enviá la <b>foto del comprobante</b> a este chat.\n\n` +
     `⚠️ Solo fotos (no documentos). Imágenes duplicadas serán rechazadas.`;
   await renderScreen("shop", telegram_id, chat_id, text, [
@@ -512,18 +508,10 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     .eq("price_id", ctx.price_id as string)
     .eq("used", false)
     .limit(qty);
-  if (!avail || avail.length < qty) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `❌ No hay claves disponibles en este momento.`,
-      [[{ text: "⬅️ Volver", callback_data: "menu:main" }]],
-    );
-    return;
-  }
 
-  // crear orden, marcar keys, descontar saldo
+  const hasStock = (avail?.length ?? 0) >= qty;
+
+  // crear orden (status según disponibilidad)
   const { data: order } = await sb
     .from("orders")
     .insert({
@@ -533,45 +521,80 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
       price_id: ctx.price_id as string,
       keys_qty: qty,
       total_usd,
-      status: "delivered",
+      status: hasStock ? "delivered" : "pending_approval",
       paid_with_balance: true,
     })
     .select()
     .single();
   if (!order) return;
 
-  await sb
-    .from("product_stock_keys")
-    .update({
-      used: true,
-      used_at: new Date().toISOString(),
-      used_by_user_id: user.id,
-      used_by_order_id: order.id,
-    })
-    .in(
-      "id",
-      avail.map((k) => k.id),
-    );
-
-  await sb.from("order_keys").insert(
-    avail.map((k) => ({
-      order_id: order.id,
-      user_id: user.id,
-      key_value: k.key_value,
-    })),
-  );
-
+  // descontar saldo siempre
   await sb
     .from("bot_users")
     .update({ balance: Number(user.balance) - total_usd })
     .eq("id", user.id);
 
-  const keysText = avail.map((k) => `<code>${k.key_value}</code>`).join("\n");
+  if (hasStock && avail) {
+    await sb
+      .from("product_stock_keys")
+      .update({
+        used: true,
+        used_at: new Date().toISOString(),
+        used_by_user_id: user.id,
+        used_by_order_id: order.id,
+      })
+      .in("id", avail.map((k) => k.id));
+
+    await sb.from("order_keys").insert(
+      avail.map((k) => ({
+        order_id: order.id,
+        user_id: user.id,
+        key_value: k.key_value,
+      })),
+    );
+
+    const keysText = avail.map((k) => `<code>${k.key_value}</code>`).join("\n");
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `✅ <b>Compra completada</b>\n\nProducto: ${(price as { products: { name: string } }).products.name}\nDuración: ${price.duration_label}\nCantidad: ${qty}\n\n<b>🔑 Tus keys:</b>\n${keysText}`,
+      [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    );
+    return;
+  }
+
+  // SIN STOCK → entrega manual: notificar al admin
+  const adminChat = getAdminChatId();
+  if (adminChat) {
+    await sendMessage(
+      "admin",
+      adminChat,
+      `📦 <b>Entrega manual pendiente</b>\n\n` +
+        `Producto: <b>${(price as { products: { name: string } }).products.name}</b>\n` +
+        `Duración: ${price.duration_label}\n` +
+        `Cantidad: ${qty}\n` +
+        `Monto cobrado al saldo: <b>$${total_usd.toFixed(2)} USD</b>\n` +
+        `Usuario: <code>${telegram_id}</code>\n` +
+        `Orden: <code>${order.id}</code>\n\n` +
+        `Respondé a este mensaje con las <b>${qty} keys</b> (una por línea) para entregarlas.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: "📦 Ver pendientes", callback_data: "akp:pendientes" }]],
+        },
+      },
+    );
+  }
+
   await renderScreen(
     "shop",
     telegram_id,
     chat_id,
-    `✅ <b>Compra completada</b>\n\nProducto: ${(price as { products: { name: string } }).products.name}\nDuración: ${price.duration_label}\nCantidad: ${qty}\n\n<b>🔑 Tus keys:</b>\n${keysText}`,
+    `✅ <b>Pago con saldo recibido</b>\n\n` +
+      `Producto: ${(price as { products: { name: string } }).products.name}\n` +
+      `Duración: ${price.duration_label}\n` +
+      `Cantidad: ${qty}\n\n` +
+      `⏳ No había stock automático. El admin te entregará la key manualmente en breve.`,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
   );
 }

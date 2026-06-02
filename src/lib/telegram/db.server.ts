@@ -173,10 +173,47 @@ export async function checkRateLimit(
 export async function isBlocked(telegram_id: number): Promise<boolean> {
   const { data } = await sb
     .from("blocked_users")
-    .select("telegram_id")
+    .select("telegram_id, blocked_until")
     .eq("telegram_id", telegram_id)
     .maybeSingle();
-  return !!data;
+  if (!data) return false;
+  if (!data.blocked_until) return true; // bloqueo permanente
+  if (new Date(data.blocked_until).getTime() > Date.now()) return true;
+  // Expirado → limpiar
+  await sb.from("blocked_users").delete().eq("telegram_id", telegram_id);
+  return false;
+}
+
+/** Bloquea por minutos. Si ya estaba bloqueado, escala 5min → 24h. */
+export async function autoBlock(telegram_id: number, reason: string) {
+  const { data: existing } = await sb
+    .from("blocked_users")
+    .select("infraction_count")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  const next = (existing?.infraction_count ?? 0) + 1;
+  const minutes = next >= 2 ? 60 * 24 : 5;
+  const until = new Date(Date.now() + minutes * 60_000).toISOString();
+  await sb
+    .from("blocked_users")
+    .upsert(
+      { telegram_id, reason, blocked_until: until, infraction_count: next },
+      { onConflict: "telegram_id" },
+    );
+  return { minutes, infraction_count: next };
+}
+
+export async function unblockUser(telegram_id: number) {
+  await sb.from("blocked_users").delete().eq("telegram_id", telegram_id);
+}
+
+export async function blockUserPermanent(telegram_id: number, reason: string) {
+  await sb
+    .from("blocked_users")
+    .upsert(
+      { telegram_id, reason, blocked_until: null, infraction_count: 99 },
+      { onConflict: "telegram_id" },
+    );
 }
 
 export async function getActiveMessage(telegram_id: number) {
