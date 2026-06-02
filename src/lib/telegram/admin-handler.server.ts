@@ -6,6 +6,7 @@ import {
   ADMIN_CHAT_ID,
 } from "./api.server";
 import { sb, checkRateLimit } from "./db.server";
+import { getHideOutOfStockSetting, getStockByPriceId, getVisibleCatalog } from "./catalog.server";
 import {
   notifyUserApproved,
   notifyUserRejected,
@@ -22,7 +23,7 @@ interface TgMessage {
   from?: { id: number; username?: string };
   chat: { id: number };
   text?: string;
-  reply_to_message?: { message_id: number };
+  reply_to_message?: { message_id: number; text?: string; caption?: string };
 }
 interface TgCallback {
   id: string;
@@ -33,6 +34,10 @@ interface TgCallback {
 
 function isAdmin(telegram_id: number) {
   return String(telegram_id) === String(ADMIN_CHAT_ID);
+}
+
+function shortId(id: string) {
+  return id.slice(0, 8);
 }
 
 export async function handleAdminUpdate(update: Update): Promise<void> {
@@ -74,6 +79,51 @@ async function handleMessage(msg: TgMessage) {
       await sendMessage("admin", msg.chat.id, `✅ Key enviada al usuario.`);
       return;
     }
+
+    const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
+    const addKeysMatch = replySource.match(/ADDKEYS:([a-f0-9-]{36})/i);
+    if (addKeysMatch && text.length > 0) {
+      const priceId = addKeysMatch[1];
+      const { data: price } = await sb
+        .from("product_prices")
+        .select("id, product_id, duration_label, products(name)")
+        .eq("id", priceId)
+        .single();
+      if (!price) {
+        await sendMessage("admin", msg.chat.id, `❌ Variante no encontrada.`);
+        return;
+      }
+
+      const parsedKeys = [...new Set(text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))];
+      if (parsedKeys.length === 0) {
+        await sendMessage("admin", msg.chat.id, `❌ No detecté keys válidas.`);
+        return;
+      }
+
+      const { data: existing } = await sb
+        .from("product_stock_keys")
+        .select("key_value")
+        .in("key_value", parsedKeys);
+      const existingSet = new Set((existing ?? []).map((row) => row.key_value));
+      const newKeys = parsedKeys.filter((value) => !existingSet.has(value));
+
+      if (newKeys.length > 0) {
+        await sb.from("product_stock_keys").insert(
+          newKeys.map((key_value) => ({
+            product_id: price.product_id,
+            price_id: price.id,
+            key_value,
+          })),
+        );
+      }
+
+      await sendMessage(
+        "admin",
+        msg.chat.id,
+        `✅ Keys cargadas para ${(price as { products: { name: string } }).products.name} / ${price.duration_label}.\nNuevas: ${newKeys.length}\nDuplicadas omitidas: ${parsedKeys.length - newKeys.length}`,
+      );
+      return;
+    }
   }
 
   if (text === "/start" || text === "/help") {
@@ -82,8 +132,11 @@ async function handleMessage(msg: TgMessage) {
       msg.chat.id,
       `<b>🛠 Panel Admin</b>\n\n` +
         `/pendientes — órdenes esperando aprobación\n` +
-        `/stock — stock de keys disponibles\n` +
-        `/addkeys productId priceId — cargar keys (responder al mensaje con 1 key por línea)\n` +
+        `/stock — stock por producto y duración\n` +
+        `/precios — catálogo real con IDs cortos, precios y stock\n` +
+        `/setprecio <priceId> <usd> — editar precio sin reinicio\n` +
+        `/addkeys <priceId> — responder con 1 key por línea\n` +
+        `/ocultar_sin_stock on|off — mostrar u ocultar variantes sin stock\n` +
         `/usuarios — total usuarios\n\n` +
         `Los comprobantes llegan automáticamente con botones Aprobar/Rechazar/Bloquear/Key Manual.`,
     );
@@ -118,17 +171,100 @@ async function handleMessage(msg: TgMessage) {
   }
 
   if (text === "/stock") {
-    const { data } = await sb
-      .from("product_stock_keys")
-      .select("product_id, products(name), used")
-      .eq("used", false);
-    const map = new Map<string, number>();
-    for (const r of data ?? []) {
-      const name = (r as { products: { name: string } }).products.name;
-      map.set(name, (map.get(name) ?? 0) + 1);
+    const { grouped } = await getVisibleCatalog();
+    const stockByPriceId = await getStockByPriceId();
+    const lines = grouped
+      .flatMap((section) => [
+        `${section.category}:`,
+        ...section.products.flatMap((product) =>
+          product.prices.map((price) =>
+            `• ${product.name} / ${price.duration_label}: ${stockByPriceId.get(price.id) ?? 0}`,
+          ),
+        ),
+      ])
+      .join("\n");
+    await sendMessage("admin", msg.chat.id, `<b>📦 Stock disponible</b>\n\n${lines || "Sin stock."}`);
+    return;
+  }
+
+  if (text === "/precios") {
+    const hideOutOfStock = await getHideOutOfStockSetting();
+    const { grouped } = await getVisibleCatalog();
+    const lines = grouped
+      .flatMap((section) => [
+        `${section.category}:`,
+        ...section.products.flatMap((product) =>
+          product.prices.map(
+            (price) =>
+              `• ${product.name} / ${price.duration_label} — $${Number(price.price_usd).toFixed(2)} — stock ${price.available_stock} — <code>${shortId(price.id)}</code>`,
+          ),
+        ),
+      ])
+      .join("\n");
+    await sendMessage(
+      "admin",
+      msg.chat.id,
+      `<b>📋 Catálogo</b>\nOcultar sin stock: <b>${hideOutOfStock ? "ON" : "OFF"}</b>\n\n${lines || "Sin variantes cargadas."}`,
+    );
+    return;
+  }
+
+  if (text.startsWith("/setprecio ")) {
+    const [, rawPriceId, rawUsd] = text.split(/\s+/);
+    const newValue = Number(rawUsd);
+    if (!rawPriceId || !rawUsd || !Number.isFinite(newValue) || newValue <= 0) {
+      await sendMessage("admin", msg.chat.id, `Uso: /setprecio <priceId> <usd>`);
+      return;
     }
-    const lines = [...map.entries()].map(([n, c]) => `• ${n}: ${c}`).join("\n") || "Sin stock.";
-    await sendMessage("admin", msg.chat.id, `<b>📦 Stock disponible:</b>\n${lines}`);
+    const { data: updated } = await sb
+      .from("product_prices")
+      .update({ price_usd: newValue })
+      .eq("id", rawPriceId)
+      .select("id, duration_label, products(name)")
+      .maybeSingle();
+    if (!updated) {
+      await sendMessage("admin", msg.chat.id, `❌ No encontré esa variante. Usá /precios.`);
+      return;
+    }
+    await sendMessage(
+      "admin",
+      msg.chat.id,
+      `✅ Precio actualizado: ${(updated as { products: { name: string } }).products.name} / ${updated.duration_label} → $${newValue.toFixed(2)}`,
+    );
+    return;
+  }
+
+  if (text.startsWith("/addkeys ")) {
+    const [, priceId] = text.split(/\s+/);
+    if (!priceId) {
+      await sendMessage("admin", msg.chat.id, `Uso: /addkeys <priceId>`);
+      return;
+    }
+    const { data: price } = await sb
+      .from("product_prices")
+      .select("id, duration_label, products(name)")
+      .eq("id", priceId)
+      .maybeSingle();
+    if (!price) {
+      await sendMessage("admin", msg.chat.id, `❌ No encontré esa variante. Usá /precios.`);
+      return;
+    }
+    await sendMessage(
+      "admin",
+      msg.chat.id,
+      `<b>ADDKEYS:${priceId}</b>\n${(price as { products: { name: string } }).products.name} / ${price.duration_label}\n\nRespondé a este mensaje con 1 key por línea.`,
+    );
+    return;
+  }
+
+  if (text.startsWith("/ocultar_sin_stock ")) {
+    const [, mode] = text.split(/\s+/);
+    if (!["on", "off"].includes(mode)) {
+      await sendMessage("admin", msg.chat.id, `Uso: /ocultar_sin_stock on|off`);
+      return;
+    }
+    await sb.from("telegram_bot_settings").upsert({ singleton: true, hide_out_of_stock: mode === "on" });
+    await sendMessage("admin", msg.chat.id, `✅ Ocultar sin stock: <b>${mode.toUpperCase()}</b>`);
     return;
   }
 
