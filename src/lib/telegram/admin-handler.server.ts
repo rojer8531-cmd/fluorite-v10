@@ -728,6 +728,42 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminPromptKeys(chat_id, data.slice(6));
     return;
   }
+  if (data.startsWith("akusrp:")) {
+    await answerCallbackQuery("admin", cb.id);
+    if (chat_id) await adminUsuarios(chat_id, parseInt(data.slice(7), 10) || 0);
+    return;
+  }
+  if (data.startsWith("akusr:")) {
+    await answerCallbackQuery("admin", cb.id);
+    if (chat_id) await adminUserDetail(chat_id, parseInt(data.slice(6), 10));
+    return;
+  }
+  if (data.startsWith("akusrmsg:")) {
+    await answerCallbackQuery("admin", cb.id);
+    if (chat_id) {
+      const tgId = parseInt(data.slice(9), 10);
+      await sendMessage(
+        "admin",
+        chat_id,
+        `✉️ <b>MSGUSER:${tgId}</b>\n\nRespondé a este mensaje con el texto que querés enviarle al usuario <code>${tgId}</code>.`,
+      );
+    }
+    return;
+  }
+  if (data.startsWith("akusrunblock:")) {
+    const tgId = parseInt(data.slice(13), 10);
+    await sb.from("blocked_users").delete().eq("telegram_id", tgId);
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: cb.from.id,
+      action: "unblock_user",
+      target_type: "telegram_id",
+      target_id: String(tgId),
+    });
+    await answerCallbackQuery("admin", cb.id, `Usuario ${tgId} desbloqueado ✅`, true);
+    if (chat_id) await adminUserDetail(chat_id, tgId);
+    return;
+  }
+
 
   // ---- acciones sobre comprobantes ----
   const [, action, target] = data.split(":");
