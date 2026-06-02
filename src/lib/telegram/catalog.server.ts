@@ -31,17 +31,34 @@ export interface VisibleCatalogProduct extends CatalogProduct {
 
 const CATEGORY_ORDER: ProductCategory[] = ["iOS", "Android"];
 
+// Caché en memoria (TTL 10s) para reducir consultas repetidas.
+const CACHE_TTL_MS = 10_000;
+let hideCache: { value: boolean; at: number } | null = null;
+let stockCache: { value: Map<string, number>; at: number } | null = null;
+let catalogCache: { value: Awaited<ReturnType<typeof buildVisibleCatalog>>; at: number } | null = null;
+
+export function invalidateCatalogCache() {
+  hideCache = null;
+  stockCache = null;
+  catalogCache = null;
+}
+
 export async function getHideOutOfStockSetting() {
+  const now = Date.now();
+  if (hideCache && now - hideCache.at < CACHE_TTL_MS) return hideCache.value;
   const { data } = await sb
     .from("telegram_bot_settings")
     .select("hide_out_of_stock")
     .eq("singleton", true)
     .maybeSingle();
-
-  return data?.hide_out_of_stock ?? false;
+  const value = data?.hide_out_of_stock ?? false;
+  hideCache = { value, at: now };
+  return value;
 }
 
 export async function getStockByPriceId() {
+  const now = Date.now();
+  if (stockCache && now - stockCache.at < CACHE_TTL_MS) return stockCache.value;
   const { data } = await sb
     .from("product_stock_keys")
     .select("price_id")
@@ -51,11 +68,11 @@ export async function getStockByPriceId() {
   for (const row of data ?? []) {
     stockByPriceId.set(row.price_id, (stockByPriceId.get(row.price_id) ?? 0) + 1);
   }
-
+  stockCache = { value: stockByPriceId, at: now };
   return stockByPriceId;
 }
 
-export async function getVisibleCatalog() {
+async function buildVisibleCatalog() {
   const [hideOutOfStock, stockByPriceId, productsRes, pricesRes] = await Promise.all([
     getHideOutOfStockSetting(),
     getStockByPriceId(),
@@ -96,4 +113,12 @@ export async function getVisibleCatalog() {
   })).filter((section) => section.products.length > 0);
 
   return { grouped, hideOutOfStock, stockByPriceId };
+}
+
+export async function getVisibleCatalog() {
+  const now = Date.now();
+  if (catalogCache && now - catalogCache.at < CACHE_TTL_MS) return catalogCache.value;
+  const value = await buildVisibleCatalog();
+  catalogCache = { value, at: now };
+  return value;
 }
