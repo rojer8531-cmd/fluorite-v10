@@ -48,11 +48,12 @@ async function resolvePriceId(rawId: string) {
   const { data } = await sb
     .from("product_prices")
     .select("id")
-    .ilike("id", `${normalized}%`)
-    .limit(2);
+    .limit(200);
 
-  if (!data || data.length !== 1) return null;
-  return data[0].id;
+  const matches = (data ?? []).filter((row) => row.id.startsWith(normalized));
+
+  if (matches.length !== 1) return null;
+  return matches[0].id;
 }
 
 export async function handleAdminUpdate(update: Update): Promise<void> {
