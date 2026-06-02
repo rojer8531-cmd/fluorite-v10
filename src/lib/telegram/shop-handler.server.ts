@@ -260,16 +260,10 @@ async function showPaymentInstructions(
     .eq("product_id", ctx.product_id as string)
     .eq("price_id", ctx.price_id as string)
     .eq("used", false);
-  if ((availableCount ?? 0) < qty) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `❌ Ese producto ya no tiene stock suficiente. Disponible ahora: <b>${availableCount ?? 0}</b>.`,
-      [[{ text: "⬅️ Volver", callback_data: "menu:products" }]],
-    );
-    return;
-  }
+  const manualNote =
+    (availableCount ?? 0) < qty
+      ? `\n⚠️ <b>Sin stock automático</b>. La key será entregada manualmente por el admin tras aprobar el comprobante.`
+      : "";
 
   // chequear órdenes activas (máximo 3)
   const { data: user } = await sb
