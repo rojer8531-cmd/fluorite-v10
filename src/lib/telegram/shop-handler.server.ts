@@ -483,7 +483,7 @@ async function routeBottomMenu(
   chat_id: number,
   message_id: number,
 ): Promise<boolean> {
-  const map: Record<string, (tid: number, cid: number) => Promise<void>> = {
+  const map: Record<string, (tid: number, cid: number) => Promise<unknown>> = {
     [BOTTOM_MENU.products]: showProducts,
     [BOTTOM_MENU.buy]: showBuyWithBalance,
     [BOTTOM_MENU.status]: showOrderStatus,
