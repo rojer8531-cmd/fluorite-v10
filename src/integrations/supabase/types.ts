@@ -68,19 +68,25 @@ export type Database = {
       blocked_users: {
         Row: {
           blocked_at: string
+          blocked_until: string | null
           id: string
+          infraction_count: number
           reason: string | null
           telegram_id: number
         }
         Insert: {
           blocked_at?: string
+          blocked_until?: string | null
           id?: string
+          infraction_count?: number
           reason?: string | null
           telegram_id: number
         }
         Update: {
           blocked_at?: string
+          blocked_until?: string | null
           id?: string
+          infraction_count?: number
           reason?: string | null
           telegram_id?: number
         }
