@@ -40,6 +40,21 @@ function shortId(id: string) {
   return id.slice(0, 8);
 }
 
+async function resolvePriceId(rawId: string) {
+  const normalized = rawId.trim();
+  if (!normalized) return null;
+  if (normalized.length === 36) return normalized;
+
+  const { data } = await sb
+    .from("product_prices")
+    .select("id")
+    .ilike("id", `${normalized}%`)
+    .limit(2);
+
+  if (!data || data.length !== 1) return null;
+  return data[0].id;
+}
+
 export async function handleAdminUpdate(update: Update): Promise<void> {
   if (update.message) await handleMessage(update.message);
   else if (update.callback_query) await handleCallback(update.callback_query);
@@ -216,10 +231,15 @@ async function handleMessage(msg: TgMessage) {
       await sendMessage("admin", msg.chat.id, `Uso: /setprecio <priceId> <usd>`);
       return;
     }
+    const priceId = await resolvePriceId(rawPriceId);
+    if (!priceId) {
+      await sendMessage("admin", msg.chat.id, `❌ ID de variante inválido o ambiguo. Usá /precios.`);
+      return;
+    }
     const { data: updated } = await sb
       .from("product_prices")
       .update({ price_usd: newValue })
-      .eq("id", rawPriceId)
+      .eq("id", priceId)
       .select("id, duration_label, products(name)")
       .maybeSingle();
     if (!updated) {
@@ -236,14 +256,15 @@ async function handleMessage(msg: TgMessage) {
 
   if (text.startsWith("/addkeys ")) {
     const [, priceId] = text.split(/\s+/);
-    if (!priceId) {
+    const resolvedPriceId = await resolvePriceId(priceId ?? "");
+    if (!resolvedPriceId) {
       await sendMessage("admin", msg.chat.id, `Uso: /addkeys <priceId>`);
       return;
     }
     const { data: price } = await sb
       .from("product_prices")
       .select("id, duration_label, products(name)")
-      .eq("id", priceId)
+      .eq("id", resolvedPriceId)
       .maybeSingle();
     if (!price) {
       await sendMessage("admin", msg.chat.id, `❌ No encontré esa variante. Usá /precios.`);
@@ -252,7 +273,7 @@ async function handleMessage(msg: TgMessage) {
     await sendMessage(
       "admin",
       msg.chat.id,
-      `<b>ADDKEYS:${priceId}</b>\n${(price as { products: { name: string } }).products.name} / ${price.duration_label}\n\nRespondé a este mensaje con 1 key por línea.`,
+      `<b>ADDKEYS:${resolvedPriceId}</b>\n${(price as { products: { name: string } }).products.name} / ${price.duration_label}\n\nRespondé a este mensaje con 1 key por línea.`,
     );
     return;
   }
