@@ -326,6 +326,7 @@ export type Database = {
           price_usd: number
           product_id: string
           sort_order: number
+          updated_at: string
         }
         Insert: {
           active?: boolean
@@ -336,6 +337,7 @@ export type Database = {
           price_usd: number
           product_id: string
           sort_order?: number
+          updated_at?: string
         }
         Update: {
           active?: boolean
@@ -346,6 +348,7 @@ export type Database = {
           price_usd?: number
           product_id?: string
           sort_order?: number
+          updated_at?: string
         }
         Relationships: [
           {
@@ -418,6 +421,7 @@ export type Database = {
       products: {
         Row: {
           active: boolean
+          category: Database["public"]["Enums"]["product_category"]
           created_at: string
           description: string | null
           id: string
@@ -427,6 +431,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          category?: Database["public"]["Enums"]["product_category"]
           created_at?: string
           description?: string | null
           id?: string
@@ -436,6 +441,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          category?: Database["public"]["Enums"]["product_category"]
           created_at?: string
           description?: string | null
           id?: string
@@ -553,6 +559,27 @@ export type Database = {
           },
         ]
       }
+      telegram_bot_settings: {
+        Row: {
+          created_at: string
+          hide_out_of_stock: boolean
+          singleton: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          hide_out_of_stock?: boolean
+          singleton?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          hide_out_of_stock?: boolean
+          singleton?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_state: {
         Row: {
           context: Json
@@ -595,6 +622,7 @@ export type Database = {
         | "rejected"
         | "delivered"
         | "cancelled"
+      product_category: "iOS" | "Android"
       receipt_status: "pending" | "approved" | "rejected" | "duplicate"
       user_rank: "normal" | "pro" | "leyenda"
     }
@@ -732,6 +760,7 @@ export const Constants = {
         "delivered",
         "cancelled",
       ],
+      product_category: ["iOS", "Android"],
       receipt_status: ["pending", "approved", "rejected", "duplicate"],
       user_rank: ["normal", "pro", "leyenda"],
     },

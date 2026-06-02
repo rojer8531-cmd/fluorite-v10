@@ -7,15 +7,33 @@ function deriveSecret(token: string) {
   return createHash("sha256").update(`tg-webhook:${token}`).digest("base64url");
 }
 
+function resolveStableBaseUrl(url: URL, hostHeader?: string | null) {
+  const envProjectId = process.env.LOVABLE_PROJECT_ID ?? process.env.__LOVABLE_PROJECT_ID;
+  const currentHost = hostHeader ?? url.host;
+
+  if (envProjectId) {
+    if (currentHost.includes("lovable.app")) {
+      return `https://project--${envProjectId}-dev.lovable.app`;
+    }
+    const customHost = currentHost.replace(/^id-preview--[^.]+\./, "");
+    if (customHost !== currentHost) {
+      return `https://project--${envProjectId}-dev.${customHost}`;
+    }
+  }
+
+  if (currentHost.startsWith("project--")) {
+    return `https://${currentHost}`;
+  }
+
+  return `${url.protocol}//${currentHost}`;
+}
+
 export const Route = createFileRoute("/api/public/telegram/setup")({
   server: {
     handlers: {
       GET: async ({ request }) => {
         const url = new URL(request.url);
-        // forzar host estable público (project--<id>.lovable.app o dev)
-        const host = request.headers.get("host") ?? url.host;
-        const proto = "https";
-        const base = `${proto}://${host}`;
+        const base = resolveStableBaseUrl(url, request.headers.get("host"));
         const shopUrl = `${base}/api/public/telegram/shop`;
         const adminUrl = `${base}/api/public/telegram/admin`;
 

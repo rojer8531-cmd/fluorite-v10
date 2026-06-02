@@ -19,6 +19,7 @@ import {
   sb,
 } from "./db.server";
 import { renderScreen, silentDelete } from "./ui.server";
+import { getVisibleCatalog } from "./catalog.server";
 
 const ACCESS_PASSWORD = "117";
 
@@ -94,26 +95,32 @@ async function showProfile(telegram_id: number, chat_id: number) {
 }
 
 async function showProducts(telegram_id: number, chat_id: number) {
-  const { data: products } = await sb
-    .from("products")
-    .select("*")
-    .eq("active", true)
-    .order("sort_order");
-  if (!products || products.length === 0) {
+  const { grouped, hideOutOfStock } = await getVisibleCatalog();
+  const products = grouped.flatMap((section) => section.products);
+  if (products.length === 0) {
     await renderScreen("shop", telegram_id, chat_id, `📦 No hay productos disponibles.`, [
       [{ text: "⬅️ Volver", callback_data: "menu:main" }],
     ]);
     return;
   }
   await setState(telegram_id, "choose_product", {});
+  const text =
+    `<b>📦 Productos</b>\n\nElegí un producto:` +
+    (hideOutOfStock ? `\n<i>Solo se muestran variantes con stock disponible.</i>` : "");
   await renderScreen(
     "shop",
     telegram_id,
     chat_id,
-    `<b>📦 Productos</b>\n\nElegí un producto:`,
+    text,
     [
-      ...products.map((p) => [
-        { text: p.name, callback_data: `prod:${p.id}` },
+      ...grouped.flatMap((section) => [
+        [{ text: `— ${section.category} —`, callback_data: "noop" }],
+        ...section.products.map((p) => [
+          {
+            text: `${p.name} (${p.total_stock})`,
+            callback_data: `prod:${p.id}`,
+          },
+        ]),
       ]),
       [{ text: "⬅️ Volver", callback_data: "menu:main" }],
     ],
@@ -121,14 +128,11 @@ async function showProducts(telegram_id: number, chat_id: number) {
 }
 
 async function showDurations(telegram_id: number, chat_id: number, product_id: string) {
-  const { data: prices } = await sb
-    .from("product_prices")
-    .select("*")
-    .eq("product_id", product_id)
-    .eq("active", true)
-    .order("sort_order");
+  const { grouped, stockByPriceId, hideOutOfStock } = await getVisibleCatalog();
+  const product = grouped.flatMap((section) => section.products).find((p) => p.id === product_id);
+  const prices = product?.prices ?? [];
   if (!prices || prices.length === 0) {
-    await renderScreen("shop", telegram_id, chat_id, `No hay precios cargados.`, [
+    await renderScreen("shop", telegram_id, chat_id, hideOutOfStock ? `No hay duraciones con stock disponible.` : `No hay precios cargados.`, [
       [{ text: "⬅️ Volver", callback_data: "menu:products" }],
     ]);
     return;
@@ -137,7 +141,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   await renderScreen("shop", telegram_id, chat_id, `<b>⏱ Elegí duración:</b>`, [
     ...prices.map((p) => [
       {
-        text: `${p.duration_label} — $${Number(p.price_usd).toFixed(2)}`,
+        text: `${p.duration_label} — $${Number(p.price_usd).toFixed(2)} · Stock ${stockByPriceId.get(p.id) ?? 0}`,
         callback_data: `dur:${p.id}`,
       },
     ]),
@@ -168,6 +172,22 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
     .single();
   if (!price) return;
   const total_usd = Number(price.price_usd) * qty;
+  const { count: availableCount } = await sb
+    .from("product_stock_keys")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", ctx.product_id as string)
+    .eq("price_id", ctx.price_id as string)
+    .eq("used", false);
+  if ((availableCount ?? 0) < qty) {
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `❌ No hay stock suficiente para ${qty} key${qty > 1 ? "s" : ""}. Disponible ahora: <b>${availableCount ?? 0}</b>.`,
+      [[{ text: "⬅️ Volver", callback_data: "menu:products" }]],
+    );
+    return;
+  }
   const { data: u } = await sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single();
   const balance = Number(u?.balance ?? 0);
 
@@ -209,6 +229,22 @@ async function showPaymentInstructions(
   const qty = Number(ctx.qty ?? 1);
   const total_usd = Number(price.price_usd) * qty;
   const total_local = total_usd * Number(pm.usd_rate);
+  const { count: availableCount } = await sb
+    .from("product_stock_keys")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", ctx.product_id as string)
+    .eq("price_id", ctx.price_id as string)
+    .eq("used", false);
+  if ((availableCount ?? 0) < qty) {
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `❌ Ese producto ya no tiene stock suficiente. Disponible ahora: <b>${availableCount ?? 0}</b>.`,
+      [[{ text: "⬅️ Volver", callback_data: "menu:products" }]],
+    );
+    return;
+  }
 
   // chequear órdenes activas (máximo 3)
   const { data: user } = await sb
@@ -667,6 +703,7 @@ async function handleCallback(cb: TgCallback) {
   const data = cb.data ?? "";
 
   if (data === "menu:main") return showMainMenu(telegram_id, chat_id);
+  if (data === "noop") return;
   if (data === "menu:profile") return showProfile(telegram_id, chat_id);
   if (data === "menu:products") return showProducts(telegram_id, chat_id);
   if (data === "menu:status") return showOrderStatus(telegram_id, chat_id);
