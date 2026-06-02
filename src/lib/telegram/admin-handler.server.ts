@@ -3,7 +3,7 @@ import {
   sendMessage,
   editMessageText,
   answerCallbackQuery,
-  ADMIN_CHAT_ID,
+  getAdminChatId,
 } from "./api.server";
 import { sb, checkRateLimit } from "./db.server";
 import { getHideOutOfStockSetting, getStockByPriceId, getVisibleCatalog } from "./catalog.server";
@@ -33,7 +33,7 @@ interface TgCallback {
 }
 
 function isAdmin(telegram_id: number) {
-  return String(telegram_id) === String(ADMIN_CHAT_ID);
+  return String(telegram_id) === String(getAdminChatId());
 }
 
 function shortId(id: string) {
@@ -150,8 +150,8 @@ async function handleMessage(msg: TgMessage) {
         `/pendientes — órdenes esperando aprobación\n` +
         `/stock — stock por producto y duración\n` +
         `/precios — catálogo real con IDs cortos, precios y stock\n` +
-        `/setprecio <priceId> <usd> — editar precio sin reinicio\n` +
-        `/addkeys <priceId> — responder con 1 key por línea\n` +
+        `/setprecio &lt;priceId&gt; &lt;usd&gt; — editar precio sin reinicio\n` +
+        `/addkeys &lt;priceId&gt; — responder con 1 key por línea\n` +
         `/ocultar_sin_stock on|off — mostrar u ocultar variantes sin stock\n` +
         `/usuarios — total usuarios\n\n` +
         `Los comprobantes llegan automáticamente con botones Aprobar/Rechazar/Bloquear/Key Manual.`,
@@ -229,7 +229,7 @@ async function handleMessage(msg: TgMessage) {
     const [, rawPriceId, rawUsd] = text.split(/\s+/);
     const newValue = Number(rawUsd);
     if (!rawPriceId || !rawUsd || !Number.isFinite(newValue) || newValue <= 0) {
-      await sendMessage("admin", msg.chat.id, `Uso: /setprecio <priceId> <usd>`);
+      await sendMessage("admin", msg.chat.id, `Uso: /setprecio &lt;priceId&gt; &lt;usd&gt;`);
       return;
     }
     const priceId = await resolvePriceId(rawPriceId);
@@ -259,7 +259,7 @@ async function handleMessage(msg: TgMessage) {
     const [, priceId] = text.split(/\s+/);
     const resolvedPriceId = await resolvePriceId(priceId ?? "");
     if (!resolvedPriceId) {
-      await sendMessage("admin", msg.chat.id, `Uso: /addkeys <priceId>`);
+      await sendMessage("admin", msg.chat.id, `Uso: /addkeys &lt;priceId&gt;`);
       return;
     }
     const { data: price } = await sb
