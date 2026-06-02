@@ -992,16 +992,10 @@ async function handleCallback(cb: TgCallback) {
   if (data === "menu:products") return showProducts(telegram_id, chat_id);
   if (data === "menu:status") return showOrderStatus(telegram_id, chat_id);
   if (data === "menu:keys") return showMyKeys(telegram_id, chat_id);
-  if (data === "menu:support") {
-    const adminChatId = getAdminChatId() ?? "soporte";
-    return renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `<b>💬 Soporte</b>\n\nContactanos por Telegram: ${adminChatId}\n(o el admin te responderá ante la aprobación de tu orden)`,
-      [[{ text: "⬅️ Volver", callback_data: "menu:main" }]],
-    );
-  }
+  if (data === "menu:buy") return showBuyWithBalance(telegram_id, chat_id);
+  if (data === "menu:recharge") return startRecharge(telegram_id, chat_id);
+  if (data === "menu:support") return showSupport(telegram_id, chat_id);
+
   if (data.startsWith("prod:")) return showDurations(telegram_id, chat_id, data.slice(5));
   if (data.startsWith("dur:")) return showQty(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("qty:")) return showCountries(telegram_id, chat_id, parseInt(data.slice(4), 10));
