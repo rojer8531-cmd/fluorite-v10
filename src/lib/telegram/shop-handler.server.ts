@@ -500,18 +500,10 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     .eq("price_id", ctx.price_id as string)
     .eq("used", false)
     .limit(qty);
-  if (!avail || avail.length < qty) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `❌ No hay claves disponibles en este momento.`,
-      [[{ text: "⬅️ Volver", callback_data: "menu:main" }]],
-    );
-    return;
-  }
 
-  // crear orden, marcar keys, descontar saldo
+  const hasStock = (avail?.length ?? 0) >= qty;
+
+  // crear orden (status según disponibilidad)
   const { data: order } = await sb
     .from("orders")
     .insert({
@@ -521,45 +513,80 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
       price_id: ctx.price_id as string,
       keys_qty: qty,
       total_usd,
-      status: "delivered",
+      status: hasStock ? "delivered" : "pending_approval",
       paid_with_balance: true,
     })
     .select()
     .single();
   if (!order) return;
 
-  await sb
-    .from("product_stock_keys")
-    .update({
-      used: true,
-      used_at: new Date().toISOString(),
-      used_by_user_id: user.id,
-      used_by_order_id: order.id,
-    })
-    .in(
-      "id",
-      avail.map((k) => k.id),
-    );
-
-  await sb.from("order_keys").insert(
-    avail.map((k) => ({
-      order_id: order.id,
-      user_id: user.id,
-      key_value: k.key_value,
-    })),
-  );
-
+  // descontar saldo siempre
   await sb
     .from("bot_users")
     .update({ balance: Number(user.balance) - total_usd })
     .eq("id", user.id);
 
-  const keysText = avail.map((k) => `<code>${k.key_value}</code>`).join("\n");
+  if (hasStock && avail) {
+    await sb
+      .from("product_stock_keys")
+      .update({
+        used: true,
+        used_at: new Date().toISOString(),
+        used_by_user_id: user.id,
+        used_by_order_id: order.id,
+      })
+      .in("id", avail.map((k) => k.id));
+
+    await sb.from("order_keys").insert(
+      avail.map((k) => ({
+        order_id: order.id,
+        user_id: user.id,
+        key_value: k.key_value,
+      })),
+    );
+
+    const keysText = avail.map((k) => `<code>${k.key_value}</code>`).join("\n");
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `✅ <b>Compra completada</b>\n\nProducto: ${(price as { products: { name: string } }).products.name}\nDuración: ${price.duration_label}\nCantidad: ${qty}\n\n<b>🔑 Tus keys:</b>\n${keysText}`,
+      [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    );
+    return;
+  }
+
+  // SIN STOCK → entrega manual: notificar al admin
+  const adminChat = getAdminChatId();
+  if (adminChat) {
+    await sendMessage(
+      "admin",
+      adminChat,
+      `📦 <b>Entrega manual pendiente</b>\n\n` +
+        `Producto: <b>${(price as { products: { name: string } }).products.name}</b>\n` +
+        `Duración: ${price.duration_label}\n` +
+        `Cantidad: ${qty}\n` +
+        `Monto cobrado al saldo: <b>$${total_usd.toFixed(2)} USD</b>\n` +
+        `Usuario: <code>${telegram_id}</code>\n` +
+        `Orden: <code>${order.id}</code>\n\n` +
+        `Respondé a este mensaje con las <b>${qty} keys</b> (una por línea) para entregarlas.`,
+      {
+        reply_markup: {
+          inline_keyboard: [[{ text: "📦 Ver pendientes", callback_data: "akp:pendientes" }]],
+        },
+      },
+    );
+  }
+
   await renderScreen(
     "shop",
     telegram_id,
     chat_id,
-    `✅ <b>Compra completada</b>\n\nProducto: ${(price as { products: { name: string } }).products.name}\nDuración: ${price.duration_label}\nCantidad: ${qty}\n\n<b>🔑 Tus keys:</b>\n${keysText}`,
+    `✅ <b>Pago con saldo recibido</b>\n\n` +
+      `Producto: ${(price as { products: { name: string } }).products.name}\n` +
+      `Duración: ${price.duration_label}\n` +
+      `Cantidad: ${qty}\n\n` +
+      `⏳ No había stock automático. El admin te entregará la key manualmente en breve.`,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
   );
 }
