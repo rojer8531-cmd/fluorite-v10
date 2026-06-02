@@ -195,7 +195,6 @@ async function showQty(telegram_id: number, chat_id: number, price_id: string) {
 
 async function showCountries(telegram_id: number, chat_id: number, qty: number) {
   await patchContext(telegram_id, { qty });
-  // chequear saldo primero
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
   const { data: price } = await sb
     .from("product_prices")
@@ -210,16 +209,10 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
     .eq("product_id", ctx.product_id as string)
     .eq("price_id", ctx.price_id as string)
     .eq("used", false);
-  if ((availableCount ?? 0) < qty) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `❌ No hay stock suficiente para ${qty} key${qty > 1 ? "s" : ""}. Disponible ahora: <b>${availableCount ?? 0}</b>.`,
-      [[{ text: "⬅️ Volver", callback_data: "menu:products" }]],
-    );
-    return;
-  }
+  const stockNote =
+    (availableCount ?? 0) < qty
+      ? `\n⚠️ Stock actual: <b>${availableCount ?? 0}</b>. Tu compra quedará en <b>entrega manual</b> por el admin.`
+      : "";
   const { data: u } = await sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single();
   const balance = Number(u?.balance ?? 0);
 
@@ -242,7 +235,7 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
     "shop",
     telegram_id,
     chat_id,
-    `<b>💳 Método de pago</b>\n\nTotal: <b>$${total_usd.toFixed(2)} USD</b>\nSaldo actual: $${balance.toFixed(2)}`,
+    `<b>💳 Método de pago</b>\n\nTotal: <b>$${total_usd.toFixed(2)} USD</b>\nSaldo actual: $${balance.toFixed(2)}${stockNote}`,
     kb,
   );
 }
