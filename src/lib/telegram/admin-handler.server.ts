@@ -612,13 +612,31 @@ async function handleMessage(msg: TgMessage) {
         }),
         sb.from("orders").update({ status: "delivered" }).eq("id", ord.id),
       ]);
-      const { data: u } = await sb
-        .from("bot_users")
-        .select("chat_id")
-        .eq("id", ord.user_id)
-        .single();
-      if (u) await notifyUserKey({ chat_id: u.chat_id, key_value: text });
-      await sendMessage("admin", msg.chat.id, `Key enviada al usuario.`);
+      const [{ data: u }, { data: prod }, { data: pr }] = await Promise.all([
+        sb.from("bot_users").select("telegram_id, chat_id").eq("id", ord.user_id).single(),
+        ord.product_id
+          ? sb.from("products").select("name").eq("id", ord.product_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        ord.price_id
+          ? sb.from("product_prices").select("duration_label").eq("id", ord.price_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (u) {
+        await notifyUserKey({
+          telegram_id: u.telegram_id,
+          chat_id: u.chat_id,
+          key_value: text,
+          product_name: (prod as { name: string } | null)?.name,
+          duration_label: (pr as { duration_label: string } | null)?.duration_label,
+        });
+      }
+      // Borrar el mensaje del admin para mantener el chat limpio
+      const { deleteMessage } = await import("./api.server");
+      deleteMessage("admin", msg.chat.id, msg.message_id).catch(() => {});
+      if (msg.reply_to_message) {
+        deleteMessage("admin", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
+      }
+      await sendMessage("admin", msg.chat.id, `Key enviada al usuario <code>${u?.telegram_id ?? ord.telegram_id}</code>.`);
       return;
     }
 
@@ -956,12 +974,36 @@ async function handleCallback(cb: TgCallback) {
   }
 
   if (action === "sendkey") {
-    await answerCallbackQuery(
+    if (!chat_id) return;
+    const order_id = target;
+    const { data: ord } = await sb
+      .from("orders")
+      .select("id, telegram_id, products(name), product_prices(duration_label)")
+      .eq("id", order_id)
+      .maybeSingle();
+    if (!ord) {
+      await sendMessage("admin", chat_id, `Orden no encontrada.`);
+      return;
+    }
+    const name = (ord as { products: { name: string } | null }).products?.name ?? "—";
+    const dur = (ord as { product_prices: { duration_label: string } | null }).product_prices?.duration_label ?? "—";
+    const sent = await sendMessage(
       "admin",
-      cb.id,
-      "Respondé a este mensaje con el valor de la key.",
-      true,
+      chat_id,
+      `<b>Enviar key</b>\n\n` +
+        `Producto  ${name}\n` +
+        `Duración  ${dur}\n` +
+        `Usuario   <code>${ord.telegram_id}</code>\n` +
+        `Orden     <code>${order_id.slice(0, 8)}</code>\n\n` +
+        `Respondé a este mensaje pegando la key. Se enviará solo a este usuario.`,
+      { reply_markup: { force_reply: true, selective: true } },
     );
+    if (sent.ok && sent.result) {
+      await sb
+        .from("orders")
+        .update({ admin_message_id: sent.result.message_id })
+        .eq("id", order_id);
+    }
     return;
   }
 }

@@ -603,26 +603,33 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     return;
   }
 
-  // Sin stock → entrega manual: notificar al admin
+  // Sin stock → entrega manual: notificar al admin con botón "Enviar Key"
   const adminChat = getAdminChatId();
   if (adminChat) {
-    await sendMessage(
+    const sentAdmin = await sendMessage(
       "admin",
       adminChat,
-      `<b>Entrega manual pendiente</b>\n\n` +
+      `<b>Nueva compra · entrega manual</b>\n\n` +
         `Producto  ${(price as { products: { name: string } }).products.name}\n` +
         `Duración  ${price.duration_label}\n` +
         `Cantidad  ${qty}\n` +
         `Cobrado   <b>$${total_usd.toFixed(2)} USD</b>\n` +
         `Usuario   <code>${telegram_id}</code>\n` +
-        `Orden     <code>${order.id}</code>\n\n` +
-        `Respondé con las ${qty} keys (una por línea) para entregarlas.`,
+        `Orden     <code>${order.id.slice(0, 8)}</code>`,
       {
         reply_markup: {
-          inline_keyboard: [[{ text: "Ver pendientes", callback_data: "akp:pend" }]],
+          inline_keyboard: [
+            [{ text: "Enviar Key", callback_data: `adm:sendkey:${order.id}` }],
+          ],
         },
       },
     );
+    if (sentAdmin.ok && sentAdmin.result) {
+      await sb
+        .from("orders")
+        .update({ admin_message_id: sentAdmin.result.message_id })
+        .eq("id", order.id);
+    }
   }
 
   await renderScreen(
@@ -1045,12 +1052,31 @@ export async function notifyUserRejected(opts: {
 }
 
 export async function notifyUserKey(opts: {
+  telegram_id: number;
   chat_id: number;
   key_value: string;
+  product_name?: string;
+  duration_label?: string;
 }) {
-  await sendMessage(
+  // Borrar el mensaje activo previo para que no se amontone
+  const active = await getActiveMessage(opts.telegram_id);
+  if (active && active.chat_id === opts.chat_id) {
+    silentDelete("shop", opts.chat_id, active.message_id).catch(() => {});
+  }
+  const header = opts.product_name
+    ? `<b>Key entregada</b>\n\n${opts.product_name}${opts.duration_label ? `  ·  ${opts.duration_label}` : ""}\n\n`
+    : `<b>Key entregada</b>\n\n`;
+  const sent = await sendMessage(
     "shop",
     opts.chat_id,
-    `<b>Key entregada</b>\n\n<code>${opts.key_value}</code>`,
+    `${header}<code>${opts.key_value}</code>`,
+    {
+      reply_markup: {
+        inline_keyboard: [[{ text: "Menú", callback_data: "menu:main" }]],
+      },
+    },
   );
+  if (sent.ok && sent.result) {
+    await setActiveMessage(opts.telegram_id, opts.chat_id, sent.result.message_id);
+  }
 }
