@@ -107,54 +107,16 @@ async function showSupport(telegram_id: number, chat_id: number) {
   );
 }
 
-// Construye lista plana de botones de productos, agrupados por categoría
-// sin botones-separador decorativos. Usa una línea de texto en el mensaje.
-function buildProductButtons(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>["grouped"]) {
+function categoryButtons(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>["grouped"]) {
   const rows: Array<Array<{ text: string; callback_data: string }>> = [];
   for (const section of grouped) {
-    for (const p of section.products) {
-      rows.push([
-        { text: `${p.name}  ·  ${p.total_stock}`, callback_data: `prod:${p.id}` },
-      ]);
-    }
+    rows.push([{ text: section.category, callback_data: `cat:${section.category}` }]);
   }
   return rows;
 }
 
-function catalogSummary(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>["grouped"]) {
-  return grouped.map((s) => `<b>${s.category}</b>: ${s.products.map((p) => p.name).join(", ")}`).join("\n");
-}
-
 async function showBuyWithBalance(telegram_id: number, chat_id: number) {
-  const { data: u } = await sb
-    .from("bot_users")
-    .select("balance")
-    .eq("telegram_id", telegram_id)
-    .single();
-  const balance = Number(u?.balance ?? 0);
-  if (balance <= 0) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `<b>Comprar con saldo</b>\n\nNo tenés saldo disponible.\nSaldo actual: <b>$0.00 USD</b>\n\nRecargá desde el menú para empezar a comprar.`,
-      [BACK_BUTTON],
-    );
-    return;
-  }
-  const { grouped } = await getVisibleCatalog();
-  if (grouped.length === 0) {
-    await renderScreen("shop", telegram_id, chat_id, `No hay productos disponibles.`, [BACK_BUTTON]);
-    return;
-  }
-  await setState(telegram_id, "choose_product", {});
-  await renderScreen(
-    "shop",
-    telegram_id,
-    chat_id,
-    `<b>Comprar con saldo</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\n${catalogSummary(grouped)}\n\nElegí un producto:`,
-    [...buildProductButtons(grouped), BACK_BUTTON],
-  );
+  await showProducts(telegram_id, chat_id);
 }
 
 async function showProfile(telegram_id: number, chat_id: number) {
@@ -177,50 +139,106 @@ async function showProfile(telegram_id: number, chat_id: number) {
 }
 
 async function showProducts(telegram_id: number, chat_id: number) {
-  const { grouped, hideOutOfStock } = await getVisibleCatalog();
+  const { grouped } = await getVisibleCatalog();
   if (grouped.length === 0) {
     await renderScreen("shop", telegram_id, chat_id, `No hay productos disponibles.`, [BACK_BUTTON]);
     return;
   }
-  await setState(telegram_id, "choose_product", {});
-  const text =
-    `<b>Productos</b>\n\n${catalogSummary(grouped)}\n\nElegí un producto:` +
-    (hideOutOfStock ? `\n<i>Solo se muestran variantes con stock.</i>` : "");
-  await renderScreen("shop", telegram_id, chat_id, text, [
-    ...buildProductButtons(grouped),
-    BACK_BUTTON,
-  ]);
-}
-
-async function showDurations(telegram_id: number, chat_id: number, product_id: string) {
-  const { grouped, stockByPriceId, hideOutOfStock } = await getVisibleCatalog();
-  const product = grouped.flatMap((s) => s.products).find((p) => p.id === product_id);
-  const prices = product?.prices ?? [];
-  if (prices.length === 0) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      hideOutOfStock ? `No hay duraciones con stock disponible.` : `No hay precios cargados.`,
-      [[{ text: "Volver", callback_data: "menu:products" }]],
-    );
-    return;
-  }
-  await patchContext(telegram_id, { product_id });
+  await setState(telegram_id, "choose_category", {});
   await renderScreen(
     "shop",
     telegram_id,
     chat_id,
-    `<b>${product?.name}</b>\n\nElegí la duración:`,
-    [
-      ...prices.map((p) => [
-        {
-          text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}  ·  Stock ${stockByPriceId.get(p.id) ?? 0}`,
-          callback_data: `dur:${p.id}`,
-        },
-      ]),
+    `<b>Productos</b>\n\nElegí una categoría:`,
+    [...categoryButtons(grouped), BACK_BUTTON],
+  );
+}
+
+async function showCategory(telegram_id: number, chat_id: number, category: string) {
+  const { grouped } = await getVisibleCatalog();
+  const section = grouped.find((s) => s.category === category);
+  if (!section || section.products.length === 0) {
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `No hay productos disponibles en ${category}.`,
+      [[{ text: "Volver", callback_data: "menu:products" }]],
+    );
+    return;
+  }
+  await setState(telegram_id, "choose_product", { category });
+  const rows = section.products.map((p) => [
+    { text: p.name, callback_data: `prod:${p.id}` },
+  ]);
+  rows.push([{ text: "Volver", callback_data: "menu:products" }]);
+  await renderScreen(
+    "shop",
+    telegram_id,
+    chat_id,
+    `<b>${category}</b>\n\nElegí un producto:`,
+    rows,
+  );
+}
+
+async function showDurations(telegram_id: number, chat_id: number, product_id: string) {
+  const [{ data: u }, catalog] = await Promise.all([
+    sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
+    getVisibleCatalog(),
+  ]);
+  const balance = Number(u?.balance ?? 0);
+  const product = catalog.grouped.flatMap((s) => s.products).find((p) => p.id === product_id);
+  if (!product) {
+    await renderScreen("shop", telegram_id, chat_id, `Producto no disponible.`, [
       [{ text: "Volver", callback_data: "menu:products" }],
-    ],
+    ]);
+    return;
+  }
+  const prices = product.prices ?? [];
+  if (prices.length === 0) {
+    await renderScreen("shop", telegram_id, chat_id, `Sin duraciones disponibles.`, [
+      [{ text: "Volver", callback_data: "menu:products" }],
+    ]);
+    return;
+  }
+  if (balance <= 0) {
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `<b>Saldo insuficiente</b>\n\nNo tenés saldo para comprar.\nSaldo actual: <b>$0.00 USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
+      [[{ text: "Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
+    );
+    return;
+  }
+  const minPrice = Math.min(...prices.map((p) => Number(p.price_usd)));
+  if (balance < minPrice) {
+    await renderScreen(
+      "shop",
+      telegram_id,
+      chat_id,
+      `<b>Saldo insuficiente</b>\n\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
+      [[{ text: "Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
+    );
+    return;
+  }
+  await patchContext(telegram_id, { product_id });
+  const rows = prices.map((p) => {
+    const affordable = balance >= Number(p.price_usd);
+    return [
+      {
+        text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${affordable ? "" : "  ·  sin saldo"}`,
+        callback_data: affordable ? `dur:${p.id}` : "noop",
+      },
+    ];
+  });
+  rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
+  await renderScreen(
+    "shop",
+    telegram_id,
+    chat_id,
+    `<b>${product.name}</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`,
+    rows,
   );
 }
 
