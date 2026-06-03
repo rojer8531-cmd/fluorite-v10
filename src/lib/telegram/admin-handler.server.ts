@@ -612,13 +612,31 @@ async function handleMessage(msg: TgMessage) {
         }),
         sb.from("orders").update({ status: "delivered" }).eq("id", ord.id),
       ]);
-      const { data: u } = await sb
-        .from("bot_users")
-        .select("chat_id")
-        .eq("id", ord.user_id)
-        .single();
-      if (u) await notifyUserKey({ chat_id: u.chat_id, key_value: text });
-      await sendMessage("admin", msg.chat.id, `Key enviada al usuario.`);
+      const [{ data: u }, { data: prod }, { data: pr }] = await Promise.all([
+        sb.from("bot_users").select("telegram_id, chat_id").eq("id", ord.user_id).single(),
+        ord.product_id
+          ? sb.from("products").select("name").eq("id", ord.product_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        ord.price_id
+          ? sb.from("product_prices").select("duration_label").eq("id", ord.price_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (u) {
+        await notifyUserKey({
+          telegram_id: u.telegram_id,
+          chat_id: u.chat_id,
+          key_value: text,
+          product_name: (prod as { name: string } | null)?.name,
+          duration_label: (pr as { duration_label: string } | null)?.duration_label,
+        });
+      }
+      // Borrar el mensaje del admin para mantener el chat limpio
+      const { deleteMessage } = await import("./api.server");
+      deleteMessage("admin", msg.chat.id, msg.message_id).catch(() => {});
+      if (msg.reply_to_message) {
+        deleteMessage("admin", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
+      }
+      await sendMessage("admin", msg.chat.id, `Key enviada al usuario <code>${u?.telegram_id ?? ord.telegram_id}</code>.`);
       return;
     }
 
