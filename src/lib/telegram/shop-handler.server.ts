@@ -964,11 +964,12 @@ async function handleCallback(cb: TgCallback) {
   if (data === "menu:recharge") return startRecharge(telegram_id, chat_id);
   if (data === "menu:support") return showSupport(telegram_id, chat_id);
 
+  if (data.startsWith("cat:")) return showCategory(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("prod:")) return showDurations(telegram_id, chat_id, data.slice(5));
-  if (data.startsWith("dur:")) return showQty(telegram_id, chat_id, data.slice(4));
-  if (data.startsWith("qty:")) return showCountries(telegram_id, chat_id, parseInt(data.slice(4), 10));
-  if (data === "pay:balance") return payWithBalance(telegram_id, chat_id);
-  if (data.startsWith("pm:")) return showPaymentInstructions(telegram_id, chat_id, data.slice(3));
+  if (data.startsWith("dur:")) {
+    await patchContext(telegram_id, { price_id: data.slice(4), qty: 1 });
+    return payWithBalance(telegram_id, chat_id);
+  }
   if (data.startsWith("rc:")) return showRechargeInstructions(telegram_id, chat_id, data.slice(3));
 }
 
