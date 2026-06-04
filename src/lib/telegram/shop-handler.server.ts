@@ -16,12 +16,19 @@ import {
   tryAcquireStartLock,
   checkRateLimit,
   isBlocked,
+  autoBlock,
   getActiveMessage,
   setActiveMessage,
   sb,
 } from "./db.server";
 import { renderScreen, silentDelete } from "./ui.server";
 import { getVisibleCatalog, invalidateCatalogCache } from "./catalog.server";
+
+const MIN_RECHARGE_USD = 5;
+function tpId(createdAt: string | Date) {
+  const t = typeof createdAt === "string" ? new Date(createdAt).getTime() : createdAt.getTime();
+  return `TP${t}`;
+}
 
 const ACCESS_PASSWORD = "117";
 
