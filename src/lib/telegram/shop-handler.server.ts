@@ -919,8 +919,16 @@ async function handleMessage(msg: TgMessage) {
   const telegram_id = msg.from.id;
   const chat_id = msg.chat.id;
 
-  if (await isBlocked(telegram_id)) return;
-  if (!(await checkRateLimit(telegram_id, "msg", 20, 10))) return;
+  // Bloqueo total — borrar cualquier mensaje entrante para que no se acumule
+  if (await isBlocked(telegram_id)) {
+    silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+    return;
+  }
+  if (!(await checkRateLimit(telegram_id, "msg", 20, 10))) {
+    silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+    await autoBlock(telegram_id, "spam_msg");
+    return;
+  }
 
   await getOrCreateUser({
     telegram_id,
@@ -934,8 +942,13 @@ async function handleMessage(msg: TgMessage) {
   }
 
   if (msg.document) {
-    silentDelete("shop", chat_id, msg.message_id).catch(() => {});
-    await sendMessage("shop", chat_id, `Solo aceptamos fotos como comprobante, no documentos.`);
+    const st0 = await getState(telegram_id);
+    if (st0?.state === "awaiting_recharge_receipt" || st0?.state === "awaiting_receipt") {
+      await handleReceiptDocument(msg);
+    } else {
+      silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+      await sendMessage("shop", chat_id, `Para enviar comprobante iniciá una recarga primero.`);
+    }
     return;
   }
 
