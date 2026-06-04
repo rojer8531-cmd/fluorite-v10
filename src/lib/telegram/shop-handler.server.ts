@@ -884,6 +884,114 @@ async function handleReceiptPhoto(msg: TgMessage) {
   }
 }
 
+// ===== Comprobante (documento) =====
+async function handleReceiptDocument(msg: TgMessage) {
+  const telegram_id = msg.from!.id;
+  const chat_id = msg.chat.id;
+  silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+  const doc = msg.document!;
+  if (!doc.file_id || !doc.file_unique_id) return;
+
+  const st = await getState(telegram_id);
+  if (!st || !["awaiting_receipt", "awaiting_recharge_receipt"].includes(st.state) || !st.context?.order_id) {
+    await sendMessage("shop", chat_id, `No tenés una recarga pendiente.`);
+    return;
+  }
+  const isRecharge = st.state === "awaiting_recharge_receipt";
+  const order_id = st.context.order_id as string;
+
+  // Anti duplicado 24h
+  const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const { data: dup } = await sb
+    .from("receipt_fingerprints")
+    .select("*")
+    .eq("file_unique_id", doc.file_unique_id)
+    .gte("created_at", cutoff)
+    .maybeSingle();
+  if (dup) {
+    await sendMessage("shop", chat_id, `Este comprobante ya fue enviado antes.`);
+    return;
+  }
+
+  const { data: user } = await sb.from("bot_users").select("*").eq("telegram_id", telegram_id).single();
+  if (!user) return;
+
+  await sb.from("receipt_fingerprints").insert({
+    file_unique_id: doc.file_unique_id,
+    file_id: doc.file_id,
+    telegram_id,
+  });
+  const { data: receipt } = await sb
+    .from("receipts")
+    .insert({
+      user_id: user.id,
+      telegram_id,
+      order_id,
+      file_id: doc.file_id,
+      file_unique_id: doc.file_unique_id,
+      file_size: doc.file_size ?? null,
+      status: "pending",
+    })
+    .select()
+    .single();
+
+  await sb.from("orders").update({ status: "pending_approval", receipt_id: receipt?.id }).eq("id", order_id);
+
+  const { data: order } = await sb
+    .from("orders")
+    .select("*, payment_methods(country_name, method_name)")
+    .eq("id", order_id)
+    .single();
+  const o = order as { id: string; created_at: string; total_usd: number; payment_methods: { country_name: string; method_name: string } | null };
+  const pid = tpId(o.created_at);
+
+  const caption = isRecharge
+    ? `<b>Comprobante De Recarga</b>\n\n` +
+      `Pending: <code>${pid}</code>\n` +
+      `Usuario: @${user.username ?? "—"}\n` +
+      `ID: <code>${telegram_id}</code>\n` +
+      `Monto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
+      `País: ${o.payment_methods?.country_name ?? "—"}\n` +
+      `Total: <b>${Number(o.total_usd).toFixed(2)} USD</b>`
+    : `<b>Comprobante</b>\n\nOrden <code>${o.id}</code>`;
+
+  const adminChatId = getAdminChatId();
+  if (!adminChatId) return;
+
+  // Reenviar el documento al admin con botones
+  const { tg } = await import("./api.server");
+  const sent = await tg<{ message_id: number }>("admin", "sendDocument", {
+    chat_id: adminChatId,
+    document: doc.file_id,
+    caption,
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "Aprobar", callback_data: `adm:approve:${order_id}` },
+          { text: "Rechazar", callback_data: `adm:reject:${order_id}` },
+        ],
+        [{ text: "Bloquear", callback_data: `adm:block:${telegram_id}` }],
+      ],
+    },
+  });
+  if (sent.ok && sent.result) {
+    await Promise.all([
+      sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt!.id),
+      sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id),
+    ]);
+  }
+
+  await setState(telegram_id, "menu", {});
+  await renderScreen(
+    "shop",
+    telegram_id,
+    chat_id,
+    `<b>Comprobante recibido</b>\n\nPending: <code>${pid}</code>\n\nTu pago está en revisión.`,
+    [[{ text: "Menú", callback_data: "menu:main" }]],
+  );
+}
+
 // ===== Login =====
 async function askName(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "login_name", {});
