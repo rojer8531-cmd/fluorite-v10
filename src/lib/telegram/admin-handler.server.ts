@@ -62,6 +62,9 @@ function isAdmin(telegram_id: number) {
 function shortId(id: string) {
   return id.slice(0, 8);
 }
+function tpId(createdAt: string) {
+  return `TP${new Date(createdAt).getTime()}`;
+}
 
 // ===== Barra inferior persistente del admin =====
 const ADMIN_BOTTOM = {
