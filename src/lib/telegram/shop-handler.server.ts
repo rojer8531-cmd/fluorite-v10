@@ -1230,11 +1230,18 @@ export async function notifyUserApproved(opts: {
   chat_id: number;
   amount_usd: number;
   new_balance: number;
+  pending?: string;
 }) {
+  const pid = opts.pending ?? "";
   await sendMessage(
     "shop",
     opts.chat_id,
-    `<b>Pago aprobado</b>\n\nAcreditados <b>$${opts.amount_usd.toFixed(2)} USD</b> a tu saldo.\nSaldo actual <b>$${opts.new_balance.toFixed(2)} USD</b>\n\nUsá /start para volver al menú.`,
+    `<b>Recarga Aprobada</b>\n\n` +
+      (pid ? `Pending: <code>${pid}</code>\n` : "") +
+      `Monto Aprobado: <b>${opts.amount_usd.toFixed(2)} USD</b>\n` +
+      `Saldo Agregado: <b>${opts.amount_usd.toFixed(2)} USD</b>\n` +
+      `Saldo Disponible: <b>${opts.new_balance.toFixed(2)} USD</b>\n\n` +
+      `Ya puedes utilizar tu saldo para realizar compras dentro del bot.`,
   );
 }
 
@@ -1242,11 +1249,16 @@ export async function notifyUserRejected(opts: {
   telegram_id: number;
   chat_id: number;
   note?: string;
+  pending?: string;
 }) {
+  const pid = opts.pending ?? "";
   await sendMessage(
     "shop",
     opts.chat_id,
-    `<b>Pago rechazado</b>\n\n${opts.note ?? "Tu comprobante no fue aceptado."}\n\nPodés intentar nuevamente con /start.`,
+    `<b>Recarga Rechazada</b>\n\n` +
+      (pid ? `Pending: <code>${pid}</code>\n` : "") +
+      `Motivo: ${opts.note ?? "Sin especificar"}\n\n` +
+      `Tu comprobante fue rechazado. Puedes enviar uno nuevo.`,
   );
 }
 
