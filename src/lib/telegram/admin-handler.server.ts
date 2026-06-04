@@ -972,6 +972,36 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminPromptAnuncio(chat_id);
     return;
   }
+  if (data === "akp:pm") { if (chat_id) await pmMenu(chat_id); return; }
+  if (data === "pm:add") { if (chat_id) await pmPromptAdd(chat_id); return; }
+  if (data === "pm:editlist") { if (chat_id) await pmListAll(chat_id, "edit"); return; }
+  if (data === "pm:dellist") { if (chat_id) await pmListAll(chat_id, "del"); return; }
+  if (data === "pm:countries") { if (chat_id) await pmCountriesView(chat_id); return; }
+  if (data.startsWith("pm:edit:")) { if (chat_id) await pmEditMenu(chat_id, data.slice(8)); return; }
+  if (data.startsWith("pm:del:")) { if (chat_id) await pmConfirmDelete(chat_id, data.slice(7)); return; }
+  if (data.startsWith("pmf:")) {
+    const [, field, pmId] = data.split(":");
+    if (chat_id) await pmPromptField(chat_id, pmId, field);
+    return;
+  }
+  if (data.startsWith("pmtog:")) {
+    const pmId = data.slice(6);
+    const { data: m } = await sb.from("payment_methods").select("active").eq("id", pmId).maybeSingle();
+    if (m) {
+      await sb.from("payment_methods").update({ active: !m.active }).eq("id", pmId);
+      await sb.from("admin_logs").insert({ admin_telegram_id: cb.from.id, action: "pm_toggle", target_type: "payment_method", target_id: pmId, details: { active: !m.active } as never });
+    }
+    if (chat_id) await pmEditMenu(chat_id, pmId);
+    return;
+  }
+  if (data.startsWith("pmdel:")) {
+    const pmId = data.slice(6);
+    await sb.from("payment_methods").delete().eq("id", pmId);
+    await sb.from("admin_logs").insert({ admin_telegram_id: cb.from.id, action: "pm_delete", target_type: "payment_method", target_id: pmId });
+    if (chat_id) await sendMessage("admin", chat_id, `Método eliminado.`);
+    return;
+  }
+
   if (data.startsWith("akprod:")) {
     if (chat_id) await adminListDurations(chat_id, data.slice(7));
     return;
