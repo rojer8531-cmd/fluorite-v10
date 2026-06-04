@@ -1051,14 +1051,12 @@ async function handleCallback(cb: TgCallback) {
       .select("*, bot_users(id, telegram_id, chat_id, balance, total_recharged)")
       .eq("id", target)
       .single();
-    if (!order || order.status !== "pending_approval") return;
+    if (!order || order.status !== "pending_approval") {
+      await answerCallbackQuery("admin", cb.id, "Ya procesada.", true);
+      return;
+    }
     if (order.order_type === "recharge" && Number(order.total_usd) <= 0) {
-      await answerCallbackQuery(
-        "admin",
-        cb.id,
-        "Respondé al comprobante con el monto en USD a acreditar.",
-        true,
-      );
+      await answerCallbackQuery("admin", cb.id, "Monto inválido en la orden.", true);
       return;
     }
     const u = (order as { bot_users: { id: string; telegram_id: number; chat_id: number; balance: number; total_recharged: number } }).bot_users;
@@ -1085,11 +1083,13 @@ async function handleCallback(cb: TgCallback) {
       }),
     ]);
 
+    const pending = tpId(order.created_at);
     await notifyUserApproved({
       telegram_id: u.telegram_id,
       chat_id: u.chat_id,
       amount_usd: amount,
       new_balance: newBalance,
+      pending,
     });
 
     if (cb.message) {
@@ -1097,7 +1097,7 @@ async function handleCallback(cb: TgCallback) {
         "admin",
         cb.message.chat.id,
         cb.message.message_id,
-        (cb.message.caption ?? "") + `\n\n<b>APROBADO</b>  ·  $${amount.toFixed(2)} acreditado`,
+        (cb.message.caption ?? "") + `\n\nAPROBADO  ·  $${amount.toFixed(2)}`,
         {},
       );
     }
@@ -1105,47 +1105,34 @@ async function handleCallback(cb: TgCallback) {
   }
 
   if (action === "reject") {
-    const { data: order } = await sb
-      .from("orders")
-      .select("*, bot_users(telegram_id, chat_id)")
-      .eq("id", target)
-      .single();
-    if (!order) return;
-    await Promise.all([
-      sb.from("orders").update({ status: "rejected" }).eq("id", target),
-      sb.from("receipts").update({ status: "rejected" }).eq("order_id", target),
-      sb.from("admin_logs").insert({
-        admin_telegram_id: cb.from.id,
-        action: "reject_order",
-        target_type: "order",
-        target_id: target,
-      }),
-    ]);
-    const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
-    await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id });
-    if (cb.message) {
-      await editMessageText(
-        "admin",
-        cb.message.chat.id,
-        cb.message.message_id,
-        (cb.message.caption ?? "") + `\n\n<b>RECHAZADO</b>`,
-        {},
-      );
+    // Pedir motivo del rechazo
+    if (!chat_id) return;
+    const sent = await sendMessage(
+      "admin",
+      chat_id,
+      `<b>REJECT:${target}</b>\n\nRespondé a este mensaje con el motivo del rechazo.`,
+      { reply_markup: { force_reply: true, selective: true } },
+    );
+    if (sent.ok && sent.result) {
+      await sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", target);
     }
     return;
   }
 
   if (action === "block") {
     const tgId = parseInt(target, 10);
-    await sb.from("blocked_users").upsert({ telegram_id: tgId, reason: "admin_block" });
+    await blockUserPermanent(tgId, "admin_block");
     await sb.from("admin_logs").insert({
       admin_telegram_id: cb.from.id,
       action: "block_user",
       target_type: "telegram_id",
       target_id: target,
     });
+    await answerCallbackQuery("admin", cb.id, "Usuario bloqueado.", true);
     return;
   }
+
+
 
   if (action === "sendkey") {
     if (!chat_id) return;
