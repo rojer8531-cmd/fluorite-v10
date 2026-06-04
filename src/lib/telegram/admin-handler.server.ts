@@ -8,7 +8,7 @@ import {
   downloadFile,
   sendPhotoMultipart,
 } from "./api.server";
-import { sb, checkRateLimit } from "./db.server";
+import { sb, checkRateLimit, blockUserPermanent } from "./db.server";
 import {
   getHideOutOfStockSetting,
   getStockByPriceId,
@@ -61,6 +61,9 @@ function isAdmin(telegram_id: number) {
 
 function shortId(id: string) {
   return id.slice(0, 8);
+}
+function tpId(createdAt: string) {
+  return `TP${new Date(createdAt).getTime()}`;
 }
 
 // ===== Barra inferior persistente del admin =====
@@ -115,11 +118,152 @@ async function showAdminPanel(chat_id: number) {
           { text: "Pendientes", callback_data: "akp:pend" },
           { text: "Usuarios", callback_data: "akp:users" },
         ],
+        [{ text: "Gestión de Métodos de Pago", callback_data: "akp:pm" }],
         [{ text: "Anuncio", callback_data: "akp:anuncio" }],
       ],
     },
   });
 }
+
+// ===== Gestión de métodos de pago =====
+async function pmMenu(chat_id: number) {
+  await sendMessage("admin", chat_id, `<b>Gestión de Métodos de Pago</b>`, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "Agregar Método", callback_data: "pm:add" }],
+        [{ text: "Editar Método", callback_data: "pm:editlist" }],
+        [{ text: "Eliminar Método", callback_data: "pm:dellist" }],
+        [{ text: "Países Disponibles", callback_data: "pm:countries" }],
+      ],
+    },
+  });
+}
+
+async function pmListAll(chat_id: number, mode: "edit" | "del") {
+  const { data: methods } = await sb
+    .from("payment_methods")
+    .select("id, country_code, country_name, method_name, active")
+    .order("country_name");
+  if (!methods || methods.length === 0) {
+    await sendMessage("admin", chat_id, `No hay métodos cargados.`);
+    return;
+  }
+  const kb = methods.map((m) => [
+    {
+      text: `${m.country_name} · ${m.method_name}${m.active ? "" : " (off)"}`,
+      callback_data: `pm:${mode === "edit" ? "edit" : "del"}:${m.id}`,
+    },
+  ]);
+  await sendMessage(
+    "admin",
+    chat_id,
+    `<b>${mode === "edit" ? "Editar" : "Eliminar"} Método</b>\n\nElegí uno:`,
+    { reply_markup: { inline_keyboard: kb } },
+  );
+}
+
+async function pmCountriesView(chat_id: number) {
+  const { data: methods } = await sb
+    .from("payment_methods")
+    .select("country_code, country_name, active");
+  const map = new Map<string, { name: string; on: number; off: number }>();
+  for (const m of methods ?? []) {
+    const cur = map.get(m.country_code) ?? { name: m.country_name, on: 0, off: 0 };
+    if (m.active) cur.on++;
+    else cur.off++;
+    map.set(m.country_code, cur);
+  }
+  const lines = [...map.entries()]
+    .sort((a, b) => a[1].name.localeCompare(b[1].name))
+    .map(([code, v]) => `${v.name} (${code})  ·  activos ${v.on}  ·  inactivos ${v.off}`)
+    .join("\n");
+  await sendMessage("admin", chat_id, `<b>Países disponibles</b>\n\n${lines || "Sin datos."}`);
+}
+
+async function pmEditMenu(chat_id: number, pm_id: string) {
+  const { data: m } = await sb.from("payment_methods").select("*").eq("id", pm_id).maybeSingle();
+  if (!m) {
+    await sendMessage("admin", chat_id, `Método no encontrado.`);
+    return;
+  }
+  const text =
+    `<b>${m.country_name} · ${m.method_name}</b>\n` +
+    `Titular  <code>${m.holder_name}</code>\n` +
+    `Cuenta   <code>${m.account_info}</code>\n` +
+    `Nota     ${m.extra_info ?? "—"}\n` +
+    `Moneda   ${m.currency}\n` +
+    `Rate USD ${Number(m.usd_rate)}\n` +
+    `Estado   ${m.active ? "Activo" : "Inactivo"}\n`;
+  await sendMessage("admin", chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "Método", callback_data: `pmf:method_name:${pm_id}` },
+          { text: "Titular", callback_data: `pmf:holder_name:${pm_id}` },
+        ],
+        [
+          { text: "Cuenta", callback_data: `pmf:account_info:${pm_id}` },
+          { text: "Nota", callback_data: `pmf:extra_info:${pm_id}` },
+        ],
+        [
+          { text: "País (nombre)", callback_data: `pmf:country_name:${pm_id}` },
+          { text: "País (código)", callback_data: `pmf:country_code:${pm_id}` },
+        ],
+        [
+          { text: "Moneda", callback_data: `pmf:currency:${pm_id}` },
+          { text: "Rate USD", callback_data: `pmf:usd_rate:${pm_id}` },
+        ],
+        [
+          { text: m.active ? "Desactivar" : "Activar", callback_data: `pmtog:${pm_id}` },
+        ],
+        [{ text: "Volver", callback_data: "pm:editlist" }],
+      ],
+    },
+  });
+}
+
+async function pmPromptField(chat_id: number, pm_id: string, field: string) {
+  await sendMessage(
+    "admin",
+    chat_id,
+    `<b>PMEDIT:${pm_id}:${field}</b>\n\nRespondé a este mensaje con el nuevo valor para <b>${field}</b>.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function pmPromptAdd(chat_id: number) {
+  await sendMessage(
+    "admin",
+    chat_id,
+    `<b>PMADD</b>\n\nRespondé a este mensaje con los datos del nuevo método, una línea por campo en este orden:\n\n` +
+      `<code>country_code\ncountry_name\nmethod_name\nholder_name\naccount_info\nextra_info (opcional)\ncurrency (default USD)\nusd_rate (default 1)</code>`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function pmConfirmDelete(chat_id: number, pm_id: string) {
+  const { data: m } = await sb.from("payment_methods").select("country_name, method_name").eq("id", pm_id).maybeSingle();
+  if (!m) {
+    await sendMessage("admin", chat_id, `Método no encontrado.`);
+    return;
+  }
+  await sendMessage(
+    "admin",
+    chat_id,
+    `¿Eliminar <b>${m.country_name} · ${m.method_name}</b>?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "Confirmar eliminación", callback_data: `pmdel:${pm_id}` },
+            { text: "Cancelar", callback_data: "pm:dellist" },
+          ],
+        ],
+      },
+    },
+  );
+}
+
 
 async function adminListProducts(chat_id: number) {
   const { data: products } = await sb
@@ -529,6 +673,88 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Rechazo con motivo =====
+    const rejectMatch = replySource.match(/REJECT:([a-f0-9-]{36})/);
+    if (rejectMatch) {
+      const orderId = rejectMatch[1];
+      const note = text || "Sin motivo";
+      const { data: order } = await sb
+        .from("orders")
+        .select("*, bot_users(telegram_id, chat_id)")
+        .eq("id", orderId)
+        .single();
+      if (!order) {
+        await sendMessage("admin", msg.chat.id, `Orden no encontrada.`);
+        return;
+      }
+      await Promise.all([
+        sb.from("orders").update({ status: "rejected", admin_note: note }).eq("id", orderId),
+        sb.from("receipts").update({ status: "rejected" }).eq("order_id", orderId),
+        sb.from("admin_logs").insert({
+          admin_telegram_id: msg.from.id,
+          action: "reject_order",
+          target_type: "order",
+          target_id: orderId,
+          details: { note } as never,
+        }),
+      ]);
+      const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
+      await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id, note, pending: tpId(order.created_at) });
+      await sendMessage("admin", msg.chat.id, `Recarga rechazada. Motivo: ${escapeHtml(note)}`);
+      return;
+    }
+
+    // ===== Editar método de pago =====
+    const pmEditMatch = replySource.match(/PMEDIT:([a-f0-9-]{36}):(\w+)/);
+    if (pmEditMatch) {
+      const [, pmId, field] = pmEditMatch;
+      const allowed = ["country_code", "country_name", "method_name", "holder_name", "account_info", "extra_info", "currency", "usd_rate"];
+      if (!allowed.includes(field)) {
+        await sendMessage("admin", msg.chat.id, `Campo no permitido.`);
+        return;
+      }
+      let value: string | number = text;
+      if (field === "usd_rate") {
+        const n = Number(text.replace(",", "."));
+        if (!Number.isFinite(n) || n <= 0) { await sendMessage("admin", msg.chat.id, `Rate inválido.`); return; }
+        value = n;
+      }
+      const patch: Record<string, string | number | null> = { [field]: field === "extra_info" && !text ? null : value };
+      const { error } = await sb.from("payment_methods").update(patch as never).eq("id", pmId);
+      if (error) { await sendMessage("admin", msg.chat.id, `Error: ${error.message}`); return; }
+      await sb.from("admin_logs").insert({ admin_telegram_id: msg.from.id, action: "pm_edit", target_type: "payment_method", target_id: pmId, details: { field, value } as never });
+      await sendMessage("admin", msg.chat.id, `Campo <b>${field}</b> actualizado.`);
+      await pmEditMenu(msg.chat.id, pmId);
+      return;
+    }
+
+    // ===== Agregar método de pago =====
+    if (replySource.includes("PMADD")) {
+      const lines = text.split(/\r?\n/).map((l) => l.trim());
+      if (lines.length < 5) {
+        await sendMessage("admin", msg.chat.id, `Faltan campos. Mínimo 5 líneas.`);
+        return;
+      }
+      const [country_code, country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate] = lines;
+      const rate = Number((usd_rate ?? "1").replace(",", "."));
+      const { data, error } = await sb.from("payment_methods").insert({
+        country_code,
+        country_name,
+        method_name,
+        holder_name,
+        account_info,
+        extra_info: extra_info || null,
+        currency: currency || "USD",
+        usd_rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+        active: true,
+      }).select().single();
+      if (error || !data) { await sendMessage("admin", msg.chat.id, `Error: ${error?.message ?? "desconocido"}`); return; }
+      await sb.from("admin_logs").insert({ admin_telegram_id: msg.from.id, action: "pm_add", target_type: "payment_method", target_id: data.id });
+      await sendMessage("admin", msg.chat.id, `Método agregado para ${country_name}.`);
+      return;
+    }
+
+
     const msgUserMatch = replySource.match(/MSGUSER:(\d+)/);
     if (msgUserMatch) {
       const tgId = parseInt(msgUserMatch[1], 10);
@@ -828,6 +1054,36 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminPromptAnuncio(chat_id);
     return;
   }
+  if (data === "akp:pm") { if (chat_id) await pmMenu(chat_id); return; }
+  if (data === "pm:add") { if (chat_id) await pmPromptAdd(chat_id); return; }
+  if (data === "pm:editlist") { if (chat_id) await pmListAll(chat_id, "edit"); return; }
+  if (data === "pm:dellist") { if (chat_id) await pmListAll(chat_id, "del"); return; }
+  if (data === "pm:countries") { if (chat_id) await pmCountriesView(chat_id); return; }
+  if (data.startsWith("pm:edit:")) { if (chat_id) await pmEditMenu(chat_id, data.slice(8)); return; }
+  if (data.startsWith("pm:del:")) { if (chat_id) await pmConfirmDelete(chat_id, data.slice(7)); return; }
+  if (data.startsWith("pmf:")) {
+    const [, field, pmId] = data.split(":");
+    if (chat_id) await pmPromptField(chat_id, pmId, field);
+    return;
+  }
+  if (data.startsWith("pmtog:")) {
+    const pmId = data.slice(6);
+    const { data: m } = await sb.from("payment_methods").select("active").eq("id", pmId).maybeSingle();
+    if (m) {
+      await sb.from("payment_methods").update({ active: !m.active }).eq("id", pmId);
+      await sb.from("admin_logs").insert({ admin_telegram_id: cb.from.id, action: "pm_toggle", target_type: "payment_method", target_id: pmId, details: { active: !m.active } as never });
+    }
+    if (chat_id) await pmEditMenu(chat_id, pmId);
+    return;
+  }
+  if (data.startsWith("pmdel:")) {
+    const pmId = data.slice(6);
+    await sb.from("payment_methods").delete().eq("id", pmId);
+    await sb.from("admin_logs").insert({ admin_telegram_id: cb.from.id, action: "pm_delete", target_type: "payment_method", target_id: pmId });
+    if (chat_id) await sendMessage("admin", chat_id, `Método eliminado.`);
+    return;
+  }
+
   if (data.startsWith("akprod:")) {
     if (chat_id) await adminListDurations(chat_id, data.slice(7));
     return;
@@ -877,14 +1133,12 @@ async function handleCallback(cb: TgCallback) {
       .select("*, bot_users(id, telegram_id, chat_id, balance, total_recharged)")
       .eq("id", target)
       .single();
-    if (!order || order.status !== "pending_approval") return;
+    if (!order || order.status !== "pending_approval") {
+      await answerCallbackQuery("admin", cb.id, "Ya procesada.", true);
+      return;
+    }
     if (order.order_type === "recharge" && Number(order.total_usd) <= 0) {
-      await answerCallbackQuery(
-        "admin",
-        cb.id,
-        "Respondé al comprobante con el monto en USD a acreditar.",
-        true,
-      );
+      await answerCallbackQuery("admin", cb.id, "Monto inválido en la orden.", true);
       return;
     }
     const u = (order as { bot_users: { id: string; telegram_id: number; chat_id: number; balance: number; total_recharged: number } }).bot_users;
@@ -911,11 +1165,13 @@ async function handleCallback(cb: TgCallback) {
       }),
     ]);
 
+    const pending = tpId(order.created_at);
     await notifyUserApproved({
       telegram_id: u.telegram_id,
       chat_id: u.chat_id,
       amount_usd: amount,
       new_balance: newBalance,
+      pending,
     });
 
     if (cb.message) {
@@ -923,7 +1179,7 @@ async function handleCallback(cb: TgCallback) {
         "admin",
         cb.message.chat.id,
         cb.message.message_id,
-        (cb.message.caption ?? "") + `\n\n<b>APROBADO</b>  ·  $${amount.toFixed(2)} acreditado`,
+        (cb.message.caption ?? "") + `\n\nAPROBADO  ·  $${amount.toFixed(2)}`,
         {},
       );
     }
@@ -931,47 +1187,34 @@ async function handleCallback(cb: TgCallback) {
   }
 
   if (action === "reject") {
-    const { data: order } = await sb
-      .from("orders")
-      .select("*, bot_users(telegram_id, chat_id)")
-      .eq("id", target)
-      .single();
-    if (!order) return;
-    await Promise.all([
-      sb.from("orders").update({ status: "rejected" }).eq("id", target),
-      sb.from("receipts").update({ status: "rejected" }).eq("order_id", target),
-      sb.from("admin_logs").insert({
-        admin_telegram_id: cb.from.id,
-        action: "reject_order",
-        target_type: "order",
-        target_id: target,
-      }),
-    ]);
-    const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
-    await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id });
-    if (cb.message) {
-      await editMessageText(
-        "admin",
-        cb.message.chat.id,
-        cb.message.message_id,
-        (cb.message.caption ?? "") + `\n\n<b>RECHAZADO</b>`,
-        {},
-      );
+    // Pedir motivo del rechazo
+    if (!chat_id) return;
+    const sent = await sendMessage(
+      "admin",
+      chat_id,
+      `<b>REJECT:${target}</b>\n\nRespondé a este mensaje con el motivo del rechazo.`,
+      { reply_markup: { force_reply: true, selective: true } },
+    );
+    if (sent.ok && sent.result) {
+      await sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", target);
     }
     return;
   }
 
   if (action === "block") {
     const tgId = parseInt(target, 10);
-    await sb.from("blocked_users").upsert({ telegram_id: tgId, reason: "admin_block" });
+    await blockUserPermanent(tgId, "admin_block");
     await sb.from("admin_logs").insert({
       admin_telegram_id: cb.from.id,
       action: "block_user",
       target_type: "telegram_id",
       target_id: target,
     });
+    await answerCallbackQuery("admin", cb.id, "Usuario bloqueado.", true);
     return;
   }
+
+
 
   if (action === "sendkey") {
     if (!chat_id) return;
