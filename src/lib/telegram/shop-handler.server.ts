@@ -1148,10 +1148,11 @@ async function handleCallback(cb: TgCallback) {
   const telegram_id = cb.from.id;
   const chat_id = cb.message?.chat.id ?? telegram_id;
   if (await isBlocked(telegram_id)) {
-    await answerCallbackQuery("shop", cb.id);
+    await answerCallbackQuery("shop", cb.id, "Bloqueado", true);
     return;
   }
   if (!(await checkRateLimit(telegram_id, "cb", 30, 10))) {
+    await autoBlock(telegram_id, "spam_cb");
     await answerCallbackQuery("shop", cb.id);
     return;
   }
