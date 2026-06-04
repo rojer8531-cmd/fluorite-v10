@@ -118,11 +118,152 @@ async function showAdminPanel(chat_id: number) {
           { text: "Pendientes", callback_data: "akp:pend" },
           { text: "Usuarios", callback_data: "akp:users" },
         ],
+        [{ text: "Gestión de Métodos de Pago", callback_data: "akp:pm" }],
         [{ text: "Anuncio", callback_data: "akp:anuncio" }],
       ],
     },
   });
 }
+
+// ===== Gestión de métodos de pago =====
+async function pmMenu(chat_id: number) {
+  await sendMessage("admin", chat_id, `<b>Gestión de Métodos de Pago</b>`, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "Agregar Método", callback_data: "pm:add" }],
+        [{ text: "Editar Método", callback_data: "pm:editlist" }],
+        [{ text: "Eliminar Método", callback_data: "pm:dellist" }],
+        [{ text: "Países Disponibles", callback_data: "pm:countries" }],
+      ],
+    },
+  });
+}
+
+async function pmListAll(chat_id: number, mode: "edit" | "del") {
+  const { data: methods } = await sb
+    .from("payment_methods")
+    .select("id, country_code, country_name, method_name, active")
+    .order("country_name");
+  if (!methods || methods.length === 0) {
+    await sendMessage("admin", chat_id, `No hay métodos cargados.`);
+    return;
+  }
+  const kb = methods.map((m) => [
+    {
+      text: `${m.country_name} · ${m.method_name}${m.active ? "" : " (off)"}`,
+      callback_data: `pm:${mode === "edit" ? "edit" : "del"}:${m.id}`,
+    },
+  ]);
+  await sendMessage(
+    "admin",
+    chat_id,
+    `<b>${mode === "edit" ? "Editar" : "Eliminar"} Método</b>\n\nElegí uno:`,
+    { reply_markup: { inline_keyboard: kb } },
+  );
+}
+
+async function pmCountriesView(chat_id: number) {
+  const { data: methods } = await sb
+    .from("payment_methods")
+    .select("country_code, country_name, active");
+  const map = new Map<string, { name: string; on: number; off: number }>();
+  for (const m of methods ?? []) {
+    const cur = map.get(m.country_code) ?? { name: m.country_name, on: 0, off: 0 };
+    if (m.active) cur.on++;
+    else cur.off++;
+    map.set(m.country_code, cur);
+  }
+  const lines = [...map.entries()]
+    .sort((a, b) => a[1].name.localeCompare(b[1].name))
+    .map(([code, v]) => `${v.name} (${code})  ·  activos ${v.on}  ·  inactivos ${v.off}`)
+    .join("\n");
+  await sendMessage("admin", chat_id, `<b>Países disponibles</b>\n\n${lines || "Sin datos."}`);
+}
+
+async function pmEditMenu(chat_id: number, pm_id: string) {
+  const { data: m } = await sb.from("payment_methods").select("*").eq("id", pm_id).maybeSingle();
+  if (!m) {
+    await sendMessage("admin", chat_id, `Método no encontrado.`);
+    return;
+  }
+  const text =
+    `<b>${m.country_name} · ${m.method_name}</b>\n` +
+    `Titular  <code>${m.holder_name}</code>\n` +
+    `Cuenta   <code>${m.account_info}</code>\n` +
+    `Nota     ${m.extra_info ?? "—"}\n` +
+    `Moneda   ${m.currency}\n` +
+    `Rate USD ${Number(m.usd_rate)}\n` +
+    `Estado   ${m.active ? "Activo" : "Inactivo"}\n`;
+  await sendMessage("admin", chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "Método", callback_data: `pmf:method_name:${pm_id}` },
+          { text: "Titular", callback_data: `pmf:holder_name:${pm_id}` },
+        ],
+        [
+          { text: "Cuenta", callback_data: `pmf:account_info:${pm_id}` },
+          { text: "Nota", callback_data: `pmf:extra_info:${pm_id}` },
+        ],
+        [
+          { text: "País (nombre)", callback_data: `pmf:country_name:${pm_id}` },
+          { text: "País (código)", callback_data: `pmf:country_code:${pm_id}` },
+        ],
+        [
+          { text: "Moneda", callback_data: `pmf:currency:${pm_id}` },
+          { text: "Rate USD", callback_data: `pmf:usd_rate:${pm_id}` },
+        ],
+        [
+          { text: m.active ? "Desactivar" : "Activar", callback_data: `pmtog:${pm_id}` },
+        ],
+        [{ text: "Volver", callback_data: "pm:editlist" }],
+      ],
+    },
+  });
+}
+
+async function pmPromptField(chat_id: number, pm_id: string, field: string) {
+  await sendMessage(
+    "admin",
+    chat_id,
+    `<b>PMEDIT:${pm_id}:${field}</b>\n\nRespondé a este mensaje con el nuevo valor para <b>${field}</b>.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function pmPromptAdd(chat_id: number) {
+  await sendMessage(
+    "admin",
+    chat_id,
+    `<b>PMADD</b>\n\nRespondé a este mensaje con los datos del nuevo método, una línea por campo en este orden:\n\n` +
+      `<code>country_code\ncountry_name\nmethod_name\nholder_name\naccount_info\nextra_info (opcional)\ncurrency (default USD)\nusd_rate (default 1)</code>`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function pmConfirmDelete(chat_id: number, pm_id: string) {
+  const { data: m } = await sb.from("payment_methods").select("country_name, method_name").eq("id", pm_id).maybeSingle();
+  if (!m) {
+    await sendMessage("admin", chat_id, `Método no encontrado.`);
+    return;
+  }
+  await sendMessage(
+    "admin",
+    chat_id,
+    `¿Eliminar <b>${m.country_name} · ${m.method_name}</b>?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "Confirmar eliminación", callback_data: `pmdel:${pm_id}` },
+            { text: "Cancelar", callback_data: "pm:dellist" },
+          ],
+        ],
+      },
+    },
+  );
+}
+
 
 async function adminListProducts(chat_id: number) {
   const { data: products } = await sb
