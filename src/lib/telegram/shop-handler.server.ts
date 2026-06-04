@@ -873,7 +873,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
       "shop",
       telegram_id,
       chat_id,
-      `<b>Comprobante en revisión</b>\n\nSi lo subís varias veces, tu recarga será rechazada sin lugar a reclamo.\n\nSé paciente y esperá.`,
+      `<b>Comprobante en revisión</b>\n\nPending: <code>${pid}</code>\nMonto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n\nTe avisaremos al aprobar.`,
       [[{ text: "Menú", callback_data: "menu:main" }]],
     );
   } else {
