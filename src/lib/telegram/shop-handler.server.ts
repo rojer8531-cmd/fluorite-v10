@@ -797,6 +797,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   const o = order as {
     id: string;
+    created_at: string;
     total_usd: number;
     total_local: number | null;
     currency: string | null;
@@ -805,16 +806,18 @@ async function handleReceiptPhoto(msg: TgMessage) {
     product_prices: { duration_label: string } | null;
     payment_methods: { country_name: string; method_name: string } | null;
   };
+  const pid = tpId(o.created_at);
 
   let caption: string;
   if (isRecharge) {
     caption =
-      `<b>Nueva recarga</b>\n\n` +
-      `Usuario  ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
-      `ID       <code>${telegram_id}</code>\n` +
-      `Método   ${o.payment_methods?.country_name ?? "—"} ${o.payment_methods?.method_name ?? ""}\n` +
-      `Orden    <code>${o.id}</code>\n\n` +
-      `Respondé con el monto en USD a acreditar (ej: 10).`;
+      `<b>Comprobante De Recarga</b>\n\n` +
+      `Pending: <code>${pid}</code>\n` +
+      `Usuario: @${user.username ?? "—"}\n` +
+      `ID: <code>${telegram_id}</code>\n` +
+      `Monto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
+      `País: ${o.payment_methods?.country_name ?? "—"}\n` +
+      `Total: <b>${Number(o.total_usd).toFixed(2)} USD</b>`;
   } else {
     caption =
       `<b>Nuevo comprobante</b>\n\n` +
