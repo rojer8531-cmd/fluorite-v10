@@ -720,7 +720,7 @@ async function handleMessage(msg: TgMessage) {
         value = n;
       }
       const patch: Record<string, string | number | null> = { [field]: field === "extra_info" && !text ? null : value };
-      const { error } = await sb.from("payment_methods").update(patch).eq("id", pmId);
+      const { error } = await sb.from("payment_methods").update(patch as never).eq("id", pmId);
       if (error) { await sendMessage("admin", msg.chat.id, `Error: ${error.message}`); return; }
       await sb.from("admin_logs").insert({ admin_telegram_id: msg.from.id, action: "pm_edit", target_type: "payment_method", target_id: pmId, details: { field, value } as never });
       await sendMessage("admin", msg.chat.id, `Campo <b>${field}</b> actualizado.`);
