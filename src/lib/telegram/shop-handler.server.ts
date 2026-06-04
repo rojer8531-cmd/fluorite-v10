@@ -399,75 +399,98 @@ async function showPaymentInstructions(
   ]);
 }
 
-// ===== Recarga =====
+// ===== Recarga: país → monto → método → instrucciones =====
 async function startRecharge(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "recharge_country", {});
-  const { data: countries } = await sb
+  const { data: methods } = await sb
     .from("payment_methods")
-    .select("id, country_name, method_name")
+    .select("country_code, country_name")
     .eq("active", true)
-    .order("sort_order");
-  if (!countries || countries.length === 0) {
+    .order("country_name");
+  const seen = new Set<string>();
+  const countries: Array<{ country_code: string; country_name: string }> = [];
+  for (const m of methods ?? []) {
+    if (!seen.has(m.country_code)) {
+      seen.add(m.country_code);
+      countries.push(m);
+    }
+  }
+  if (countries.length === 0) {
     await renderScreen("shop", telegram_id, chat_id, `No hay métodos de pago disponibles.`, [BACK_BUTTON]);
     return;
   }
-  const kb: Array<Array<{ text: string; callback_data: string }>> = countries.map((c) => [
-    { text: `${c.country_name}  ·  ${c.method_name}`, callback_data: `rc:${c.id}` },
-  ]);
+  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let i = 0; i < countries.length; i += 2) {
+    const row = [{ text: countries[i].country_name, callback_data: `rcc:${countries[i].country_code}` }];
+    if (countries[i + 1]) row.push({ text: countries[i + 1].country_name, callback_data: `rcc:${countries[i + 1].country_code}` });
+    kb.push(row);
+  }
   kb.push(BACK_BUTTON);
   await renderScreen(
     "shop",
     telegram_id,
     chat_id,
-    `<b>Recargar saldo</b>\n\nElegí tu país y método de pago:`,
+    `<b>Recargar Saldo</b>\n\nElegí tu país:`,
     kb,
   );
 }
 
-async function showRechargeInstructions(
-  telegram_id: number,
-  chat_id: number,
-  payment_method_id: string,
-) {
-  const { data: pm } = await sb
+async function askRechargeAmount(telegram_id: number, chat_id: number, country_code: string) {
+  const { data: pmRow } = await sb
     .from("payment_methods")
-    .select("*")
-    .eq("id", payment_method_id)
-    .single();
-  if (!pm) return;
-  const { data: user } = await sb
-    .from("bot_users")
-    .select("id")
-    .eq("telegram_id", telegram_id)
-    .single();
-  if (!user) return;
-
-  const { count: activeOrders } = await sb
-    .from("orders")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .in("status", ["pending_receipt", "pending_approval"]);
-  if ((activeOrders ?? 0) >= 3) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `Ya tenés <b>3 solicitudes activas</b>. Esperá a que se aprueben antes de crear otra.`,
-      [BACK_BUTTON],
-    );
+    .select("country_name")
+    .eq("country_code", country_code)
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+  if (!pmRow) {
+    await renderScreen("shop", telegram_id, chat_id, `País no disponible.`, [BACK_BUTTON]);
     return;
   }
+  await setState(telegram_id, "recharge_amount", { country_code });
+  await renderScreen(
+    "shop",
+    telegram_id,
+    chat_id,
+    `<b>Recargar Saldo Desde ${pmRow.country_name}</b>\n\n` +
+      `Recarga Mínima: <b>${MIN_RECHARGE_USD.toFixed(2)} USD</b>\n\n` +
+      `¿Cuánto deseas recargar?\n\n` +
+      `Ejemplo:\n<code>10</code>\n\n` +
+      `Escribí el monto en USD.`,
+    [[{ text: "Volver", callback_data: "menu:recharge" }]],
+  );
+}
 
+async function showRechargeMethods(
+  telegram_id: number,
+  chat_id: number,
+  country_code: string,
+  amount: number,
+) {
+  const { data: methods } = await sb
+    .from("payment_methods")
+    .select("*")
+    .eq("country_code", country_code)
+    .eq("active", true)
+    .order("sort_order");
+  if (!methods || methods.length === 0) {
+    await renderScreen("shop", telegram_id, chat_id, `No hay métodos disponibles para este país.`, [BACK_BUTTON]);
+    return;
+  }
+  const { data: user } = await sb.from("bot_users").select("id").eq("telegram_id", telegram_id).single();
+  if (!user) return;
+
+  // Crear orden de recarga única
   const { data: order, error } = await sb
     .from("orders")
     .insert({
       user_id: user.id,
       telegram_id,
       order_type: "recharge",
-      payment_method_id: pm.id,
+      payment_method_id: methods[0].id,
       keys_qty: 0,
-      total_usd: 0,
-      currency: pm.currency,
+      total_usd: amount,
+      currency: methods[0].currency,
       status: "pending_receipt",
     })
     .select()
@@ -477,29 +500,49 @@ async function showRechargeInstructions(
     return;
   }
 
-  await setState(telegram_id, "awaiting_recharge_receipt", { order_id: order.id });
+  await setState(telegram_id, "recharge_ready", { order_id: order.id, country_code, amount });
 
-  const rate = Number(pm.usd_rate);
-  const conv =
-    rate === 1
-      ? `Pago en <b>${pm.currency}</b> (mismo valor que USD).`
-      : `Tipo de cambio referencial  <b>1 USD ≈ ${rate.toFixed(2)} ${pm.currency}</b>\n` +
-        `Ejemplos  $5 ≈ ${(5 * rate).toFixed(2)}  ·  $20 ≈ ${(20 * rate).toFixed(2)}  ·  $30 ≈ ${(30 * rate).toFixed(2)} ${pm.currency}`;
+  const pid = tpId(order.created_at);
+  const lines: string[] = [
+    `<b>Métodos De Pago - ${methods[0].country_name}</b>`,
+    ``,
+    `ID De Recarga: <code>${pid}</code>`,
+    `Monto: <b>${amount.toFixed(2)} USD</b>`,
+    `Total A Pagar: <b>${amount.toFixed(2)} USD</b>`,
+    ``,
+  ];
+  for (const m of methods) {
+    const local = amount * Number(m.usd_rate);
+    lines.push(`<b>Método De Pago</b>`);
+    lines.push(`Nombre: <b>${m.method_name}</b>`);
+    lines.push(`Titular: <code>${m.holder_name}</code>`);
+    lines.push(`Cuenta: <code>${m.account_info}</code>`);
+    if (m.extra_info) lines.push(`Nota: ${m.extra_info}`);
+    if (Number(m.usd_rate) !== 1) {
+      lines.push(`Total: <b>${local.toFixed(2)} ${m.currency}</b>`);
+    } else {
+      lines.push(`Total: <b>${amount.toFixed(2)} ${m.currency}</b>`);
+    }
+    lines.push(``);
+  }
 
-  const text =
-    `<b>Recarga de saldo</b>\n\n` +
-    `<b>${pm.country_name}  ·  ${pm.method_name}</b>\n` +
-    `Titular  <code>${pm.holder_name}</code>\n` +
-    `Cuenta   ${pm.account_info}\n` +
-    `${pm.extra_info ? `Nota     ${pm.extra_info}\n` : ""}` +
-    `\n${conv}\n` +
-    `\n1. Realizá el pago por el monto exacto en USD que quieras recargar.\n` +
-    `2. Enviá la foto del comprobante a este chat.\n\n` +
-    `<i>Solo fotos. Imágenes duplicadas serán rechazadas.</i>`;
-  await renderScreen("shop", telegram_id, chat_id, text, [
-    [{ text: "Cancelar", callback_data: "menu:main" }],
+  await renderScreen("shop", telegram_id, chat_id, lines.join("\n"), [
+    [{ text: "Ya Pagué", callback_data: `rcpay:${order.id}` }],
+    [{ text: "Menú Principal", callback_data: "menu:main" }],
   ]);
 }
+
+async function startRechargeReceipt(telegram_id: number, chat_id: number, order_id: string) {
+  await setState(telegram_id, "awaiting_recharge_receipt", { order_id });
+  await renderScreen(
+    "shop",
+    telegram_id,
+    chat_id,
+    `<b>Envía tu comprobante de pago</b>\n\nAceptamos imágenes, capturas o documentos.`,
+    [[{ text: "Cancelar", callback_data: "menu:main" }]],
+  );
+}
+
 
 // Enrutado del menú inferior fijo. Devuelve true si manejó el texto.
 async function routeBottomMenu(
