@@ -1006,8 +1006,32 @@ async function handleMessage(msg: TgMessage) {
     return;
   }
 
+  if (st?.state === "recharge_amount") {
+    const n = Number(text.replace(",", "."));
+    if (!Number.isFinite(n) || n <= 0) {
+      await renderScreen("shop", telegram_id, chat_id, `Monto inválido. Escribí solo números, ej: <code>10</code>.`, [
+        [{ text: "Volver", callback_data: "menu:recharge" }],
+      ]);
+      return;
+    }
+    if (n < MIN_RECHARGE_USD) {
+      await renderScreen(
+        "shop",
+        telegram_id,
+        chat_id,
+        `El monto mínimo es <b>${MIN_RECHARGE_USD.toFixed(2)} USD</b>. Probá de nuevo.`,
+        [[{ text: "Volver", callback_data: "menu:recharge" }]],
+      );
+      return;
+    }
+    const cc = (st.context?.country_code as string) ?? "";
+    await showRechargeMethods(telegram_id, chat_id, cc, Math.round(n * 100) / 100);
+    return;
+  }
+
   await showMainMenu(telegram_id, chat_id);
 }
+
 
 async function handleCallback(cb: TgCallback) {
   const telegram_id = cb.from.id;
