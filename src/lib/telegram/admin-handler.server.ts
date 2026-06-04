@@ -673,6 +673,88 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Rechazo con motivo =====
+    const rejectMatch = replySource.match(/REJECT:([a-f0-9-]{36})/);
+    if (rejectMatch) {
+      const orderId = rejectMatch[1];
+      const note = text || "Sin motivo";
+      const { data: order } = await sb
+        .from("orders")
+        .select("*, bot_users(telegram_id, chat_id)")
+        .eq("id", orderId)
+        .single();
+      if (!order) {
+        await sendMessage("admin", msg.chat.id, `Orden no encontrada.`);
+        return;
+      }
+      await Promise.all([
+        sb.from("orders").update({ status: "rejected", admin_note: note }).eq("id", orderId),
+        sb.from("receipts").update({ status: "rejected" }).eq("order_id", orderId),
+        sb.from("admin_logs").insert({
+          admin_telegram_id: msg.from.id,
+          action: "reject_order",
+          target_type: "order",
+          target_id: orderId,
+          details: { note } as never,
+        }),
+      ]);
+      const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
+      await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id, note, pending: tpId(order.created_at) });
+      await sendMessage("admin", msg.chat.id, `Recarga rechazada. Motivo: ${escapeHtml(note)}`);
+      return;
+    }
+
+    // ===== Editar método de pago =====
+    const pmEditMatch = replySource.match(/PMEDIT:([a-f0-9-]{36}):(\w+)/);
+    if (pmEditMatch) {
+      const [, pmId, field] = pmEditMatch;
+      const allowed = ["country_code", "country_name", "method_name", "holder_name", "account_info", "extra_info", "currency", "usd_rate"];
+      if (!allowed.includes(field)) {
+        await sendMessage("admin", msg.chat.id, `Campo no permitido.`);
+        return;
+      }
+      let value: string | number = text;
+      if (field === "usd_rate") {
+        const n = Number(text.replace(",", "."));
+        if (!Number.isFinite(n) || n <= 0) { await sendMessage("admin", msg.chat.id, `Rate inválido.`); return; }
+        value = n;
+      }
+      const patch: Record<string, string | number | null> = { [field]: field === "extra_info" && !text ? null : value };
+      const { error } = await sb.from("payment_methods").update(patch).eq("id", pmId);
+      if (error) { await sendMessage("admin", msg.chat.id, `Error: ${error.message}`); return; }
+      await sb.from("admin_logs").insert({ admin_telegram_id: msg.from.id, action: "pm_edit", target_type: "payment_method", target_id: pmId, details: { field, value } as never });
+      await sendMessage("admin", msg.chat.id, `Campo <b>${field}</b> actualizado.`);
+      await pmEditMenu(msg.chat.id, pmId);
+      return;
+    }
+
+    // ===== Agregar método de pago =====
+    if (replySource.includes("PMADD")) {
+      const lines = text.split(/\r?\n/).map((l) => l.trim());
+      if (lines.length < 5) {
+        await sendMessage("admin", msg.chat.id, `Faltan campos. Mínimo 5 líneas.`);
+        return;
+      }
+      const [country_code, country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate] = lines;
+      const rate = Number((usd_rate ?? "1").replace(",", "."));
+      const { data, error } = await sb.from("payment_methods").insert({
+        country_code,
+        country_name,
+        method_name,
+        holder_name,
+        account_info,
+        extra_info: extra_info || null,
+        currency: currency || "USD",
+        usd_rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+        active: true,
+      }).select().single();
+      if (error || !data) { await sendMessage("admin", msg.chat.id, `Error: ${error?.message ?? "desconocido"}`); return; }
+      await sb.from("admin_logs").insert({ admin_telegram_id: msg.from.id, action: "pm_add", target_type: "payment_method", target_id: data.id });
+      await sendMessage("admin", msg.chat.id, `Método agregado para ${country_name}.`);
+      return;
+    }
+
+
     const msgUserMatch = replySource.match(/MSGUSER:(\d+)/);
     if (msgUserMatch) {
       const tgId = parseInt(msgUserMatch[1], 10);
