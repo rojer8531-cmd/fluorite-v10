@@ -8,7 +8,7 @@ import {
   downloadFile,
   sendPhotoMultipart,
 } from "./api.server";
-import { sb, checkRateLimit } from "./db.server";
+import { sb, checkRateLimit, blockUserPermanent } from "./db.server";
 import {
   getHideOutOfStockSetting,
   getStockByPriceId,
