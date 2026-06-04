@@ -43,7 +43,7 @@ interface TgMessage {
   chat: { id: number };
   text?: string;
   photo?: Array<{ file_id: string; file_unique_id: string; width: number; height: number; file_size?: number }>;
-  document?: unknown;
+  document?: { file_id: string; file_unique_id: string; file_name?: string; mime_type?: string; file_size?: number };
 }
 interface TgCallback {
   id: string;
