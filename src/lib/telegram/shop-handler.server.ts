@@ -715,6 +715,16 @@ async function handleReceiptPhoto(msg: TgMessage) {
     return;
   }
 
+  // Límite diario de comprobantes: 10 por día
+  if (!(await checkRateLimit(telegram_id, "receipt_day", 10, 86400))) {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `Alcanzaste el límite de 10 comprobantes por día. Probá mañana o esperá una respuesta del admin.`,
+    );
+    return;
+  }
+
   // Anti duplicado 24h
   const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { data: dup } = await sb
@@ -727,7 +737,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     await sendMessage(
       "shop",
       chat_id,
-      `Este comprobante ya fue enviado antes. Bloqueado por 24h.`,
+      `Este comprobante ya fue enviado antes.`,
     );
     return;
   }
@@ -816,6 +826,35 @@ async function handleReceiptPhoto(msg: TgMessage) {
     Number(o.total_usd),
     o.total_local ? Number(o.total_local) : null,
   );
+
+  // IA: si la imagen no parece un pago, avisar al usuario y al admin sin procesar el comprobante
+  if (ocr?.is_payment === false) {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`,
+    );
+    const adminCid = getAdminChatId();
+    if (adminCid) {
+      await sendPhotoMultipart(
+        "admin",
+        adminCid,
+        bytes,
+        "no_es_pago.jpg",
+        `⛔ <b>IA</b>  ·  imagen no parece un pago\n\n` +
+          `Usuario   ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
+          `ID        <code>${telegram_id}</code>\n` +
+          `Pending   <code>${pid}</code>\n` +
+          `Destino   ${ocr.recipient ?? "—"}` +
+          ocrSummary,
+      );
+    }
+    // No procesamos como comprobante oficial: dejar la orden pendiente de comprobante
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt!.id);
+    return;
+  }
+
 
   let caption: string;
   if (isRecharge) {

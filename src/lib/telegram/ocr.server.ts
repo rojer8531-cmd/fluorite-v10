@@ -6,6 +6,8 @@ export interface OcrResult {
   amount: number | null;
   reference: string | null;
   date: string | null;
+  is_payment: boolean | null;
+  recipient: string | null;
 }
 
 function toNumber(v: unknown): number | null {
@@ -36,12 +38,12 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
           {
             role: "system",
             content:
-              "Extraés datos de comprobantes de pago. Respondé SOLO con JSON con campos: amount (número, sin símbolos), reference (string del número de referencia/operación), date (YYYY-MM-DD si es posible). Usá null si no encontrás algo.",
+              "Analizás imágenes para detectar comprobantes de pago/transferencias bancarias. Respondé SOLO con JSON con campos: is_payment (boolean, true si la imagen es claramente un comprobante de transferencia, depósito o pago electrónico), amount (número, sin símbolos), reference (string del número de referencia/operación), date (YYYY-MM-DD si es posible), recipient (string con el nombre o cuenta del destinatario del pago si se ve). Usá null si no encontrás algo. Si la imagen NO es un comprobante de pago (foto cualquiera, captura no relacionada, meme, etc) poné is_payment=false.",
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Extraé monto, referencia y fecha." },
+              { type: "text", text: "Analizá la imagen y extraé los datos." },
               { type: "image_url", image_url: { url: dataUrl } },
             ],
           },
@@ -56,7 +58,7 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
     const j = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const txt = j?.choices?.[0]?.message?.content;
     if (!txt) return null;
-    let parsed: { amount?: unknown; reference?: unknown; date?: unknown };
+    let parsed: { amount?: unknown; reference?: unknown; date?: unknown; is_payment?: unknown; recipient?: unknown };
     try {
       parsed = JSON.parse(txt);
     } catch {
@@ -66,6 +68,8 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
       amount: toNumber(parsed.amount),
       reference: parsed.reference ? String(parsed.reference).slice(0, 60) : null,
       date: parsed.date ? String(parsed.date).slice(0, 30) : null,
+      is_payment: typeof parsed.is_payment === "boolean" ? parsed.is_payment : null,
+      recipient: parsed.recipient ? String(parsed.recipient).slice(0, 80) : null,
     };
   } catch (e) {
     console.error("[ocr] err", e);
@@ -78,7 +82,8 @@ export function formatOcrSummary(ocr: OcrResult | null, expectedUsd: number, exp
   if (!ocr) return `\n\n<b>OCR</b>  ·  no se pudo leer`;
   const a = ocr.amount;
   let badge = "❓";
-  if (a !== null) {
+  if (ocr.is_payment === false) badge = "⛔";
+  else if (a !== null) {
     const tolUsd = 2;
     const tolLocal = expectedLocal ? Math.max(2, expectedLocal * 0.03) : 0;
     if (Math.abs(a - expectedUsd) <= tolUsd) badge = "✅";
@@ -87,8 +92,10 @@ export function formatOcrSummary(ocr: OcrResult | null, expectedUsd: number, exp
   }
   return (
     `\n\n<b>OCR</b>  ${badge}\n` +
+    `Pago     ${ocr.is_payment === false ? "NO parece pago" : ocr.is_payment === true ? "sí" : "—"}\n` +
     `Monto    ${a ?? "—"}\n` +
     `Ref      ${ocr.reference ?? "—"}\n` +
+    `Destino  ${ocr.recipient ?? "—"}\n` +
     `Fecha    ${ocr.date ?? "—"}`
   );
 }
