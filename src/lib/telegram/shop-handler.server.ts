@@ -879,23 +879,18 @@ async function handleReceiptPhoto(msg: TgMessage) {
   }
 
   await setState(telegram_id, "menu", {});
-  if (isRecharge) {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `<b>Comprobante en revisión</b>\n\nPending: <code>${pid}</code>\nMonto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n\nTe avisaremos al aprobar.`,
-      [[{ text: "Menú", callback_data: "menu:main" }]],
-    );
-  } else {
-    await renderScreen(
-      "shop",
-      telegram_id,
-      chat_id,
-      `<b>Comprobante recibido</b>\n\nTu pago está siendo verificado. Te avisamos cuando se acredite el saldo o la key.`,
-      [[{ text: "Menú", callback_data: "menu:main" }]],
-    );
-  }
+  const reviewText =
+    `⏳ <b>Comprobante En Revisión</b>\n\n` +
+    (isRecharge ? `Pending: <code>${pid}</code>\n\n` : "") +
+    `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
+    `Se Paciente Y Espera.`;
+  await renderScreen(
+    "shop",
+    telegram_id,
+    chat_id,
+    reviewText,
+    [[{ text: "Menú", callback_data: "menu:main" }]],
+  );
 }
 
 // ===== Comprobante (documento) =====
