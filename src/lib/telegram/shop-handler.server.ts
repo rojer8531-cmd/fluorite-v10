@@ -809,19 +809,28 @@ async function handleReceiptPhoto(msg: TgMessage) {
   };
   const pid = tpId(o.created_at);
 
+  // OCR (best-effort, no bloquea)
+  const ocr = await ocrReceipt(bytes).catch(() => null);
+  const ocrSummary = formatOcrSummary(
+    ocr,
+    Number(o.total_usd),
+    o.total_local ? Number(o.total_local) : null,
+  );
+
   let caption: string;
   if (isRecharge) {
     caption =
-      `<b>Comprobante De Recarga</b>\n\n` +
+      `💰 <b>Comprobante De Recarga</b>\n\n` +
       `Pending: <code>${pid}</code>\n` +
       `Usuario: @${user.username ?? "—"}\n` +
       `ID: <code>${telegram_id}</code>\n` +
       `Monto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
       `País: ${o.payment_methods?.country_name ?? "—"}\n` +
-      `Total: <b>${Number(o.total_usd).toFixed(2)} USD</b>`;
+      `Total: <b>${Number(o.total_usd).toFixed(2)} USD</b>` +
+      ocrSummary;
   } else {
     caption =
-      `<b>Nuevo comprobante</b>\n\n` +
+      `📩 <b>Nuevo comprobante</b>\n\n` +
       `Usuario   ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
       `ID        <code>${telegram_id}</code>\n` +
       `Producto  ${o.products?.name ?? "—"}\n` +
@@ -830,7 +839,8 @@ async function handleReceiptPhoto(msg: TgMessage) {
       `Total     $${Number(o.total_usd).toFixed(2)} USD` +
       (o.total_local ? ` (${Number(o.total_local).toFixed(2)} ${o.currency})` : "") +
       `\nMétodo    ${o.payment_methods?.country_name ?? "—"} ${o.payment_methods?.method_name ?? ""}\n` +
-      `Orden     <code>${o.id}</code>`;
+      `Orden     <code>${o.id}</code>` +
+      ocrSummary;
   }
 
   const adminChatId = getAdminChatId();
