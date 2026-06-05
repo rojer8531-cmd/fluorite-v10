@@ -6,6 +6,8 @@ export interface OcrResult {
   amount: number | null;
   reference: string | null;
   date: string | null;
+  is_payment: boolean | null;
+  recipient: string | null;
 }
 
 function toNumber(v: unknown): number | null {
