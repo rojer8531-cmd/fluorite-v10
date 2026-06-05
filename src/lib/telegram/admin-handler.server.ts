@@ -687,52 +687,63 @@ async function creditRecharge(
   );
 }
 
-// ===== Anuncio (broadcast) =====
+// ===== Anuncio (broadcast usando copyMessage, soporta cualquier tipo) =====
 async function handleBroadcast(msg: TgMessage) {
-  const { data: users } = await sb.from("bot_users").select("chat_id");
-  const chatIds = [...new Set((users ?? []).map((u) => u.chat_id).filter(Boolean))] as number[];
-  if (chatIds.length === 0) {
+  const { data: users } = await sb.from("bot_users").select("telegram_id, chat_id");
+  const targets = (users ?? []).filter((u) => u.chat_id);
+  if (targets.length === 0) {
     await sendMessage("admin", msg.chat.id, `No hay usuarios para enviar el anuncio.`);
     return;
   }
 
+  // Preview corto: texto, caption, o nombre de archivo.
+  const preview =
+    (msg.text ?? "").trim() ||
+    (msg.caption ?? "").trim() ||
+    (msg.document?.file_name ? `Archivo: ${msg.document.file_name}` : "") ||
+    (msg.photo ? "Imagen" : "") ||
+    (msg.video ? "Video" : "") ||
+    (msg.voice || msg.audio ? "Audio" : "") ||
+    "Anuncio";
+
+  const { data: ann } = await sb
+    .from("announcements")
+    .insert({
+      preview: preview.slice(0, 200),
+      source_chat_id: msg.chat.id,
+      source_message_id: msg.message_id,
+    })
+    .select()
+    .single();
+  if (!ann) {
+    await sendMessage("admin", msg.chat.id, `No pude registrar el anuncio.`);
+    return;
+  }
+
+  await sendMessage("admin", msg.chat.id, `Enviando anuncio a ${targets.length} usuarios…`);
+
   let ok = 0;
   let fail = 0;
-
-  if (msg.photo && msg.photo.length > 0) {
-    const photo = msg.photo[msg.photo.length - 1];
-    const fileInfo = await getFile("admin", photo.file_id);
-    if (!fileInfo.ok || !fileInfo.result) {
-      await sendMessage("admin", msg.chat.id, `No pude procesar la imagen del anuncio.`);
-      return;
+  for (const u of targets) {
+    const r = await copyMessage("shop", u.chat_id, msg.chat.id, msg.message_id);
+    if (r.ok && r.result) {
+      ok++;
+      await recordAnnouncementDelivery({
+        announcement_id: ann.id,
+        telegram_id: u.telegram_id,
+        chat_id: u.chat_id,
+        message_id: r.result.message_id,
+      });
+    } else {
+      fail++;
     }
-    const bytes = await downloadFile("admin", fileInfo.result.file_path);
-    if (!bytes) {
-      await sendMessage("admin", msg.chat.id, `No pude descargar la imagen del anuncio.`);
-      return;
-    }
-    const caption = (msg.caption ?? "").trim();
-    await sendMessage("admin", msg.chat.id, `Enviando anuncio con imagen a ${chatIds.length} usuarios...`);
-    for (const cid of chatIds) {
-      const r = await sendPhotoMultipart("shop", cid, bytes, "anuncio.jpg", caption);
-      if (r.ok) ok++;
-      else fail++;
-      await sleep(35);
-    }
-  } else {
-    const body = (msg.text ?? "").trim();
-    if (!body) {
-      await sendMessage("admin", msg.chat.id, `El anuncio está vacío.`);
-      return;
-    }
-    await sendMessage("admin", msg.chat.id, `Enviando anuncio a ${chatIds.length} usuarios...`);
-    for (const cid of chatIds) {
-      const r = await sendMessage("shop", cid, `<b>Anuncio</b>\n\n${escapeHtml(body)}`);
-      if (r.ok) ok++;
-      else fail++;
-      await sleep(35);
-    }
+    await sleep(35);
   }
+
+  await sb
+    .from("announcements")
+    .update({ total_sent: ok, total_failed: fail })
+    .eq("id", ann.id);
 
   await sendMessage(
     "admin",
