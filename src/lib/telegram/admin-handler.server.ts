@@ -47,6 +47,12 @@ interface TgMessage {
   text?: string;
   caption?: string;
   photo?: TgPhotoSize[];
+  document?: { file_id: string; file_name?: string; mime_type?: string };
+  video?: { file_id: string };
+  audio?: { file_id: string };
+  voice?: { file_id: string };
+  forward_from?: unknown;
+  forward_from_chat?: unknown;
   reply_to_message?: { message_id: number; text?: string; caption?: string };
 }
 interface TgCallback {
