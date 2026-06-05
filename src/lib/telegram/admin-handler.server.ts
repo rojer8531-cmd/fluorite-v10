@@ -111,6 +111,12 @@ async function resolvePriceId(rawId: string) {
 }
 
 export async function handleAdminUpdate(update: Update): Promise<void> {
+  // Asegurar barra inferior visible automáticamente al admin (una vez por sesión)
+  if (update.message?.from && isAdmin(update.message.from.id)) {
+    await ensureAdminBar(update.message.chat.id, update.message.from.id).catch(() => {});
+  } else if (update.callback_query?.from && isAdmin(update.callback_query.from.id) && update.callback_query.message) {
+    await ensureAdminBar(update.callback_query.message.chat.id, update.callback_query.from.id).catch(() => {});
+  }
   if (update.message) await handleMessage(update.message);
   else if (update.callback_query) await handleCallback(update.callback_query);
 }
