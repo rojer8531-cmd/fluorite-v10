@@ -763,14 +763,31 @@ async function handleMessage(msg: TgMessage) {
 
   const text = (msg.text ?? "").trim();
 
+  // ===== Cancelar broadcast en espera =====
+  if (text === "/cancelar") {
+    await patchContext(msg.from.id, { awaiting_broadcast: 0 });
+    await sendMessage("admin", msg.chat.id, `Cancelado.`);
+    return;
+  }
+
+  // ===== Modo broadcast activo: capturar el siguiente mensaje y enviarlo =====
+  const st = await getState(msg.from.id);
+  const awaiting = Number(((st?.context as Record<string, unknown>)?.awaiting_broadcast as number) ?? 0);
+  if (awaiting && Date.now() - awaiting < 10 * 60 * 1000) {
+    // Ignorar pulsaciones de la barra inferior mientras se espera contenido
+    const bottomLabels = Object.values(ADMIN_BOTTOM);
+    if (!bottomLabels.includes(text)) {
+      await patchContext(msg.from.id, { awaiting_broadcast: 0 });
+      await handleBroadcast(msg);
+      return;
+    }
+  }
+
   // ===== respuestas (reply) =====
   if (msg.reply_to_message) {
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
 
-    if (replySource.includes("BROADCAST_ANUNCIO")) {
-      await handleBroadcast(msg);
-      return;
-    }
+
 
     // ===== Rechazo con motivo =====
     const rejectMatch = replySource.match(/REJECT:([a-f0-9-]{36})(?::(\d+))?/);
