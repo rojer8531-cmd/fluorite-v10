@@ -8,6 +8,7 @@ import {
   getFile,
   downloadFile,
   sendPhotoMultipart,
+  copyMessage,
 } from "./api.server";
 import {
   sb,
@@ -26,6 +27,7 @@ import {
   notifyUserApproved,
   notifyUserRejected,
   notifyUserKey,
+  recordAnnouncementDelivery,
 } from "./shop-handler.server";
 
 interface Update {
@@ -47,6 +49,12 @@ interface TgMessage {
   text?: string;
   caption?: string;
   photo?: TgPhotoSize[];
+  document?: { file_id: string; file_name?: string; mime_type?: string };
+  video?: { file_id: string };
+  audio?: { file_id: string };
+  voice?: { file_id: string };
+  forward_from?: unknown;
+  forward_from_chat?: unknown;
   reply_to_message?: { message_id: number; text?: string; caption?: string };
 }
 interface TgCallback {
@@ -473,12 +481,11 @@ async function adminUsuarios(chat_id: number, page = 0) {
 
   const lines = users.map((u, i) => {
     const idx = from + i + 1;
-    const uname = u.username ? `@${u.username}` : "—";
-    return `${idx}. ${escapeHtml(u.display_name ?? "—")} · ${uname} · <code>${u.telegram_id}</code> · $${Number(u.balance).toFixed(2)} · ${u.rank}`;
+    const name = escapeHtml(u.display_name ?? u.username ?? "—");
+    return `${idx}. <b>${name}</b>\n<code>${u.telegram_id}</code>`;
   });
 
   const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
-  // Botones en filas de 2 para reducir tamaño visual
   for (let i = 0; i < users.length; i += 2) {
     const row = [{ text: `${from + i + 1}`, callback_data: `akusr:${users[i].telegram_id}` }];
     if (users[i + 1]) row.push({ text: `${from + i + 2}`, callback_data: `akusr:${users[i + 1].telegram_id}` });
@@ -488,13 +495,13 @@ async function adminUsuarios(chat_id: number, page = 0) {
   if (page > 0) nav.push({ text: "◀", callback_data: `akusrp:${page - 1}` });
   if (to + 1 < total) nav.push({ text: "▶", callback_data: `akusrp:${page + 1}` });
   if (nav.length > 0) kb.push(nav);
-  kb.push([{ text: "🔍 Buscar por ID", callback_data: "akp:finduser" }]);
+  kb.push([{ text: "Buscar por ID", callback_data: "akp:finduser" }]);
 
   await replaceAdminList(
     chat_id,
     adminId(),
     "usuarios",
-    `👥 <b>Usuarios</b>  ·  ${total}  ·  pág ${page + 1}/${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n")}`,
+    `<b>Usuarios</b>  ·  ${total}  ·  pág ${page + 1}/${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n\n")}`,
     kb,
   );
 }
@@ -592,10 +599,14 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
 }
 
 async function adminPromptAnuncio(chat_id: number) {
+  // Activar estado "esperando anuncio" — el admin puede salir del bot y reenviar
+  // cualquier mensaje (texto, foto, documento, video…) y el siguiente que llegue
+  // será enviado a todos los usuarios.
+  await patchContext(Number(adminId()), { awaiting_broadcast: Date.now() });
   await sendMessage(
     "admin",
     chat_id,
-    `<b>BROADCAST_ANUNCIO</b>\n\nRespondé a este mensaje con el texto o la imagen que querés enviar como anuncio a todos los usuarios.`,
+    `<b>Anuncio</b>\n\nEnviá o reenviá ahora cualquier mensaje (texto, foto, documento, video…) y se transmitirá a todos los usuarios.\n\nTenés 10 minutos. Para cancelar escribí /cancelar.`,
   );
 }
 
@@ -676,52 +687,63 @@ async function creditRecharge(
   );
 }
 
-// ===== Anuncio (broadcast) =====
+// ===== Anuncio (broadcast usando copyMessage, soporta cualquier tipo) =====
 async function handleBroadcast(msg: TgMessage) {
-  const { data: users } = await sb.from("bot_users").select("chat_id");
-  const chatIds = [...new Set((users ?? []).map((u) => u.chat_id).filter(Boolean))] as number[];
-  if (chatIds.length === 0) {
+  const { data: users } = await sb.from("bot_users").select("telegram_id, chat_id");
+  const targets = (users ?? []).filter((u) => u.chat_id);
+  if (targets.length === 0) {
     await sendMessage("admin", msg.chat.id, `No hay usuarios para enviar el anuncio.`);
     return;
   }
 
+  // Preview corto: texto, caption, o nombre de archivo.
+  const preview =
+    (msg.text ?? "").trim() ||
+    (msg.caption ?? "").trim() ||
+    (msg.document?.file_name ? `Archivo: ${msg.document.file_name}` : "") ||
+    (msg.photo ? "Imagen" : "") ||
+    (msg.video ? "Video" : "") ||
+    (msg.voice || msg.audio ? "Audio" : "") ||
+    "Anuncio";
+
+  const { data: ann } = await sb
+    .from("announcements")
+    .insert({
+      preview: preview.slice(0, 200),
+      source_chat_id: msg.chat.id,
+      source_message_id: msg.message_id,
+    })
+    .select()
+    .single();
+  if (!ann) {
+    await sendMessage("admin", msg.chat.id, `No pude registrar el anuncio.`);
+    return;
+  }
+
+  await sendMessage("admin", msg.chat.id, `Enviando anuncio a ${targets.length} usuarios…`);
+
   let ok = 0;
   let fail = 0;
-
-  if (msg.photo && msg.photo.length > 0) {
-    const photo = msg.photo[msg.photo.length - 1];
-    const fileInfo = await getFile("admin", photo.file_id);
-    if (!fileInfo.ok || !fileInfo.result) {
-      await sendMessage("admin", msg.chat.id, `No pude procesar la imagen del anuncio.`);
-      return;
+  for (const u of targets) {
+    const r = await copyMessage("shop", u.chat_id, msg.chat.id, msg.message_id);
+    if (r.ok && r.result) {
+      ok++;
+      await recordAnnouncementDelivery({
+        announcement_id: ann.id,
+        telegram_id: u.telegram_id,
+        chat_id: u.chat_id,
+        message_id: r.result.message_id,
+      });
+    } else {
+      fail++;
     }
-    const bytes = await downloadFile("admin", fileInfo.result.file_path);
-    if (!bytes) {
-      await sendMessage("admin", msg.chat.id, `No pude descargar la imagen del anuncio.`);
-      return;
-    }
-    const caption = (msg.caption ?? "").trim();
-    await sendMessage("admin", msg.chat.id, `Enviando anuncio con imagen a ${chatIds.length} usuarios...`);
-    for (const cid of chatIds) {
-      const r = await sendPhotoMultipart("shop", cid, bytes, "anuncio.jpg", caption);
-      if (r.ok) ok++;
-      else fail++;
-      await sleep(35);
-    }
-  } else {
-    const body = (msg.text ?? "").trim();
-    if (!body) {
-      await sendMessage("admin", msg.chat.id, `El anuncio está vacío.`);
-      return;
-    }
-    await sendMessage("admin", msg.chat.id, `Enviando anuncio a ${chatIds.length} usuarios...`);
-    for (const cid of chatIds) {
-      const r = await sendMessage("shop", cid, `<b>Anuncio</b>\n\n${escapeHtml(body)}`);
-      if (r.ok) ok++;
-      else fail++;
-      await sleep(35);
-    }
+    await sleep(35);
   }
+
+  await sb
+    .from("announcements")
+    .update({ total_sent: ok, total_failed: fail })
+    .eq("id", ann.id);
 
   await sendMessage(
     "admin",
@@ -741,14 +763,31 @@ async function handleMessage(msg: TgMessage) {
 
   const text = (msg.text ?? "").trim();
 
+  // ===== Cancelar broadcast en espera =====
+  if (text === "/cancelar") {
+    await patchContext(msg.from.id, { awaiting_broadcast: 0 });
+    await sendMessage("admin", msg.chat.id, `Cancelado.`);
+    return;
+  }
+
+  // ===== Modo broadcast activo: capturar el siguiente mensaje y enviarlo =====
+  const st = await getState(msg.from.id);
+  const awaiting = Number(((st?.context as Record<string, unknown>)?.awaiting_broadcast as number) ?? 0);
+  if (awaiting && Date.now() - awaiting < 10 * 60 * 1000) {
+    // Ignorar pulsaciones de la barra inferior mientras se espera contenido
+    const bottomLabels = Object.values(ADMIN_BOTTOM);
+    if (!bottomLabels.includes(text)) {
+      await patchContext(msg.from.id, { awaiting_broadcast: 0 });
+      await handleBroadcast(msg);
+      return;
+    }
+  }
+
   // ===== respuestas (reply) =====
   if (msg.reply_to_message) {
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
 
-    if (replySource.includes("BROADCAST_ANUNCIO")) {
-      await handleBroadcast(msg);
-      return;
-    }
+
 
     // ===== Rechazo con motivo =====
     const rejectMatch = replySource.match(/REJECT:([a-f0-9-]{36})(?::(\d+))?/);

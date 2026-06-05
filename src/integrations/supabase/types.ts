@@ -65,6 +65,74 @@ export type Database = {
         }
         Relationships: []
       }
+      announcement_deliveries: {
+        Row: {
+          announcement_id: string
+          chat_id: number
+          created_at: string
+          id: string
+          message_id: number | null
+          read_at: string | null
+          telegram_id: number
+        }
+        Insert: {
+          announcement_id: string
+          chat_id: number
+          created_at?: string
+          id?: string
+          message_id?: number | null
+          read_at?: string | null
+          telegram_id: number
+        }
+        Update: {
+          announcement_id?: string
+          chat_id?: number
+          created_at?: string
+          id?: string
+          message_id?: number | null
+          read_at?: string | null
+          telegram_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_deliveries_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      announcements: {
+        Row: {
+          created_at: string
+          id: string
+          preview: string
+          source_chat_id: number
+          source_message_id: number
+          total_failed: number
+          total_sent: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          preview?: string
+          source_chat_id: number
+          source_message_id: number
+          total_failed?: number
+          total_sent?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          preview?: string
+          source_chat_id?: number
+          source_message_id?: number
+          total_failed?: number
+          total_sent?: number
+        }
+        Relationships: []
+      }
       blocked_users: {
         Row: {
           blocked_at: string

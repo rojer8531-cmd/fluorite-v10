@@ -6,6 +6,7 @@ import {
   downloadFile,
   answerCallbackQuery,
   getAdminChatId,
+  deleteMessage,
 } from "./api.server";
 import {
   getOrCreateUser,
@@ -69,6 +70,7 @@ const BOTTOM_MENU = {
   profile: "Perfil",
   keys: "Mis Keys",
   recharge: "Recargar",
+  announcements: "Anuncios",
   support: "Soporte",
 };
 
@@ -78,7 +80,7 @@ function bottomKeyboard() {
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.buy }],
       [{ text: BOTTOM_MENU.status }, { text: BOTTOM_MENU.profile }],
       [{ text: BOTTOM_MENU.keys }, { text: BOTTOM_MENU.recharge }],
-      [{ text: BOTTOM_MENU.support }],
+      [{ text: BOTTOM_MENU.announcements }, { text: BOTTOM_MENU.support }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -559,6 +561,7 @@ async function routeBottomMenu(
     [BOTTOM_MENU.profile]: showProfile,
     [BOTTOM_MENU.keys]: showMyKeys,
     [BOTTOM_MENU.recharge]: startRecharge,
+    [BOTTOM_MENU.announcements]: showAnnouncements,
     [BOTTOM_MENU.support]: showSupport,
   };
   const action = map[text];
@@ -1217,6 +1220,8 @@ async function handleCallback(cb: TgCallback) {
   if (data === "menu:buy") return showBuyWithBalance(telegram_id, chat_id);
   if (data === "menu:recharge") return startRecharge(telegram_id, chat_id);
   if (data === "menu:support") return showSupport(telegram_id, chat_id);
+  if (data === "menu:announcements") return showAnnouncements(telegram_id, chat_id);
+  if (data.startsWith("anvw:")) return openAnnouncement(telegram_id, chat_id, data.slice(5));
 
   if (data.startsWith("cat:")) return showCategory(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("prod:")) return showDurations(telegram_id, chat_id, data.slice(5));
@@ -1231,28 +1236,31 @@ async function handleCallback(cb: TgCallback) {
 async function showOrderStatus(telegram_id: number, chat_id: number) {
   const { data: orders } = await sb
     .from("orders")
-    .select("id, status, total_usd, created_at, products(name)")
+    .select("id, status, total_usd, created_at, products(name), product_prices(duration_label)")
     .eq("telegram_id", telegram_id)
     .order("created_at", { ascending: false })
     .limit(10);
   if (!orders || orders.length === 0) {
     return renderScreen("shop", telegram_id, chat_id, `No tenés órdenes.`, [BACK_BUTTON]);
   }
-  const lines = orders
-    .map((o) => {
-      const p = (o as { products: { name: string } }).products;
-      const mark =
-        o.status === "delivered"
-          ? "[OK]"
-          : o.status === "pending_approval"
-            ? "[…]"
-            : o.status === "rejected"
-              ? "[X]"
-              : "[·]";
-      return `${mark}  ${p?.name ?? "—"}  ·  $${Number(o.total_usd).toFixed(2)}  ·  <i>${o.status}</i>`;
-    })
-    .join("\n");
-  return renderScreen("shop", telegram_id, chat_id, `<b>Mis órdenes</b>\n\n${lines}`, [BACK_BUTTON]);
+  const statusLabel: Record<string, string> = {
+    delivered: "Entregado",
+    pending_approval: "En revisión",
+    pending_receipt: "Esperando comprobante",
+    rejected: "Rechazado",
+    approved: "Aprobado",
+    pending: "Pendiente",
+  };
+  const blocks = orders.map((o) => {
+    const p = (o as { products: { name: string } | null }).products;
+    const pr = (o as { product_prices: { duration_label: string } | null }).product_prices;
+    const date = new Date(o.created_at).toLocaleDateString("es");
+    const name = p?.name ?? "—";
+    const dur = pr?.duration_label ? ` ${pr.duration_label}` : "";
+    const st = statusLabel[o.status] ?? o.status;
+    return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n${st}\n$${Number(o.total_usd).toFixed(2)}\n${date}`;
+  });
+  return renderScreen("shop", telegram_id, chat_id, `<b>Mis órdenes</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
 }
 
 async function showMyKeys(telegram_id: number, chat_id: number) {
@@ -1260,17 +1268,51 @@ async function showMyKeys(telegram_id: number, chat_id: number) {
   if (!user) return;
   const { data: keys } = await sb
     .from("order_keys")
-    .select("key_value, delivered_at")
+    .select("key_value, delivered_at, orders(products(name), product_prices(duration_label))")
     .eq("user_id", user.id)
     .order("delivered_at", { ascending: false })
-    .limit(20);
+    .limit(30);
   if (!keys || keys.length === 0) {
-    return renderScreen("shop", telegram_id, chat_id, `No tenés keys aún.`, [BACK_BUTTON]);
+    return renderScreen("shop", telegram_id, chat_id, `Aún no tenés keys.`, [BACK_BUTTON]);
   }
-  const text = keys.map((k) => `<code>${k.key_value}</code>`).join("\n");
-  return renderScreen("shop", telegram_id, chat_id, `<b>Mis keys (últimas ${keys.length})</b>\n\n${text}`, [
-    BACK_BUTTON,
-  ]);
+  const blocks = keys.map((k) => {
+    const ord = (k as { orders: { products: { name: string } | null; product_prices: { duration_label: string } | null } | null }).orders;
+    const name = ord?.products?.name ?? "Producto";
+    const dur = ord?.product_prices?.duration_label ? ` ${ord.product_prices.duration_label}` : "";
+    return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n<code>${escapeHtml(k.key_value)}</code>`;
+  });
+  return renderScreen("shop", telegram_id, chat_id, `<b>Mis keys</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
+}
+
+async function showAnnouncements(telegram_id: number, chat_id: number) {
+  const { data: deliveries } = await sb
+    .from("announcement_deliveries")
+    .select("id, message_id, read_at, announcement_id, announcements(preview, created_at)")
+    .eq("telegram_id", telegram_id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (!deliveries || deliveries.length === 0) {
+    return renderScreen("shop", telegram_id, chat_id, `No hay anuncios.`, [BACK_BUTTON]);
+  }
+  const blocks = deliveries.map((d, i) => {
+    const a = (d as { announcements: { preview: string; created_at: string } | null }).announcements;
+    const date = a ? new Date(a.created_at).toLocaleDateString("es") : "";
+    const tag = d.read_at ? "" : " · NUEVO";
+    const preview = a?.preview?.slice(0, 80) || "Anuncio";
+    return `${i + 1}. <b>${escapeHtml(preview)}</b>\n${date}${tag}`;
+  });
+  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let i = 0; i < deliveries.length; i += 2) {
+    const row = [{ text: `Abrir ${i + 1}`, callback_data: `anvw:${deliveries[i].id}` }];
+    if (deliveries[i + 1]) row.push({ text: `Abrir ${i + 2}`, callback_data: `anvw:${deliveries[i + 1].id}` });
+    kb.push(row);
+  }
+  kb.push([{ text: "Volver", callback_data: "menu:main" }]);
+  return renderScreen("shop", telegram_id, chat_id, `<b>Anuncios</b>\n\n${blocks.join("\n\n")}`, kb);
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /** Llamado desde el admin bot tras aprobar el pago. */
@@ -1339,4 +1381,46 @@ export async function notifyUserKey(opts: {
   if (sent.ok && sent.result) {
     await setActiveMessage(opts.telegram_id, opts.chat_id, sent.result.message_id);
   }
+}
+
+async function openAnnouncement(telegram_id: number, chat_id: number, deliveryId: string) {
+  const { data: del } = await sb
+    .from("announcement_deliveries")
+    .select("id, message_id, read_at, announcement_id, announcements(source_chat_id, source_message_id)")
+    .eq("id", deliveryId)
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  if (!del) return;
+  const a = (del as { announcements: { source_chat_id: number; source_message_id: number } | null }).announcements;
+  // Reenviar (copyMessage) el contenido al usuario
+  if (a) {
+    const { copyMessage } = await import("./api.server");
+    await copyMessage("shop", chat_id, a.source_chat_id, a.source_message_id);
+  }
+  // Borrar el mensaje original que llegó en el broadcast (si existe)
+  if (del.message_id) {
+    deleteMessage("shop", chat_id, del.message_id).catch(() => {});
+  }
+  // Marcar leído
+  if (!del.read_at) {
+    await sb
+      .from("announcement_deliveries")
+      .update({ read_at: new Date().toISOString(), message_id: null })
+      .eq("id", del.id);
+  }
+}
+
+/** Llamado desde el admin tras enviar el anuncio. Registra entrega y message_id. */
+export async function recordAnnouncementDelivery(opts: {
+  announcement_id: string;
+  telegram_id: number;
+  chat_id: number;
+  message_id: number | null;
+}) {
+  await sb.from("announcement_deliveries").insert({
+    announcement_id: opts.announcement_id,
+    telegram_id: opts.telegram_id,
+    chat_id: opts.chat_id,
+    message_id: opts.message_id,
+  });
 }
