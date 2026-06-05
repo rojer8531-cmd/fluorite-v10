@@ -996,7 +996,10 @@ async function handleReceiptDocument(msg: TgMessage) {
     "shop",
     telegram_id,
     chat_id,
-    `<b>Comprobante recibido</b>\n\nPending: <code>${pid}</code>\n\nTu pago está en revisión.`,
+    `⏳ <b>Comprobante En Revisión</b>\n\n` +
+      `Pending: <code>${pid}</code>\n\n` +
+      `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
+      `Se Paciente Y Espera.`,
     [[{ text: "Menú", callback_data: "menu:main" }]],
   );
 }
