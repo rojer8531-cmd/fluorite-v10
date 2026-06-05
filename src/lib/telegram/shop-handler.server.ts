@@ -1382,3 +1382,45 @@ export async function notifyUserKey(opts: {
     await setActiveMessage(opts.telegram_id, opts.chat_id, sent.result.message_id);
   }
 }
+
+async function openAnnouncement(telegram_id: number, chat_id: number, deliveryId: string) {
+  const { data: del } = await sb
+    .from("announcement_deliveries")
+    .select("id, message_id, read_at, announcement_id, announcements(source_chat_id, source_message_id)")
+    .eq("id", deliveryId)
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  if (!del) return;
+  const a = (del as { announcements: { source_chat_id: number; source_message_id: number } | null }).announcements;
+  // Reenviar (copyMessage) el contenido al usuario
+  if (a) {
+    const { copyMessage } = await import("./api.server");
+    await copyMessage("shop", chat_id, a.source_chat_id, a.source_message_id);
+  }
+  // Borrar el mensaje original que llegó en el broadcast (si existe)
+  if (del.message_id) {
+    deleteMessage("shop", chat_id, del.message_id).catch(() => {});
+  }
+  // Marcar leído
+  if (!del.read_at) {
+    await sb
+      .from("announcement_deliveries")
+      .update({ read_at: new Date().toISOString(), message_id: null })
+      .eq("id", del.id);
+  }
+}
+
+/** Llamado desde el admin tras enviar el anuncio. Registra entrega y message_id. */
+export async function recordAnnouncementDelivery(opts: {
+  announcement_id: string;
+  telegram_id: number;
+  chat_id: number;
+  message_id: number | null;
+}) {
+  await sb.from("announcement_deliveries").insert({
+    announcement_id: opts.announcement_id,
+    telegram_id: opts.telegram_id,
+    chat_id: opts.chat_id,
+    message_id: opts.message_id,
+  });
+}
