@@ -118,21 +118,76 @@ export async function handleAdminUpdate(update: Update): Promise<void> {
 
 // ===== Panel admin (inline) =====
 async function showAdminPanel(chat_id: number) {
-  await sendMessage("admin", chat_id, `<b>Panel Admin</b>\n\nElegí una opción:`, {
+  await sendMessage("admin", chat_id, `📋 <b>Panel Admin</b>\n\nElegí una opción:`, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Agregar Keys", callback_data: "akp:add" }],
-        [{ text: "Ver Stock", callback_data: "akp:stock" }],
+        [{ text: "🔑 Agregar Keys", callback_data: "akp:add" }],
+        [{ text: "📦 Ver Stock", callback_data: "akp:stock" }],
         [
-          { text: "Pendientes", callback_data: "akp:pend" },
-          { text: "Usuarios", callback_data: "akp:users" },
+          { text: "📨 Pendientes", callback_data: "akp:pend" },
+          { text: "👥 Usuarios", callback_data: "akp:users" },
         ],
-        [{ text: "Gestión de Métodos de Pago", callback_data: "akp:pm" }],
-        [{ text: "Anuncio", callback_data: "akp:anuncio" }],
+        [{ text: "🔍 Buscar Usuario", callback_data: "akp:finduser" }],
+        [{ text: "💳 Métodos de Pago", callback_data: "akp:pm" }],
+        [{ text: "📣 Anuncio", callback_data: "akp:anuncio" }],
       ],
     },
   });
 }
+
+// ===== Helpers de UX admin =====
+async function ensureAdminBar(chat_id: number, admin_id: number) {
+  const st = await getState(admin_id);
+  const ctx = (st?.context ?? {}) as Record<string, unknown>;
+  if (ctx.bar_shown) return;
+  await sendMessage("admin", chat_id, `📋 Panel listo. Usá la barra inferior.`, {
+    reply_markup: adminBottomKeyboard(),
+  });
+  await patchContext(admin_id, { bar_shown: true });
+}
+
+async function replaceAdminList(
+  chat_id: number,
+  admin_id: number,
+  listKey: string,
+  text: string,
+  kb?: Array<Array<{ text: string; callback_data?: string; url?: string }>>,
+) {
+  const st = await getState(admin_id);
+  const ctx = (st?.context ?? {}) as Record<string, unknown>;
+  const ids = (ctx.list_msgs ?? {}) as Record<string, number>;
+  const prev = ids[listKey];
+  if (prev) {
+    deleteMessage("admin", chat_id, prev).catch(() => {});
+  }
+  const sent = await sendMessage("admin", chat_id, text, kb ? { reply_markup: { inline_keyboard: kb } } : {});
+  if (sent.ok && sent.result) {
+    ids[listKey] = sent.result.message_id;
+    await patchContext(admin_id, { list_msgs: ids });
+  }
+}
+
+async function markReceiptStatus(
+  bot_chat_id: number,
+  message_id: number,
+  badge: string,
+  detail?: string,
+) {
+  const suffix = `\n\n${badge}${detail ? `  ·  ${detail}` : ""}`;
+  // Try caption first (photo); fall back to text. Always clear inline buttons.
+  const cap = await editMessageCaption("admin", bot_chat_id, message_id, "", {});
+  // Telegram requires we pass full caption — we don't know it. So instead just remove buttons + send a follow-up note.
+  if (!cap.ok) {
+    // ignore
+  }
+  await editMessageReplyMarkup("admin", bot_chat_id, message_id, { inline_keyboard: [] }).catch(() => {});
+  await sendMessage("admin", bot_chat_id, `${badge}${detail ? `  ·  ${detail}` : ""}`, {
+    reply_to_message_id: message_id,
+    allow_sending_without_reply: true,
+  } as never);
+  void suffix;
+}
+
 
 // ===== Gestión de métodos de pago =====
 async function pmMenu(chat_id: number) {
