@@ -178,6 +178,21 @@ export async function sendPhotoMultipart(
   return tg<{ message_id: number }>(bot, "sendPhoto", fd);
 }
 
+export async function copyMessage(
+  bot: BotKind,
+  chat_id: number | string,
+  from_chat_id: number | string,
+  message_id: number,
+  extra: Record<string, unknown> = {},
+) {
+  return tg<{ message_id: number }>(bot, "copyMessage", {
+    chat_id,
+    from_chat_id,
+    message_id,
+    ...extra,
+  });
+}
+
 export async function getFile(bot: BotKind, file_id: string) {
   return tg<{ file_id: string; file_path: string; file_size: number }>(
     bot,
