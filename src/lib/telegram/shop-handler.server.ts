@@ -560,6 +560,7 @@ async function routeBottomMenu(
     [BOTTOM_MENU.profile]: showProfile,
     [BOTTOM_MENU.keys]: showMyKeys,
     [BOTTOM_MENU.recharge]: startRecharge,
+    [BOTTOM_MENU.announcements]: showAnnouncements,
     [BOTTOM_MENU.support]: showSupport,
   };
   const action = map[text];
