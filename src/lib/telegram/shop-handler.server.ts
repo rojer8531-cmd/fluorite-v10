@@ -827,6 +827,35 @@ async function handleReceiptPhoto(msg: TgMessage) {
     o.total_local ? Number(o.total_local) : null,
   );
 
+  // IA: si la imagen no parece un pago, avisar al usuario y al admin sin procesar el comprobante
+  if (ocr?.is_payment === false) {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`,
+    );
+    const adminCid = getAdminChatId();
+    if (adminCid) {
+      await sendPhotoMultipart(
+        "admin",
+        adminCid,
+        bytes,
+        "no_es_pago.jpg",
+        `⛔ <b>IA</b>  ·  imagen no parece un pago\n\n` +
+          `Usuario   ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
+          `ID        <code>${telegram_id}</code>\n` +
+          `Pending   <code>${pid}</code>\n` +
+          `Destino   ${ocr.recipient ?? "—"}` +
+          ocrSummary,
+      );
+    }
+    // No procesamos como comprobante oficial: dejar la orden pendiente de comprobante
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt!.id);
+    return;
+  }
+
+
   let caption: string;
   if (isRecharge) {
     caption =
