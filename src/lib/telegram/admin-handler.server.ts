@@ -751,9 +751,10 @@ async function handleMessage(msg: TgMessage) {
     }
 
     // ===== Rechazo con motivo =====
-    const rejectMatch = replySource.match(/REJECT:([a-f0-9-]{36})/);
+    const rejectMatch = replySource.match(/REJECT:([a-f0-9-]{36})(?::(\d+))?/);
     if (rejectMatch) {
       const orderId = rejectMatch[1];
+      const photoMid = rejectMatch[2] ? parseInt(rejectMatch[2], 10) : 0;
       const note = text || "Sin motivo";
       const { data: order } = await sb
         .from("orders")
@@ -777,9 +778,17 @@ async function handleMessage(msg: TgMessage) {
       ]);
       const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
       await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id, note, pending: tpId(order.created_at) });
-      await sendMessage("admin", msg.chat.id, `Recarga rechazada. Motivo: ${escapeHtml(note)}`);
+      // Limpiar el prompt y marcar el comprobante visualmente
+      deleteMessage("admin", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
+      deleteMessage("admin", msg.chat.id, msg.message_id).catch(() => {});
+      if (photoMid > 0) {
+        await markReceiptStatus(msg.chat.id, photoMid, `❌ RECHAZADO`, note.slice(0, 60));
+      } else {
+        await sendMessage("admin", msg.chat.id, `❌ Rechazado · ${escapeHtml(note)}`);
+      }
       return;
     }
+
 
     // ===== Editar método de pago =====
     const pmEditMatch = replySource.match(/PMEDIT:([a-f0-9-]{36}):(\w+)/);
