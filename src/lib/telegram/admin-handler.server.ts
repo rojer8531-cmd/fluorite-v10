@@ -81,7 +81,7 @@ const ADMIN_BOTTOM = {
   addkeys: "Agregar Keys",
   precios: "Precios",
   anuncio: "Anuncio",
-  panel: "Panel",
+  metodos: "Métodos",
 };
 
 function adminBottomKeyboard() {
@@ -90,7 +90,7 @@ function adminBottomKeyboard() {
       [{ text: ADMIN_BOTTOM.pendientes }, { text: ADMIN_BOTTOM.stock }],
       [{ text: ADMIN_BOTTOM.usuarios }, { text: ADMIN_BOTTOM.addkeys }],
       [{ text: ADMIN_BOTTOM.precios }, { text: ADMIN_BOTTOM.anuncio }],
-      [{ text: ADMIN_BOTTOM.panel }],
+      [{ text: ADMIN_BOTTOM.metodos }],
     ],
     resize_keyboard: true,
     is_persistent: true,
