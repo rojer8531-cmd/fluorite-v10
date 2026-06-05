@@ -481,12 +481,11 @@ async function adminUsuarios(chat_id: number, page = 0) {
 
   const lines = users.map((u, i) => {
     const idx = from + i + 1;
-    const uname = u.username ? `@${u.username}` : "—";
-    return `${idx}. ${escapeHtml(u.display_name ?? "—")} · ${uname} · <code>${u.telegram_id}</code> · $${Number(u.balance).toFixed(2)} · ${u.rank}`;
+    const name = escapeHtml(u.display_name ?? u.username ?? "—");
+    return `${idx}. <b>${name}</b>\n<code>${u.telegram_id}</code>`;
   });
 
   const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
-  // Botones en filas de 2 para reducir tamaño visual
   for (let i = 0; i < users.length; i += 2) {
     const row = [{ text: `${from + i + 1}`, callback_data: `akusr:${users[i].telegram_id}` }];
     if (users[i + 1]) row.push({ text: `${from + i + 2}`, callback_data: `akusr:${users[i + 1].telegram_id}` });
@@ -496,13 +495,13 @@ async function adminUsuarios(chat_id: number, page = 0) {
   if (page > 0) nav.push({ text: "◀", callback_data: `akusrp:${page - 1}` });
   if (to + 1 < total) nav.push({ text: "▶", callback_data: `akusrp:${page + 1}` });
   if (nav.length > 0) kb.push(nav);
-  kb.push([{ text: "🔍 Buscar por ID", callback_data: "akp:finduser" }]);
+  kb.push([{ text: "Buscar por ID", callback_data: "akp:finduser" }]);
 
   await replaceAdminList(
     chat_id,
     adminId(),
     "usuarios",
-    `👥 <b>Usuarios</b>  ·  ${total}  ·  pág ${page + 1}/${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n")}`,
+    `<b>Usuarios</b>  ·  ${total}  ·  pág ${page + 1}/${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n\n")}`,
     kb,
   );
 }
