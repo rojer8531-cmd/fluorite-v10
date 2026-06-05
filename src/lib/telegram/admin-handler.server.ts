@@ -173,20 +173,13 @@ async function markReceiptStatus(
   badge: string,
   detail?: string,
 ) {
-  const suffix = `\n\n${badge}${detail ? `  ·  ${detail}` : ""}`;
-  // Try caption first (photo); fall back to text. Always clear inline buttons.
-  const cap = await editMessageCaption("admin", bot_chat_id, message_id, "", {});
-  // Telegram requires we pass full caption — we don't know it. So instead just remove buttons + send a follow-up note.
-  if (!cap.ok) {
-    // ignore
-  }
   await editMessageReplyMarkup("admin", bot_chat_id, message_id, { inline_keyboard: [] }).catch(() => {});
   await sendMessage("admin", bot_chat_id, `${badge}${detail ? `  ·  ${detail}` : ""}`, {
     reply_to_message_id: message_id,
     allow_sending_without_reply: true,
-  } as never);
-  void suffix;
+  });
 }
+
 
 
 // ===== Gestión de métodos de pago =====
