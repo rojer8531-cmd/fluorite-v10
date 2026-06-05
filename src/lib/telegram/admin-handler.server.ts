@@ -2,13 +2,22 @@
 import {
   sendMessage,
   editMessageText,
+  editMessageCaption,
+  editMessageReplyMarkup,
+  deleteMessage,
   answerCallbackQuery,
   getAdminChatId,
   getFile,
   downloadFile,
   sendPhotoMultipart,
 } from "./api.server";
-import { sb, checkRateLimit, blockUserPermanent } from "./db.server";
+import {
+  sb,
+  checkRateLimit,
+  blockUserPermanent,
+  getState,
+  patchContext,
+} from "./db.server";
 import {
   getHideOutOfStockSetting,
   getStockByPriceId,
