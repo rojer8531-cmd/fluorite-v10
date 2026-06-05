@@ -832,6 +832,19 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Buscar usuario por ID =====
+    if (replySource.includes("FINDUSER")) {
+      const id = parseInt(text.replace(/\D/g, ""), 10);
+      if (!Number.isFinite(id) || id <= 0) {
+        await sendMessage("admin", msg.chat.id, `ID inválido.`);
+        return;
+      }
+      await adminUserDetail(msg.chat.id, id);
+      return;
+    }
+
+
+
 
     const msgUserMatch = replySource.match(/MSGUSER:(\d+)/);
     if (msgUserMatch) {
