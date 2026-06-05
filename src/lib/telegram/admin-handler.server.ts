@@ -955,15 +955,25 @@ async function handleMessage(msg: TgMessage) {
           duration_label: (pr as { duration_label: string } | null)?.duration_label,
         });
       }
-      // Borrar el mensaje del admin para mantener el chat limpio
-      const { deleteMessage } = await import("./api.server");
+      // Limpieza visual
       deleteMessage("admin", msg.chat.id, msg.message_id).catch(() => {});
       if (msg.reply_to_message) {
         deleteMessage("admin", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
       }
-      await sendMessage("admin", msg.chat.id, `Key enviada al usuario <code>${u?.telegram_id ?? ord.telegram_id}</code>.`);
+      // Marcar el comprobante original (si existe vía receipts)
+      const { data: receipt } = await sb
+        .from("receipts")
+        .select("admin_message_id")
+        .eq("order_id", ord.id)
+        .maybeSingle();
+      if (receipt?.admin_message_id) {
+        await markReceiptStatus(msg.chat.id, receipt.admin_message_id, `🔑 KEY ENVIADA`, String(u?.telegram_id ?? ord.telegram_id));
+      } else {
+        await sendMessage("admin", msg.chat.id, `🔑 Key enviada a <code>${u?.telegram_id ?? ord.telegram_id}</code>.`);
+      }
       return;
     }
+
 
     const addKeysMatch = replySource.match(/ADDKEYS:([a-f0-9-]{36})/i);
     if (addKeysMatch && text.length > 0) {
