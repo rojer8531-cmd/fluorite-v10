@@ -105,6 +105,35 @@ export async function deleteMessage(
   return tg(bot, "deleteMessage", { chat_id, message_id });
 }
 
+export async function editMessageCaption(
+  bot: BotKind,
+  chat_id: number | string,
+  message_id: number,
+  caption: string,
+  extra: Record<string, unknown> = {},
+) {
+  return tg(bot, "editMessageCaption", {
+    chat_id,
+    message_id,
+    caption,
+    parse_mode: "HTML",
+    ...extra,
+  });
+}
+
+export async function editMessageReplyMarkup(
+  bot: BotKind,
+  chat_id: number | string,
+  message_id: number,
+  reply_markup: Record<string, unknown> | null,
+) {
+  return tg(bot, "editMessageReplyMarkup", {
+    chat_id,
+    message_id,
+    reply_markup: reply_markup ?? { inline_keyboard: [] },
+  });
+}
+
 export async function answerCallbackQuery(
   bot: BotKind,
   callback_query_id: string,

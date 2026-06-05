@@ -1,14 +1,21 @@
 // Admin Bot — handler (UI limpia, barra inferior persistente)
 import {
   sendMessage,
-  editMessageText,
+  editMessageReplyMarkup,
+  deleteMessage,
   answerCallbackQuery,
   getAdminChatId,
   getFile,
   downloadFile,
   sendPhotoMultipart,
 } from "./api.server";
-import { sb, checkRateLimit, blockUserPermanent } from "./db.server";
+import {
+  sb,
+  checkRateLimit,
+  blockUserPermanent,
+  getState,
+  patchContext,
+} from "./db.server";
 import {
   getHideOutOfStockSetting,
   getStockByPriceId,
@@ -103,27 +110,81 @@ async function resolvePriceId(rawId: string) {
 }
 
 export async function handleAdminUpdate(update: Update): Promise<void> {
+  // Asegurar barra inferior visible automáticamente al admin (una vez por sesión)
+  if (update.message?.from && isAdmin(update.message.from.id)) {
+    await ensureAdminBar(update.message.chat.id, update.message.from.id).catch(() => {});
+  } else if (update.callback_query?.from && isAdmin(update.callback_query.from.id) && update.callback_query.message) {
+    await ensureAdminBar(update.callback_query.message.chat.id, update.callback_query.from.id).catch(() => {});
+  }
   if (update.message) await handleMessage(update.message);
   else if (update.callback_query) await handleCallback(update.callback_query);
 }
 
 // ===== Panel admin (inline) =====
 async function showAdminPanel(chat_id: number) {
-  await sendMessage("admin", chat_id, `<b>Panel Admin</b>\n\nElegí una opción:`, {
+  await sendMessage("admin", chat_id, `📋 <b>Panel Admin</b>\n\nElegí una opción:`, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Agregar Keys", callback_data: "akp:add" }],
-        [{ text: "Ver Stock", callback_data: "akp:stock" }],
+        [{ text: "🔑 Agregar Keys", callback_data: "akp:add" }],
+        [{ text: "📦 Ver Stock", callback_data: "akp:stock" }],
         [
-          { text: "Pendientes", callback_data: "akp:pend" },
-          { text: "Usuarios", callback_data: "akp:users" },
+          { text: "📨 Pendientes", callback_data: "akp:pend" },
+          { text: "👥 Usuarios", callback_data: "akp:users" },
         ],
-        [{ text: "Gestión de Métodos de Pago", callback_data: "akp:pm" }],
-        [{ text: "Anuncio", callback_data: "akp:anuncio" }],
+        [{ text: "🔍 Buscar Usuario", callback_data: "akp:finduser" }],
+        [{ text: "💳 Métodos de Pago", callback_data: "akp:pm" }],
+        [{ text: "📣 Anuncio", callback_data: "akp:anuncio" }],
       ],
     },
   });
 }
+
+// ===== Helpers de UX admin =====
+async function ensureAdminBar(chat_id: number, admin_id: number) {
+  const st = await getState(admin_id);
+  const ctx = (st?.context ?? {}) as Record<string, unknown>;
+  if (ctx.bar_shown) return;
+  await sendMessage("admin", chat_id, `📋 Panel listo. Usá la barra inferior.`, {
+    reply_markup: adminBottomKeyboard(),
+  });
+  await patchContext(admin_id, { bar_shown: true });
+}
+
+async function replaceAdminList(
+  chat_id: number,
+  admin_id: number,
+  listKey: string,
+  text: string,
+  kb?: Array<Array<{ text: string; callback_data?: string; url?: string }>>,
+) {
+  const st = await getState(admin_id);
+  const ctx = (st?.context ?? {}) as Record<string, unknown>;
+  const ids = (ctx.list_msgs ?? {}) as Record<string, number>;
+  const prev = ids[listKey];
+  if (prev) {
+    deleteMessage("admin", chat_id, prev).catch(() => {});
+  }
+  const sent = await sendMessage("admin", chat_id, text, kb ? { reply_markup: { inline_keyboard: kb } } : {});
+  if (sent.ok && sent.result) {
+    ids[listKey] = sent.result.message_id;
+    await patchContext(admin_id, { list_msgs: ids });
+  }
+}
+
+async function markReceiptStatus(
+  bot_chat_id: number,
+  message_id: number,
+  badge: string,
+  detail?: string,
+) {
+  await editMessageReplyMarkup("admin", bot_chat_id, message_id, { inline_keyboard: [] }).catch(() => {});
+  await sendMessage("admin", bot_chat_id, `${badge}${detail ? `  ·  ${detail}` : ""}`, {
+    reply_to_message_id: message_id,
+    allow_sending_without_reply: true,
+  });
+}
+
+
 
 // ===== Gestión de métodos de pago =====
 async function pmMenu(chat_id: number) {
@@ -358,6 +419,10 @@ async function adminStockView(chat_id: number) {
   );
 }
 
+function adminId() {
+  return Number(getAdminChatId() ?? 0);
+}
+
 async function adminPendientes(chat_id: number) {
   const { data: orders } = await sb
     .from("orders")
@@ -366,24 +431,25 @@ async function adminPendientes(chat_id: number) {
     .order("created_at", { ascending: false })
     .limit(20);
   if (!orders || orders.length === 0) {
-    await sendMessage("admin", chat_id, `No hay órdenes pendientes.`);
+    await replaceAdminList(chat_id, adminId(), "pendientes", `📨 <b>Pendientes</b>\n\nNo hay órdenes pendientes.`);
     return;
   }
   const lines = orders
     .map((o) => {
       const label =
         o.order_type === "recharge"
-          ? "Recarga"
+          ? "💰 Recarga"
           : (o as { products: { name: string } | null }).products?.name ?? "—";
-      return `<code>${o.id.slice(0, 8)}</code>  ·  TG <code>${o.telegram_id}</code>  ·  $${Number(
+      return `<code>${o.id.slice(0, 8)}</code>  ·  <code>${o.telegram_id}</code>  ·  $${Number(
         o.total_usd,
       ).toFixed(2)}  ·  ${label}`;
     })
     .join("\n");
-  await sendMessage(
-    "admin",
+  await replaceAdminList(
     chat_id,
-    `<b>Pendientes (${orders.length})</b>\n\n${lines}\n\nUsá los botones en cada comprobante para aprobar.`,
+    adminId(),
+    "pendientes",
+    `📨 <b>Pendientes (${orders.length})</b>\n\n${lines}\n\n<i>Usá los botones en cada comprobante.</i>`,
   );
 }
 
@@ -401,33 +467,44 @@ async function adminUsuarios(chat_id: number, page = 0) {
     .range(from, to);
 
   if (!users || users.length === 0) {
-    await sendMessage("admin", chat_id, `<b>Usuarios</b>  ·  Total ${total}\n\nNo hay usuarios en esta página.`);
+    await replaceAdminList(chat_id, adminId(), "usuarios", `👥 <b>Usuarios</b>  ·  Total ${total}\n\nSin usuarios.`);
     return;
   }
 
   const lines = users.map((u, i) => {
     const idx = from + i + 1;
-    const uname = u.username ? `@${u.username}` : "(sin username)";
-    return (
-      `${idx}.  <b>${escapeHtml(u.display_name ?? "—")}</b>  ·  ${uname}\n` +
-      `    ID <code>${u.telegram_id}</code>  ·  Saldo $${Number(u.balance).toFixed(2)}  ·  Rec $${Number(u.total_recharged).toFixed(2)}  ·  ${u.rank}`
-    );
+    const uname = u.username ? `@${u.username}` : "—";
+    return `${idx}. ${escapeHtml(u.display_name ?? "—")} · ${uname} · <code>${u.telegram_id}</code> · $${Number(u.balance).toFixed(2)} · ${u.rank}`;
   });
 
-  const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = users.map((u) => [
-    { text: `Ver  ${u.display_name ?? u.telegram_id}`, callback_data: `akusr:${u.telegram_id}` },
-  ]);
-
+  const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+  // Botones en filas de 2 para reducir tamaño visual
+  for (let i = 0; i < users.length; i += 2) {
+    const row = [{ text: `${from + i + 1}`, callback_data: `akusr:${users[i].telegram_id}` }];
+    if (users[i + 1]) row.push({ text: `${from + i + 2}`, callback_data: `akusr:${users[i + 1].telegram_id}` });
+    kb.push(row);
+  }
   const nav: Array<{ text: string; callback_data: string }> = [];
-  if (page > 0) nav.push({ text: "Anterior", callback_data: `akusrp:${page - 1}` });
-  if (to + 1 < total) nav.push({ text: "Siguiente", callback_data: `akusrp:${page + 1}` });
+  if (page > 0) nav.push({ text: "◀", callback_data: `akusrp:${page - 1}` });
+  if (to + 1 < total) nav.push({ text: "▶", callback_data: `akusrp:${page + 1}` });
   if (nav.length > 0) kb.push(nav);
+  kb.push([{ text: "🔍 Buscar por ID", callback_data: "akp:finduser" }]);
 
+  await replaceAdminList(
+    chat_id,
+    adminId(),
+    "usuarios",
+    `👥 <b>Usuarios</b>  ·  ${total}  ·  pág ${page + 1}/${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n")}`,
+    kb,
+  );
+}
+
+async function adminPromptFindUser(chat_id: number) {
   await sendMessage(
     "admin",
     chat_id,
-    `<b>Usuarios</b>  ·  Total ${total}\nPágina ${page + 1} de ${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n\n")}`,
-    { reply_markup: { inline_keyboard: kb } },
+    `🔍 <b>FINDUSER</b>\n\nRespondé a este mensaje con el ID de Telegram del usuario.`,
+    { reply_markup: { force_reply: true, selective: true } },
   );
 }
 
@@ -674,9 +751,10 @@ async function handleMessage(msg: TgMessage) {
     }
 
     // ===== Rechazo con motivo =====
-    const rejectMatch = replySource.match(/REJECT:([a-f0-9-]{36})/);
+    const rejectMatch = replySource.match(/REJECT:([a-f0-9-]{36})(?::(\d+))?/);
     if (rejectMatch) {
       const orderId = rejectMatch[1];
+      const photoMid = rejectMatch[2] ? parseInt(rejectMatch[2], 10) : 0;
       const note = text || "Sin motivo";
       const { data: order } = await sb
         .from("orders")
@@ -700,9 +778,17 @@ async function handleMessage(msg: TgMessage) {
       ]);
       const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
       await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id, note, pending: tpId(order.created_at) });
-      await sendMessage("admin", msg.chat.id, `Recarga rechazada. Motivo: ${escapeHtml(note)}`);
+      // Limpiar el prompt y marcar el comprobante visualmente
+      deleteMessage("admin", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
+      deleteMessage("admin", msg.chat.id, msg.message_id).catch(() => {});
+      if (photoMid > 0) {
+        await markReceiptStatus(msg.chat.id, photoMid, `❌ RECHAZADO`, note.slice(0, 60));
+      } else {
+        await sendMessage("admin", msg.chat.id, `❌ Rechazado · ${escapeHtml(note)}`);
+      }
       return;
     }
+
 
     // ===== Editar método de pago =====
     const pmEditMatch = replySource.match(/PMEDIT:([a-f0-9-]{36}):(\w+)/);
@@ -753,6 +839,19 @@ async function handleMessage(msg: TgMessage) {
       await sendMessage("admin", msg.chat.id, `Método agregado para ${country_name}.`);
       return;
     }
+
+    // ===== Buscar usuario por ID =====
+    if (replySource.includes("FINDUSER")) {
+      const id = parseInt(text.replace(/\D/g, ""), 10);
+      if (!Number.isFinite(id) || id <= 0) {
+        await sendMessage("admin", msg.chat.id, `ID inválido.`);
+        return;
+      }
+      await adminUserDetail(msg.chat.id, id);
+      return;
+    }
+
+
 
 
     const msgUserMatch = replySource.match(/MSGUSER:(\d+)/);
@@ -856,15 +955,25 @@ async function handleMessage(msg: TgMessage) {
           duration_label: (pr as { duration_label: string } | null)?.duration_label,
         });
       }
-      // Borrar el mensaje del admin para mantener el chat limpio
-      const { deleteMessage } = await import("./api.server");
+      // Limpieza visual
       deleteMessage("admin", msg.chat.id, msg.message_id).catch(() => {});
       if (msg.reply_to_message) {
         deleteMessage("admin", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
       }
-      await sendMessage("admin", msg.chat.id, `Key enviada al usuario <code>${u?.telegram_id ?? ord.telegram_id}</code>.`);
+      // Marcar el comprobante original (si existe vía receipts)
+      const { data: receipt } = await sb
+        .from("receipts")
+        .select("admin_message_id")
+        .eq("order_id", ord.id)
+        .maybeSingle();
+      if (receipt?.admin_message_id) {
+        await markReceiptStatus(msg.chat.id, receipt.admin_message_id, `🔑 KEY ENVIADA`, String(u?.telegram_id ?? ord.telegram_id));
+      } else {
+        await sendMessage("admin", msg.chat.id, `🔑 Key enviada a <code>${u?.telegram_id ?? ord.telegram_id}</code>.`);
+      }
       return;
     }
+
 
     const addKeysMatch = replySource.match(/ADDKEYS:([a-f0-9-]{36})/i);
     if (addKeysMatch && text.length > 0) {
@@ -1038,6 +1147,10 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminListProducts(chat_id);
     return;
   }
+  if (data === "akp:finduser") {
+    if (chat_id) await adminPromptFindUser(chat_id);
+    return;
+  }
   if (data === "akp:stock") {
     if (chat_id) await adminStockView(chat_id);
     return;
@@ -1175,24 +1288,25 @@ async function handleCallback(cb: TgCallback) {
     });
 
     if (cb.message) {
-      await editMessageText(
-        "admin",
+      await markReceiptStatus(
         cb.message.chat.id,
         cb.message.message_id,
-        (cb.message.caption ?? "") + `\n\nAPROBADO  ·  $${amount.toFixed(2)}`,
-        {},
+        `✅ APROBADO`,
+        `$${amount.toFixed(2)}`,
       );
     }
+    await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
     return;
   }
 
   if (action === "reject") {
-    // Pedir motivo del rechazo
+    // Pedir motivo del rechazo, llevando el msg_id del comprobante en el marker
     if (!chat_id) return;
+    const photoMid = cb.message?.message_id ?? 0;
     const sent = await sendMessage(
       "admin",
       chat_id,
-      `<b>REJECT:${target}</b>\n\nRespondé a este mensaje con el motivo del rechazo.`,
+      `<b>REJECT:${target}:${photoMid}</b>\n\nRespondé a este mensaje con el motivo del rechazo.`,
       { reply_markup: { force_reply: true, selective: true } },
     );
     if (sent.ok && sent.result) {
@@ -1210,9 +1324,13 @@ async function handleCallback(cb: TgCallback) {
       target_type: "telegram_id",
       target_id: target,
     });
-    await answerCallbackQuery("admin", cb.id, "Usuario bloqueado.", true);
+    if (cb.message) {
+      await markReceiptStatus(cb.message.chat.id, cb.message.message_id, `🚫 BLOQUEADO`, String(tgId));
+    }
+    await answerCallbackQuery("admin", cb.id, "🚫 Usuario bloqueado.", true);
     return;
   }
+
 
 
 
