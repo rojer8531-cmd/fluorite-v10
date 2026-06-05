@@ -1270,24 +1270,25 @@ async function handleCallback(cb: TgCallback) {
     });
 
     if (cb.message) {
-      await editMessageText(
-        "admin",
+      await markReceiptStatus(
         cb.message.chat.id,
         cb.message.message_id,
-        (cb.message.caption ?? "") + `\n\nAPROBADO  ·  $${amount.toFixed(2)}`,
-        {},
+        `✅ APROBADO`,
+        `$${amount.toFixed(2)}`,
       );
     }
+    await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
     return;
   }
 
   if (action === "reject") {
-    // Pedir motivo del rechazo
+    // Pedir motivo del rechazo, llevando el msg_id del comprobante en el marker
     if (!chat_id) return;
+    const photoMid = cb.message?.message_id ?? 0;
     const sent = await sendMessage(
       "admin",
       chat_id,
-      `<b>REJECT:${target}</b>\n\nRespondé a este mensaje con el motivo del rechazo.`,
+      `<b>REJECT:${target}:${photoMid}</b>\n\nRespondé a este mensaje con el motivo del rechazo.`,
       { reply_markup: { force_reply: true, selective: true } },
     );
     if (sent.ok && sent.result) {
@@ -1305,9 +1306,13 @@ async function handleCallback(cb: TgCallback) {
       target_type: "telegram_id",
       target_id: target,
     });
-    await answerCallbackQuery("admin", cb.id, "Usuario bloqueado.", true);
+    if (cb.message) {
+      await markReceiptStatus(cb.message.chat.id, cb.message.message_id, `🚫 BLOQUEADO`, String(tgId));
+    }
+    await answerCallbackQuery("admin", cb.id, "🚫 Usuario bloqueado.", true);
     return;
   }
+
 
 
 
