@@ -599,10 +599,14 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
 }
 
 async function adminPromptAnuncio(chat_id: number) {
+  // Activar estado "esperando anuncio" — el admin puede salir del bot y reenviar
+  // cualquier mensaje (texto, foto, documento, video…) y el siguiente que llegue
+  // será enviado a todos los usuarios.
+  await patchContext(Number(adminId()), { awaiting_broadcast: Date.now() });
   await sendMessage(
     "admin",
     chat_id,
-    `<b>BROADCAST_ANUNCIO</b>\n\nRespondé a este mensaje con el texto o la imagen que querés enviar como anuncio a todos los usuarios.`,
+    `<b>Anuncio</b>\n\nEnviá o reenviá ahora cualquier mensaje (texto, foto, documento, video…) y se transmitirá a todos los usuarios.\n\nTenés 10 minutos. Para cancelar escribí /cancelar.`,
   );
 }
 
