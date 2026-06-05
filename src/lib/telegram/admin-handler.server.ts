@@ -420,6 +420,10 @@ async function adminStockView(chat_id: number) {
   );
 }
 
+function adminId() {
+  return Number(getAdminChatId() ?? 0);
+}
+
 async function adminPendientes(chat_id: number) {
   const { data: orders } = await sb
     .from("orders")
@@ -428,24 +432,25 @@ async function adminPendientes(chat_id: number) {
     .order("created_at", { ascending: false })
     .limit(20);
   if (!orders || orders.length === 0) {
-    await sendMessage("admin", chat_id, `No hay órdenes pendientes.`);
+    await replaceAdminList(chat_id, adminId(), "pendientes", `📨 <b>Pendientes</b>\n\nNo hay órdenes pendientes.`);
     return;
   }
   const lines = orders
     .map((o) => {
       const label =
         o.order_type === "recharge"
-          ? "Recarga"
+          ? "💰 Recarga"
           : (o as { products: { name: string } | null }).products?.name ?? "—";
-      return `<code>${o.id.slice(0, 8)}</code>  ·  TG <code>${o.telegram_id}</code>  ·  $${Number(
+      return `<code>${o.id.slice(0, 8)}</code>  ·  <code>${o.telegram_id}</code>  ·  $${Number(
         o.total_usd,
       ).toFixed(2)}  ·  ${label}`;
     })
     .join("\n");
-  await sendMessage(
-    "admin",
+  await replaceAdminList(
     chat_id,
-    `<b>Pendientes (${orders.length})</b>\n\n${lines}\n\nUsá los botones en cada comprobante para aprobar.`,
+    adminId(),
+    "pendientes",
+    `📨 <b>Pendientes (${orders.length})</b>\n\n${lines}\n\n<i>Usá los botones en cada comprobante.</i>`,
   );
 }
 
@@ -463,33 +468,44 @@ async function adminUsuarios(chat_id: number, page = 0) {
     .range(from, to);
 
   if (!users || users.length === 0) {
-    await sendMessage("admin", chat_id, `<b>Usuarios</b>  ·  Total ${total}\n\nNo hay usuarios en esta página.`);
+    await replaceAdminList(chat_id, adminId(), "usuarios", `👥 <b>Usuarios</b>  ·  Total ${total}\n\nSin usuarios.`);
     return;
   }
 
   const lines = users.map((u, i) => {
     const idx = from + i + 1;
-    const uname = u.username ? `@${u.username}` : "(sin username)";
-    return (
-      `${idx}.  <b>${escapeHtml(u.display_name ?? "—")}</b>  ·  ${uname}\n` +
-      `    ID <code>${u.telegram_id}</code>  ·  Saldo $${Number(u.balance).toFixed(2)}  ·  Rec $${Number(u.total_recharged).toFixed(2)}  ·  ${u.rank}`
-    );
+    const uname = u.username ? `@${u.username}` : "—";
+    return `${idx}. ${escapeHtml(u.display_name ?? "—")} · ${uname} · <code>${u.telegram_id}</code> · $${Number(u.balance).toFixed(2)} · ${u.rank}`;
   });
 
-  const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = users.map((u) => [
-    { text: `Ver  ${u.display_name ?? u.telegram_id}`, callback_data: `akusr:${u.telegram_id}` },
-  ]);
-
+  const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
+  // Botones en filas de 2 para reducir tamaño visual
+  for (let i = 0; i < users.length; i += 2) {
+    const row = [{ text: `${from + i + 1}`, callback_data: `akusr:${users[i].telegram_id}` }];
+    if (users[i + 1]) row.push({ text: `${from + i + 2}`, callback_data: `akusr:${users[i + 1].telegram_id}` });
+    kb.push(row);
+  }
   const nav: Array<{ text: string; callback_data: string }> = [];
-  if (page > 0) nav.push({ text: "Anterior", callback_data: `akusrp:${page - 1}` });
-  if (to + 1 < total) nav.push({ text: "Siguiente", callback_data: `akusrp:${page + 1}` });
+  if (page > 0) nav.push({ text: "◀", callback_data: `akusrp:${page - 1}` });
+  if (to + 1 < total) nav.push({ text: "▶", callback_data: `akusrp:${page + 1}` });
   if (nav.length > 0) kb.push(nav);
+  kb.push([{ text: "🔍 Buscar por ID", callback_data: "akp:finduser" }]);
 
+  await replaceAdminList(
+    chat_id,
+    adminId(),
+    "usuarios",
+    `👥 <b>Usuarios</b>  ·  ${total}  ·  pág ${page + 1}/${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n")}`,
+    kb,
+  );
+}
+
+async function adminPromptFindUser(chat_id: number) {
   await sendMessage(
     "admin",
     chat_id,
-    `<b>Usuarios</b>  ·  Total ${total}\nPágina ${page + 1} de ${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n\n")}`,
-    { reply_markup: { inline_keyboard: kb } },
+    `🔍 <b>FINDUSER</b>\n\nRespondé a este mensaje con el ID de Telegram del usuario.`,
+    { reply_markup: { force_reply: true, selective: true } },
   );
 }
 
