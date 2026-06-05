@@ -23,6 +23,7 @@ import {
 } from "./db.server";
 import { renderScreen, silentDelete } from "./ui.server";
 import { getVisibleCatalog, invalidateCatalogCache } from "./catalog.server";
+import { ocrReceipt, formatOcrSummary } from "./ocr.server";
 
 const MIN_RECHARGE_USD = 5;
 function tpId(createdAt: string | Date) {
