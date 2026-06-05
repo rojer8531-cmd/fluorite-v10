@@ -144,7 +144,7 @@ async function ensureAdminBar(chat_id: number, admin_id: number) {
   const st = await getState(admin_id);
   const ctx = (st?.context ?? {}) as Record<string, unknown>;
   if (ctx.bar_shown) return;
-  await sendMessage("admin", chat_id, `📋 Panel listo. Usá la barra inferior.`, {
+  await sendMessage("admin", chat_id, `Listo. Usá la barra inferior.`, {
     reply_markup: adminBottomKeyboard(),
   });
   await patchContext(admin_id, { bar_shown: true });
