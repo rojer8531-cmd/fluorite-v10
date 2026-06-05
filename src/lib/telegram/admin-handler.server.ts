@@ -2,7 +2,6 @@
 import {
   sendMessage,
   editMessageText,
-  editMessageCaption,
   editMessageReplyMarkup,
   deleteMessage,
   answerCallbackQuery,
