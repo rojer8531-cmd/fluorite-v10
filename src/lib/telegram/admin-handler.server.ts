@@ -1041,33 +1041,20 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_BOTTOM.anuncio:
       await adminPromptAnuncio(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.panel:
-      await showAdminPanel(msg.chat.id);
+    case ADMIN_BOTTOM.metodos:
+      await pmMenu(msg.chat.id);
       return;
   }
 
   if (text === "/start" || text === "/help" || text === "/panel") {
-    // Mostrar la barra inferior + panel + ayuda
+    // Solo mostrar la barra inferior, sin panel ni listas de comandos.
     await sendMessage(
       "admin",
       msg.chat.id,
-      `<b>Panel Admin</b>\n\nUsá la barra inferior para acceder rápido a las funciones más usadas.`,
+      `Listo. Usá la barra inferior.`,
       { reply_markup: adminBottomKeyboard() },
     );
-    await showAdminPanel(msg.chat.id);
-    await sendMessage(
-      "admin",
-      msg.chat.id,
-      `<b>Comandos disponibles</b>\n\n` +
-        `/pendientes  órdenes esperando aprobación\n` +
-        `/stock       stock por producto y duración\n` +
-        `/precios     catálogo con IDs cortos, precios y stock\n` +
-        `/setprecio &lt;priceId&gt; &lt;usd&gt;   editar precio sin reinicio\n` +
-        `/addkeys &lt;priceId&gt;             responder con 1 key por línea\n` +
-        `/ocultar_sin_stock on|off       mostrar u ocultar variantes sin stock\n` +
-        `/usuarios    total usuarios\n\n` +
-        `Los comprobantes y recargas llegan automáticamente con botones.`,
-    );
+    await patchContext(msg.from.id, { bar_shown: true });
     return;
   }
 
