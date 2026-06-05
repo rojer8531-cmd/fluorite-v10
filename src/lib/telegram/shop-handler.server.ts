@@ -1234,28 +1234,31 @@ async function handleCallback(cb: TgCallback) {
 async function showOrderStatus(telegram_id: number, chat_id: number) {
   const { data: orders } = await sb
     .from("orders")
-    .select("id, status, total_usd, created_at, products(name)")
+    .select("id, status, total_usd, created_at, products(name), product_prices(duration_label)")
     .eq("telegram_id", telegram_id)
     .order("created_at", { ascending: false })
     .limit(10);
   if (!orders || orders.length === 0) {
     return renderScreen("shop", telegram_id, chat_id, `No tenés órdenes.`, [BACK_BUTTON]);
   }
-  const lines = orders
-    .map((o) => {
-      const p = (o as { products: { name: string } }).products;
-      const mark =
-        o.status === "delivered"
-          ? "[OK]"
-          : o.status === "pending_approval"
-            ? "[…]"
-            : o.status === "rejected"
-              ? "[X]"
-              : "[·]";
-      return `${mark}  ${p?.name ?? "—"}  ·  $${Number(o.total_usd).toFixed(2)}  ·  <i>${o.status}</i>`;
-    })
-    .join("\n");
-  return renderScreen("shop", telegram_id, chat_id, `<b>Mis órdenes</b>\n\n${lines}`, [BACK_BUTTON]);
+  const statusLabel: Record<string, string> = {
+    delivered: "Entregado",
+    pending_approval: "En revisión",
+    pending_receipt: "Esperando comprobante",
+    rejected: "Rechazado",
+    approved: "Aprobado",
+    pending: "Pendiente",
+  };
+  const blocks = orders.map((o) => {
+    const p = (o as { products: { name: string } | null }).products;
+    const pr = (o as { product_prices: { duration_label: string } | null }).product_prices;
+    const date = new Date(o.created_at).toLocaleDateString("es");
+    const name = p?.name ?? "—";
+    const dur = pr?.duration_label ? ` ${pr.duration_label}` : "";
+    const st = statusLabel[o.status] ?? o.status;
+    return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n${st}\n$${Number(o.total_usd).toFixed(2)}\n${date}`;
+  });
+  return renderScreen("shop", telegram_id, chat_id, `<b>Mis órdenes</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
 }
 
 async function showMyKeys(telegram_id: number, chat_id: number) {
@@ -1263,17 +1266,51 @@ async function showMyKeys(telegram_id: number, chat_id: number) {
   if (!user) return;
   const { data: keys } = await sb
     .from("order_keys")
-    .select("key_value, delivered_at")
+    .select("key_value, delivered_at, orders(products(name), product_prices(duration_label))")
     .eq("user_id", user.id)
     .order("delivered_at", { ascending: false })
-    .limit(20);
+    .limit(30);
   if (!keys || keys.length === 0) {
-    return renderScreen("shop", telegram_id, chat_id, `No tenés keys aún.`, [BACK_BUTTON]);
+    return renderScreen("shop", telegram_id, chat_id, `Aún no tenés keys.`, [BACK_BUTTON]);
   }
-  const text = keys.map((k) => `<code>${k.key_value}</code>`).join("\n");
-  return renderScreen("shop", telegram_id, chat_id, `<b>Mis keys (últimas ${keys.length})</b>\n\n${text}`, [
-    BACK_BUTTON,
-  ]);
+  const blocks = keys.map((k) => {
+    const ord = (k as { orders: { products: { name: string } | null; product_prices: { duration_label: string } | null } | null }).orders;
+    const name = ord?.products?.name ?? "Producto";
+    const dur = ord?.product_prices?.duration_label ? ` ${ord.product_prices.duration_label}` : "";
+    return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n<code>${escapeHtml(k.key_value)}</code>`;
+  });
+  return renderScreen("shop", telegram_id, chat_id, `<b>Mis keys</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
+}
+
+async function showAnnouncements(telegram_id: number, chat_id: number) {
+  const { data: deliveries } = await sb
+    .from("announcement_deliveries")
+    .select("id, message_id, read_at, announcement_id, announcements(preview, created_at)")
+    .eq("telegram_id", telegram_id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (!deliveries || deliveries.length === 0) {
+    return renderScreen("shop", telegram_id, chat_id, `No hay anuncios.`, [BACK_BUTTON]);
+  }
+  const blocks = deliveries.map((d, i) => {
+    const a = (d as { announcements: { preview: string; created_at: string } | null }).announcements;
+    const date = a ? new Date(a.created_at).toLocaleDateString("es") : "";
+    const tag = d.read_at ? "" : " · NUEVO";
+    const preview = a?.preview?.slice(0, 80) || "Anuncio";
+    return `${i + 1}. <b>${escapeHtml(preview)}</b>\n${date}${tag}`;
+  });
+  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let i = 0; i < deliveries.length; i += 2) {
+    const row = [{ text: `Abrir ${i + 1}`, callback_data: `anvw:${deliveries[i].id}` }];
+    if (deliveries[i + 1]) row.push({ text: `Abrir ${i + 2}`, callback_data: `anvw:${deliveries[i + 1].id}` });
+    kb.push(row);
+  }
+  kb.push([{ text: "Volver", callback_data: "menu:main" }]);
+  return renderScreen("shop", telegram_id, chat_id, `<b>Anuncios</b>\n\n${blocks.join("\n\n")}`, kb);
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /** Llamado desde el admin bot tras aprobar el pago. */
