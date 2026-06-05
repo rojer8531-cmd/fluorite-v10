@@ -69,6 +69,7 @@ const BOTTOM_MENU = {
   profile: "Perfil",
   keys: "Mis Keys",
   recharge: "Recargar",
+  announcements: "Anuncios",
   support: "Soporte",
 };
 
@@ -78,7 +79,7 @@ function bottomKeyboard() {
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.buy }],
       [{ text: BOTTOM_MENU.status }, { text: BOTTOM_MENU.profile }],
       [{ text: BOTTOM_MENU.keys }, { text: BOTTOM_MENU.recharge }],
-      [{ text: BOTTOM_MENU.support }],
+      [{ text: BOTTOM_MENU.announcements }, { text: BOTTOM_MENU.support }],
     ],
     resize_keyboard: true,
     is_persistent: true,
