@@ -1129,6 +1129,10 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminListProducts(chat_id);
     return;
   }
+  if (data === "akp:finduser") {
+    if (chat_id) await adminPromptFindUser(chat_id);
+    return;
+  }
   if (data === "akp:stock") {
     if (chat_id) await adminStockView(chat_id);
     return;
