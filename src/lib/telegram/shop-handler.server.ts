@@ -715,6 +715,16 @@ async function handleReceiptPhoto(msg: TgMessage) {
     return;
   }
 
+  // Límite diario de comprobantes: 10 por día
+  if (!(await checkRateLimit(telegram_id, "receipt_day", 10, 86400))) {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `Alcanzaste el límite de 10 comprobantes por día. Probá mañana o esperá una respuesta del admin.`,
+    );
+    return;
+  }
+
   // Anti duplicado 24h
   const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { data: dup } = await sb
@@ -727,7 +737,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     await sendMessage(
       "shop",
       chat_id,
-      `Este comprobante ya fue enviado antes. Bloqueado por 24h.`,
+      `Este comprobante ya fue enviado antes.`,
     );
     return;
   }
