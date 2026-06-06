@@ -5,6 +5,7 @@ import {
   getFile,
   downloadFile,
   answerCallbackQuery,
+  editMessageText,
   getAdminChatId,
   tg,
 } from "./api.server";
@@ -18,25 +19,42 @@ import {
   checkRateLimit,
   isBlocked,
   autoBlock,
+  getActiveMessage,
   setActiveMessage,
   sb,
 } from "./db.server";
 import { silentDelete } from "./ui.server";
 
 /**
- * Pantalla "no destructiva": SIEMPRE envía un nuevo mensaje al chat.
- * No edita ni borra los anteriores — el usuario conserva todo el historial.
+ * Pantalla de navegación: edita el mensaje activo del usuario si existe
+ * (evita amontonar mensajes mientras navega dentro de un mismo flujo).
+ * Si no hay mensaje activo o la edición falla, envía uno nuevo.
+ *
+ * `final: true` => el mensaje queda en el historial y NO será editado
+ * por la próxima pantalla (p. ej. entrega de keys, confirmaciones).
  */
 async function screen(
   telegram_id: number,
   chat_id: number,
   text: string,
   keyboard?: Array<Array<{ text: string; callback_data?: string; copy_text?: { text: string }; switch_inline_query?: string }>>,
+  opts?: { final?: boolean },
 ) {
   const reply_markup = keyboard ? { inline_keyboard: keyboard } : undefined;
+  const active = await getActiveMessage(telegram_id);
+  if (active && active.chat_id === chat_id && active.message_id > 0 && !opts?.final) {
+    const edited = await editMessageText("shop", chat_id, active.message_id, text, { reply_markup });
+    if (edited.ok) return active.message_id;
+  }
   const sent = await sendMessage("shop", chat_id, text, { reply_markup });
   if (sent.ok && sent.result) {
-    await setActiveMessage(telegram_id, chat_id, sent.result.message_id);
+    if (opts?.final) {
+      // Limpiamos el mensaje activo para que el próximo flujo abra uno nuevo
+      // y este quede preservado en el historial del chat.
+      await setActiveMessage(telegram_id, chat_id, 0);
+    } else {
+      await setActiveMessage(telegram_id, chat_id, sent.result.message_id);
+    }
     return sent.result.message_id;
   }
   return null;
@@ -171,14 +189,17 @@ const REFERRAL_DISCOUNT_USD = 1;
 
 async function showMainMenu(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "menu", {});
-  // Enviamos un mensaje invisible con el teclado inferior y lo borramos al
-  // toque, en paralelo, para no bloquear la respuesta al usuario.
-  const sent = await sendMessage("shop", chat_id, "\u2063", {
-    reply_markup: bottomKeyboard(),
-  });
-  if (sent.ok && sent.result) {
-    silentDelete("shop", chat_id, sent.result.message_id).catch(() => {});
-  }
+  // Limpiamos el "mensaje activo" para que el próximo flujo abra un mensaje
+  // nuevo (en lugar de editar uno antiguo de otra sección).
+  await setActiveMessage(telegram_id, chat_id, 0);
+  // Reenviamos la barra inferior (ReplyKeyboard persistente) en cada vuelta
+  // al menú, sin borrarla, así nunca desaparece para el usuario.
+  await sendMessage(
+    "shop",
+    chat_id,
+    `🏠 <b>Inicio</b>\n\nElegí una opción desde la barra inferior.`,
+    { reply_markup: bottomKeyboard() },
+  );
 }
 
 async function deliverBottomKeyboard(chat_id: number, text: string) {
@@ -759,6 +780,7 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
       chat_id,
       `✅ <b>Compra completada</b>\n\nProducto  ${(price as { products: { name: string } }).products.name}\nDuración  ${price.duration_label}\nCantidad  ${qty}\n\n<b>Tus keys</b>\n${keysText}`,
       [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+      { final: true },
     );
     return;
   }
@@ -801,6 +823,7 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
       `Cantidad  ${qty}\n\n` +
       `Sin stock automático. El admin entregará la key en breve.`,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    { final: true },
   );
 }
 
@@ -1044,6 +1067,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     chat_id,
     reviewText,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    { final: true },
   );
 }
 
@@ -1160,6 +1184,7 @@ async function handleReceiptDocument(msg: TgMessage) {
       `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
       `Se Paciente Y Espera.`,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    { final: true },
   );
 }
 
