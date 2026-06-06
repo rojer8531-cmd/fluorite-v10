@@ -32,6 +32,45 @@ function tpId(createdAt: string | Date) {
   return `TP${t}`;
 }
 
+/** Normaliza string para comparación: minúsculas, sin acentos, sin signos. */
+function normTxt(s: string) {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * ¿El destinatario detectado por la IA coincide con el titular o la cuenta del método?
+ * Tolerante: basta con que UN token significativo (>=3 chars) coincida,
+ * o que la cuenta/alias aparezca como substring del recipient.
+ */
+function recipientMatches(recipient: string, holder: string, account: string | null): boolean {
+  const r = normTxt(recipient);
+  if (!r) return true; // sin datos: no bloquear
+  const h = normTxt(holder);
+  if (h && r.includes(h)) return true;
+  if (h) {
+    const tokens = h.split(" ").filter((t) => t.length >= 3);
+    let hits = 0;
+    for (const t of tokens) if (r.includes(t)) hits++;
+    if (hits >= 1) return true;
+  }
+  if (account) {
+    const a = normTxt(account);
+    if (a && a.length >= 4 && r.includes(a)) return true;
+    // si el alias/cuenta tiene tokens largos, también permitir
+    if (a) {
+      const at = a.split(" ").filter((t) => t.length >= 4);
+      for (const t of at) if (r.includes(t)) return true;
+    }
+  }
+  return false;
+}
+
 const ACCESS_PASSWORD = "117";
 
 interface Update {
