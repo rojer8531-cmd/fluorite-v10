@@ -1244,6 +1244,14 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_BOTTOM.metodos:
       await pmMenu(msg.chat.id);
       return;
+    case ADMIN_BOTTOM.borrar:
+      await cleanAdminChat(msg.chat.id, msg.from.id);
+      return;
+  }
+
+  if (text === "/delete" || text === "/borrar") {
+    await cleanAdminChat(msg.chat.id, msg.from.id);
+    return;
   }
 
   if (text === "/start" || text === "/help" || text === "/panel") {
