@@ -1226,7 +1226,7 @@ async function handleMessage(msg: TgMessage) {
     return;
   }
 
-  await getOrCreateUser({
+  const botUser = await getOrCreateUser({
     telegram_id,
     chat_id,
     username: msg.from.username,
@@ -1249,6 +1249,15 @@ async function handleMessage(msg: TgMessage) {
   }
 
   const text = (msg.text ?? "").trim();
+
+  // Atajo: si el usuario ya está autenticado y tocó la barra inferior,
+  // enrutar primero para responder al primer toque sin queries extra.
+  if (
+    botUser.is_authenticated &&
+    (await routeBottomMenu(text, telegram_id, chat_id, msg.message_id))
+  ) {
+    return;
+  }
 
   if (text === "/start" || text.startsWith("/start ")) {
     // Quitar el bubble del propio /start del usuario para que el chat quede limpio.
@@ -1280,28 +1289,11 @@ async function handleMessage(msg: TgMessage) {
         }
       }
     }
-    const { data: u } = await sb
-      .from("bot_users")
-      .select("*")
-      .eq("telegram_id", telegram_id)
-      .single();
-    if (u?.is_authenticated) {
+    if (botUser.is_authenticated) {
       await showMainMenu(telegram_id, chat_id);
     } else {
       await askName(telegram_id, chat_id);
     }
-    return;
-  }
-
-  const { data: authUser } = await sb
-    .from("bot_users")
-    .select("is_authenticated")
-    .eq("telegram_id", telegram_id)
-    .maybeSingle();
-  if (
-    authUser?.is_authenticated &&
-    (await routeBottomMenu(text, telegram_id, chat_id, msg.message_id))
-  ) {
     return;
   }
 
