@@ -25,6 +25,8 @@ export interface TgResult<T = unknown> {
   parameters?: { retry_after?: number };
 }
 
+const TG_TIMEOUT_MS = 8000;
+
 export async function tg<T = unknown>(
   bot: BotKind,
   method: string,
@@ -36,8 +38,10 @@ export async function tg<T = unknown>(
     return { ok: false, description: `Missing token for ${bot}` };
   }
   const url = `https://api.telegram.org/bot${token}/${method}`;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), TG_TIMEOUT_MS);
   try {
-    const init: RequestInit = { method: "POST" };
+    const init: RequestInit = { method: "POST", signal: ac.signal };
     if (payload instanceof FormData) {
       init.body = payload;
     } else if (payload) {
@@ -47,8 +51,7 @@ export async function tg<T = unknown>(
     const res = await fetch(url, init);
     const data = (await res.json()) as TgResult<T>;
     if (!data.ok) {
-      // Rate limit
-      if (data.error_code === 429 && data.parameters?.retry_after && attempt < 3) {
+      if (data.error_code === 429 && data.parameters?.retry_after && attempt < 2) {
         await sleep((data.parameters.retry_after + 1) * 1000);
         return tg<T>(bot, method, payload, attempt + 1);
       }
@@ -57,11 +60,13 @@ export async function tg<T = unknown>(
     return data;
   } catch (err) {
     console.error(`[tg ${bot}/${method}] fetch error`, err);
-    if (attempt < 2) {
-      await sleep(500 * 2 ** attempt);
+    if (attempt < 1) {
+      await sleep(300);
       return tg<T>(bot, method, payload, attempt + 1);
     }
     return { ok: false, description: String(err) };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
