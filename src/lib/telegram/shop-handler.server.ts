@@ -1216,6 +1216,8 @@ async function handleMessage(msg: TgMessage) {
   const text = (msg.text ?? "").trim();
 
   if (text === "/start" || text.startsWith("/start ")) {
+    // Quitar el bubble del propio /start del usuario para que el chat quede limpio.
+    silentDelete("shop", chat_id, msg.message_id).catch(() => {});
     if (!(await tryAcquireStartLock(telegram_id))) return;
     const rawParam = text.startsWith("/start ") ? text.slice(7).trim() : "";
     const refMatch = rawParam.match(/ref(\d+)/i);
