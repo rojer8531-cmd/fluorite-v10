@@ -533,7 +533,7 @@ function adminId() {
 async function adminPendientes(chat_id: number) {
   const { data: orders } = await sb
     .from("orders")
-    .select("id, telegram_id, total_usd, order_type, products(name)")
+    .select("id, telegram_id, total_usd, order_type, created_at, products(name)")
     .eq("status", "pending_approval")
     .order("created_at", { ascending: false })
     .limit(20);
@@ -541,22 +541,28 @@ async function adminPendientes(chat_id: number) {
     await replaceAdminList(chat_id, adminId(), "pendientes", `<b>Pendientes</b>\n\nNo hay órdenes pendientes.`);
     return;
   }
-  const lines = orders
-    .map((o) => {
-      const label =
-        o.order_type === "recharge"
-          ? "Recarga"
-          : (o as { products: { name: string } | null }).products?.name ?? "—";
-      return `<code>${o.id.slice(0, 8)}</code>  ·  <code>${o.telegram_id}</code>  ·  $${Number(
-        o.total_usd,
-      ).toFixed(2)}  ·  ${label}`;
-    })
-    .join("\n");
+  const lines: string[] = [];
+  const kb: Array<Array<{ text: string; callback_data?: string }>> = [];
+  orders.forEach((o, i) => {
+    const label =
+      o.order_type === "recharge"
+        ? "Recarga"
+        : (o as { products: { name: string } | null }).products?.name ?? "—";
+    const n = i + 1;
+    lines.push(
+      `<b>${n}.</b> <code>${o.id.slice(0, 8)}</code> · <code>${o.telegram_id}</code> · $${Number(o.total_usd).toFixed(2)} · ${label}`,
+    );
+    kb.push([
+      { text: `${n} Aprobar`, callback_data: `ord:approve:${o.id}` },
+      { text: `${n} Rechazar`, callback_data: `ord:reject:${o.id}` },
+    ]);
+  });
   await replaceAdminList(
     chat_id,
     adminId(),
     "pendientes",
-    `<b>Pendientes (${orders.length})</b>\n\n${lines}\n\n<i>Usá los botones en cada comprobante.</i>`,
+    `<b>Pendientes (${orders.length})</b>\n\n${lines.join("\n")}`,
+    kb,
   );
 }
 
@@ -924,6 +930,7 @@ async function handleMessage(msg: TgMessage) {
       } else {
         await sendMessage("admin", msg.chat.id, `❌ Rechazado · ${escapeHtml(note)}`);
       }
+      await adminPendientes(msg.chat.id);
       return;
     }
 
@@ -1412,22 +1419,30 @@ async function handleCallback(cb: TgCallback) {
       pending,
     });
 
-    if (cb.message) {
-      await markReceiptStatus(
-        cb.message.chat.id,
-        cb.message.message_id,
-        `✅ APROBADO`,
-        `$${amount.toFixed(2)}`,
-      );
+    // Marcar el comprobante real (si existe) y, si no, el mensaje del callback
+    const { data: rcpt } = await sb
+      .from("receipts")
+      .select("admin_message_id")
+      .eq("order_id", target)
+      .maybeSingle();
+    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
+    if (photoMid && cb.message) {
+      await markReceiptStatus(cb.message.chat.id, photoMid, `✅ APROBADO`, `$${amount.toFixed(2)}`);
     }
     await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
+    if (cb.message) await adminPendientes(cb.message.chat.id);
     return;
   }
 
   if (action === "reject") {
-    // Pedir motivo del rechazo, llevando el msg_id del comprobante en el marker
     if (!chat_id) return;
-    const photoMid = cb.message?.message_id ?? 0;
+    // Preferir el msg_id real del comprobante (si lo conocemos) sobre el del panel.
+    const { data: rcpt } = await sb
+      .from("receipts")
+      .select("admin_message_id")
+      .eq("order_id", target)
+      .maybeSingle();
+    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
     const sent = await sendMessage(
       "admin",
       chat_id,
@@ -1437,6 +1452,7 @@ async function handleCallback(cb: TgCallback) {
     if (sent.ok && sent.result) {
       await sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", target);
     }
+    await answerCallbackQuery("admin", cb.id, "Esperando motivo…");
     return;
   }
 
