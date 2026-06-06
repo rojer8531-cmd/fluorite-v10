@@ -1294,34 +1294,20 @@ async function handleMessage(msg: TgMessage) {
   }
 
   const st = await getState(telegram_id);
-  // Solo borramos el mensaje del usuario si está ingresando la contraseña,
-  // para no dejar credenciales visibles en el chat.
-  if (st?.state === "login_password") {
-    silentDelete("shop", chat_id, msg.message_id).catch(() => {});
-  }
 
   if (st?.state === "login_name") {
     if (text.length < 2 || text.length > 40) {
       await screen(telegram_id, chat_id, `Nombre inválido. Ingresá entre 2 y 40 caracteres.`);
       return;
     }
-    await askPassword(telegram_id, chat_id, text);
-    return;
-  }
-  if (st?.state === "login_password") {
-    if (text !== ACCESS_PASSWORD) {
-      await screen(telegram_id, chat_id, `Contraseña incorrecta. Intentá de nuevo:`);
-      return;
-    }
-    const name = (st.context?.display_name as string) ?? "Usuario";
     await updateUser(telegram_id, {
       is_authenticated: true,
-      display_name: name,
+      display_name: text,
     });
-    await deliverBottomKeyboard(chat_id, `✨ Listo, <b>${name}</b>.`);
     await showMainMenu(telegram_id, chat_id);
     return;
   }
+
 
   if (st?.state === "recharge_amount") {
     const n = Number(text.replace(",", "."));
