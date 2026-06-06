@@ -171,7 +171,9 @@ export type Database = {
           last_seen_at: string
           password_hash: string | null
           rank: Database["public"]["Enums"]["user_rank"]
+          referred_by_telegram_id: number | null
           registered_at: string
+          shares_count: number
           telegram_id: number
           total_recharged: number
           updated_at: string
@@ -187,7 +189,9 @@ export type Database = {
           last_seen_at?: string
           password_hash?: string | null
           rank?: Database["public"]["Enums"]["user_rank"]
+          referred_by_telegram_id?: number | null
           registered_at?: string
+          shares_count?: number
           telegram_id: number
           total_recharged?: number
           updated_at?: string
@@ -203,7 +207,9 @@ export type Database = {
           last_seen_at?: string
           password_hash?: string | null
           rank?: Database["public"]["Enums"]["user_rank"]
+          referred_by_telegram_id?: number | null
           registered_at?: string
+          shares_count?: number
           telegram_id?: number
           total_recharged?: number
           updated_at?: string
