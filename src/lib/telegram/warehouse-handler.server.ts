@@ -1269,10 +1269,6 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminStockView(chat_id);
     return;
   }
-  if (data === "akp:pend") {
-    if (chat_id) await adminPendientes(chat_id);
-    return;
-  }
   if (data === "akp:users") {
     if (chat_id) await adminUsuarios(chat_id);
     return;
