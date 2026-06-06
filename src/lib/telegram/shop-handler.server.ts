@@ -154,17 +154,13 @@ const REFERRAL_DISCOUNT_USD = 1;
 
 async function showMainMenu(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "menu", {});
-  const active = await getActiveMessage(telegram_id);
-  if (active && active.chat_id === chat_id) {
-    silentDelete("shop", chat_id, active.message_id).catch(() => {});
-  }
-  // Asegurar barra inferior sin mostrar texto adicional al usuario
-  const sent = await sendMessage("shop", chat_id, "\u2063", {
-    reply_markup: bottomKeyboard(),
-  });
-  if (sent.ok && sent.result) {
-    silentDelete("shop", chat_id, sent.result.message_id).catch(() => {});
-  }
+  // No enviamos ningún mensaje visible. El teclado inferior persiste desde
+  // la primera vez que se entregó (durante el onboarding), así que /start
+  // simplemente deja la barra inferior disponible sin generar burbujas.
+}
+
+async function deliverBottomKeyboard(chat_id: number, text: string) {
+  await sendMessage("shop", chat_id, text, { reply_markup: bottomKeyboard() });
 }
 
 async function showShareBot(telegram_id: number, chat_id: number) {
