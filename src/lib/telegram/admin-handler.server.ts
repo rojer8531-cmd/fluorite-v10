@@ -533,7 +533,7 @@ function adminId() {
 async function adminPendientes(chat_id: number) {
   const { data: orders } = await sb
     .from("orders")
-    .select("id, telegram_id, total_usd, order_type, products(name)")
+    .select("id, telegram_id, total_usd, order_type, created_at, products(name)")
     .eq("status", "pending_approval")
     .order("created_at", { ascending: false })
     .limit(20);
@@ -541,22 +541,28 @@ async function adminPendientes(chat_id: number) {
     await replaceAdminList(chat_id, adminId(), "pendientes", `<b>Pendientes</b>\n\nNo hay órdenes pendientes.`);
     return;
   }
-  const lines = orders
-    .map((o) => {
-      const label =
-        o.order_type === "recharge"
-          ? "Recarga"
-          : (o as { products: { name: string } | null }).products?.name ?? "—";
-      return `<code>${o.id.slice(0, 8)}</code>  ·  <code>${o.telegram_id}</code>  ·  $${Number(
-        o.total_usd,
-      ).toFixed(2)}  ·  ${label}`;
-    })
-    .join("\n");
+  const lines: string[] = [];
+  const kb: Array<Array<{ text: string; callback_data?: string }>> = [];
+  orders.forEach((o, i) => {
+    const label =
+      o.order_type === "recharge"
+        ? "Recarga"
+        : (o as { products: { name: string } | null }).products?.name ?? "—";
+    const n = i + 1;
+    lines.push(
+      `<b>${n}.</b> <code>${o.id.slice(0, 8)}</code> · <code>${o.telegram_id}</code> · $${Number(o.total_usd).toFixed(2)} · ${label}`,
+    );
+    kb.push([
+      { text: `${n} Aprobar`, callback_data: `ord:approve:${o.id}` },
+      { text: `${n} Rechazar`, callback_data: `ord:reject:${o.id}` },
+    ]);
+  });
   await replaceAdminList(
     chat_id,
     adminId(),
     "pendientes",
-    `<b>Pendientes (${orders.length})</b>\n\n${lines}\n\n<i>Usá los botones en cada comprobante.</i>`,
+    `<b>Pendientes (${orders.length})</b>\n\n${lines.join("\n")}`,
+    kb,
   );
 }
 
