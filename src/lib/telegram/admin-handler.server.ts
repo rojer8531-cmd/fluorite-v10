@@ -158,18 +158,18 @@ export async function handleAdminUpdate(update: Update): Promise<void> {
 
 // ===== Panel admin (inline) =====
 async function showAdminPanel(chat_id: number) {
-  await sendMessage("admin", chat_id, `📋 <b>Panel Admin</b>\n\nElegí una opción:`, {
+  await sendMessage("admin", chat_id, `<b>Panel Admin</b>\n\nElegí una opción:`, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "🔑 Agregar Keys", callback_data: "akp:add" }],
-        [{ text: "📦 Ver Stock", callback_data: "akp:stock" }],
+        [{ text: "Agregar Keys", callback_data: "akp:add" }],
+        [{ text: "Ver Stock", callback_data: "akp:stock" }],
         [
-          { text: "📨 Pendientes", callback_data: "akp:pend" },
-          { text: "👥 Usuarios", callback_data: "akp:users" },
+          { text: "Pendientes", callback_data: "akp:pend" },
+          { text: "Usuarios", callback_data: "akp:users" },
         ],
-        [{ text: "🔍 Buscar Usuario", callback_data: "akp:finduser" }],
-        [{ text: "💳 Métodos de Pago", callback_data: "akp:pm" }],
-        [{ text: "📣 Anuncio", callback_data: "akp:anuncio" }],
+        [{ text: "Buscar Usuario", callback_data: "akp:finduser" }],
+        [{ text: "Métodos de Pago", callback_data: "akp:pm" }],
+        [{ text: "Anuncio", callback_data: "akp:anuncio" }],
       ],
     },
   });
