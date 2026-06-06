@@ -204,7 +204,7 @@ async function showShareBot(telegram_id: number, chat_id: number) {
       ? `<b>Descuento activo:</b> $${REFERRAL_DISCOUNT_USD.toFixed(2)} USD menos por cada key.`
       : `Te faltan <b>${remaining}</b> invitados para activar <b>$${REFERRAL_DISCOUNT_USD.toFixed(2)} USD</b> de descuento por cada key.`;
   const text =
-    `<b>Compartir Bot</b>\n\n` +
+    `🤝 <b>Compartir Bot</b>\n\n` +
     `Tu link personal:\n<code>${link}</code>\n\n` +
     `Invitados: <b>${shares}</b> / ${REFERRAL_GOAL}\n` +
     `${status}`;
@@ -219,7 +219,7 @@ async function showSupport(telegram_id: number, chat_id: number) {
   await screen(
     telegram_id,
     chat_id,
-    `<b>Soporte</b>\n\nEscribinos por Telegram a <b>${SUPPORT_USERNAME}</b>.\nTe respondemos a la brevedad.`,
+    `💬 <b>Soporte</b>\n\nEscribinos por Telegram a <b>${SUPPORT_USERNAME}</b>.\nTe respondemos a la brevedad.`,
     [BACK_BUTTON],
   );
 }
@@ -244,7 +244,7 @@ async function showProfile(telegram_id: number, chat_id: number) {
     .single();
   if (!u) return;
   const text =
-    `<b>Mi Perfil</b>\n\n` +
+    `👤 <b>Mi Perfil</b>\n\n` +
     `Nombre   <b>${u.display_name ?? "—"}</b>\n` +
     `Usuario  @${u.username ?? "—"}\n` +
     `ID       <code>${u.telegram_id}</code>\n` +
@@ -265,7 +265,7 @@ async function showProducts(telegram_id: number, chat_id: number) {
   await screen(
     telegram_id,
     chat_id,
-    `<b>Productos</b>\n\nElegí una categoría:`,
+    `🛒 <b>Productos</b>\n\nElegí una categoría:`,
     [...categoryButtons(grouped), BACK_BUTTON],
   );
 }
@@ -319,8 +319,8 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     await screen(
     telegram_id,
       chat_id,
-      `<b>Saldo insuficiente</b>\n\nNo tenés saldo para comprar.\nSaldo actual: <b>$0.00 USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
-      [[{ text: "Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
+      `💸 <b>Saldo insuficiente</b>\n\nNo tenés saldo para comprar.\nSaldo actual: <b>$0.00 USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
+      [[{ text: "💰 Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
     );
     return;
   }
@@ -329,8 +329,8 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     await screen(
     telegram_id,
       chat_id,
-      `<b>Saldo insuficiente</b>\n\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
-      [[{ text: "Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
+      `💸 <b>Saldo insuficiente</b>\n\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
+      [[{ text: "💰 Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
     );
     return;
   }
@@ -358,7 +358,7 @@ async function showQty(telegram_id: number, chat_id: number, price_id: string) {
   await screen(
     telegram_id,
     chat_id,
-    `<b>Cantidad de keys</b>\n\n¿Cuántas necesitás?`,
+    `🔢 <b>Cantidad de keys</b>\n\n¿Cuántas necesitás?`,
     [
       [
         { text: "1", callback_data: "qty:1" },
@@ -408,7 +408,7 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
   await screen(
     telegram_id,
     chat_id,
-    `<b>Método de pago</b>\n\nTotal  <b>$${total_usd.toFixed(2)} USD</b>\nSaldo  $${balance.toFixed(2)}${stockNote}`,
+    `💳 <b>Método de pago</b>\n\nTotal  <b>$${total_usd.toFixed(2)} USD</b>\nSaldo  $${balance.toFixed(2)}${stockNote}`,
     kb,
   );
 }
@@ -482,7 +482,7 @@ async function showPaymentInstructions(
   await setState(telegram_id, "awaiting_receipt", { order_id: order.id });
 
   const text =
-    `<b>Instrucciones de pago</b>\n\n` +
+    `📋 <b>Instrucciones de pago</b>\n\n` +
     `Producto   <b>${(price as { products: { name: string } }).products.name}</b>\n` +
     `Duración   ${price.duration_label}\n` +
     `Cantidad   ${qty}\n` +
@@ -496,7 +496,7 @@ async function showPaymentInstructions(
     `\nEnviá la foto del comprobante a este chat.\n` +
     `<i>Solo fotos. Imágenes duplicadas serán rechazadas.</i>`;
   await screen(telegram_id, chat_id, text, [
-    [{ text: "Cancelar", callback_data: "menu:main" }],
+    [{ text: "✖️ Cancelar", callback_data: "menu:main" }],
   ]);
 }
 
@@ -530,7 +530,7 @@ async function startRecharge(telegram_id: number, chat_id: number) {
   await screen(
     telegram_id,
     chat_id,
-    `<b>Recargar Saldo</b>\n\nElegí tu país:`,
+    `💰 <b>Recargar Saldo</b>\n\nElegí tu país:`,
     kb,
   );
 }
@@ -551,7 +551,7 @@ async function askRechargeAmount(telegram_id: number, chat_id: number, country_c
   await screen(
     telegram_id,
     chat_id,
-    `<b>Recargar Saldo Desde ${pmRow.country_name}</b>\n\n` +
+    `💰 <b>Recargar Saldo Desde ${pmRow.country_name}</b>\n\n` +
       `Recarga Mínima: <b>${MIN_RECHARGE_USD.toFixed(2)} USD</b>\n\n` +
       `¿Cuánto deseas recargar?\n\n` +
       `Ejemplo:\n<code>10</code>\n\n` +
@@ -603,7 +603,7 @@ async function showRechargeMethods(
 
   const pid = tpId(order.created_at);
   const lines: string[] = [
-    `<b>Métodos De Pago - ${methods[0].country_name}</b>`,
+    `💳 <b>Métodos De Pago - ${methods[0].country_name}</b>`,
     ``,
     `ID De Recarga: <code>${pid}</code>`,
     `Monto: <b>${amount.toFixed(2)} USD</b>`,
@@ -612,7 +612,7 @@ async function showRechargeMethods(
   ];
   for (const m of methods) {
     const local = amount * Number(m.usd_rate);
-    lines.push(`<b>Método De Pago</b>`);
+    lines.push(`💳 <b>Método De Pago</b>`);
     lines.push(`Nombre: <b>${m.method_name}</b>`);
     lines.push(`Titular: <code>${m.holder_name}</code>`);
     lines.push(`Cuenta: <code>${m.account_info}</code>`);
@@ -626,8 +626,8 @@ async function showRechargeMethods(
   }
 
   await screen(telegram_id, chat_id, lines.join("\n"), [
-    [{ text: "Ya Pagué", callback_data: `rcpay:${order.id}` }],
-    [{ text: "Menú Principal", callback_data: "menu:main" }],
+    [{ text: "✅ Ya Pagué", callback_data: `rcpay:${order.id}` }],
+    [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
   ]);
 }
 
@@ -636,8 +636,8 @@ async function startRechargeReceipt(telegram_id: number, chat_id: number, order_
   await screen(
     telegram_id,
     chat_id,
-    `<b>Envía tu comprobante de pago</b>\n\nAceptamos imágenes, capturas o documentos.`,
-    [[{ text: "Cancelar", callback_data: "menu:main" }]],
+    `📤 <b>Envía tu comprobante de pago</b>\n\nAceptamos imágenes, capturas o documentos.`,
+    [[{ text: "✖️ Cancelar", callback_data: "menu:main" }]],
   );
 }
 
@@ -757,8 +757,8 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     await screen(
     telegram_id,
       chat_id,
-      `<b>Compra completada</b>\n\nProducto  ${(price as { products: { name: string } }).products.name}\nDuración  ${price.duration_label}\nCantidad  ${qty}\n\n<b>Tus keys</b>\n${keysText}`,
-      [[{ text: "Menú", callback_data: "menu:main" }]],
+      `✅ <b>Compra completada</b>\n\nProducto  ${(price as { products: { name: string } }).products.name}\nDuración  ${price.duration_label}\nCantidad  ${qty}\n\n<b>Tus keys</b>\n${keysText}`,
+      [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
     );
     return;
   }
@@ -795,12 +795,12 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
   await screen(
     telegram_id,
     chat_id,
-    `<b>Pago con saldo recibido</b>\n\n` +
+    `✅ <b>Pago con saldo recibido</b>\n\n` +
       `Producto  ${(price as { products: { name: string } }).products.name}\n` +
       `Duración  ${price.duration_label}\n` +
       `Cantidad  ${qty}\n\n` +
       `Sin stock automático. El admin entregará la key en breve.`,
-    [[{ text: "Menú", callback_data: "menu:main" }]],
+    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
   );
 }
 
@@ -975,7 +975,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
   let caption: string;
   if (isRecharge) {
     caption =
-      `<b>Comprobante De Recarga</b>\n\n` +
+      `🧾 <b>Comprobante De Recarga</b>\n\n` +
       `Pending: <code>${pid}</code>\n` +
       `Usuario: @${user.username ?? "—"}\n` +
       `ID: <code>${telegram_id}</code>\n` +
@@ -985,7 +985,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
       ocrSummary;
   } else {
     caption =
-      `<b>Nuevo comprobante</b>\n\n` +
+      `🧾 <b>Nuevo comprobante</b>\n\n` +
       `Usuario   ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
       `ID        <code>${telegram_id}</code>\n` +
       `Producto  ${o.products?.name ?? "—"}\n` +
@@ -1043,7 +1043,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     telegram_id,
     chat_id,
     reviewText,
-    [[{ text: "Menú", callback_data: "menu:main" }]],
+    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
   );
 }
 
@@ -1115,14 +1115,14 @@ async function handleReceiptDocument(msg: TgMessage) {
   const pid = tpId(o.created_at);
 
   const caption = isRecharge
-    ? `<b>Comprobante De Recarga</b>\n\n` +
+    ? `🧾 <b>Comprobante De Recarga</b>\n\n` +
       `Pending: <code>${pid}</code>\n` +
       `Usuario: @${user.username ?? "—"}\n` +
       `ID: <code>${telegram_id}</code>\n` +
       `Monto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
       `País: ${o.payment_methods?.country_name ?? "—"}\n` +
       `Total: <b>${Number(o.total_usd).toFixed(2)} USD</b>`
-    : `<b>Comprobante</b>\n\nOrden <code>${o.id}</code>`;
+    : `🧾 <b>Comprobante</b>\n\nOrden <code>${o.id}</code>`;
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) return;
@@ -1159,7 +1159,7 @@ async function handleReceiptDocument(msg: TgMessage) {
       `Pending: <code>${pid}</code>\n\n` +
       `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
       `Se Paciente Y Espera.`,
-    [[{ text: "Menú", callback_data: "menu:main" }]],
+    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
   );
 }
 
@@ -1169,7 +1169,7 @@ async function askName(telegram_id: number, chat_id: number) {
   await screen(
     telegram_id,
     chat_id,
-    `<b>Bienvenido</b>\n\n¿Cuál es tu nombre?`,
+    `👋 <b>Bienvenido</b>\n\n¿Cuál es tu nombre?`,
   );
 }
 
@@ -1403,7 +1403,7 @@ async function showOrderStatus(telegram_id: number, chat_id: number) {
     const st = statusLabel[o.status] ?? o.status;
     return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n${st}\n$${Number(o.total_usd).toFixed(2)}\n${date}`;
   });
-  return screen(telegram_id, chat_id, `<b>Mis órdenes</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
+  return screen(telegram_id, chat_id, `📦 <b>Mis órdenes</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
 }
 
 async function showMyKeys(telegram_id: number, chat_id: number) {
@@ -1424,7 +1424,7 @@ async function showMyKeys(telegram_id: number, chat_id: number) {
     const dur = ord?.product_prices?.duration_label ? ` ${ord.product_prices.duration_label}` : "";
     return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n<code>${escapeHtml(k.key_value)}</code>`;
   });
-  return screen(telegram_id, chat_id, `<b>Mis keys</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
+  return screen(telegram_id, chat_id, `🔑 <b>Mis keys</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
 }
 
 async function showAnnouncements(telegram_id: number, chat_id: number) {
@@ -1451,7 +1451,7 @@ async function showAnnouncements(telegram_id: number, chat_id: number) {
     kb.push(row);
   }
   kb.push([{ text: "Volver", callback_data: "menu:main" }]);
-  return screen(telegram_id, chat_id, `<b>Anuncios</b>\n\n${blocks.join("\n\n")}`, kb);
+  return screen(telegram_id, chat_id, `📣 <b>Anuncios</b>\n\n${blocks.join("\n\n")}`, kb);
 }
 
 function escapeHtml(s: string) {
@@ -1512,7 +1512,7 @@ export async function notifyUserKey(opts: {
     `${header}<code>${opts.key_value}</code>`,
     {
       reply_markup: {
-        inline_keyboard: [[{ text: "Menú", callback_data: "menu:main" }]],
+        inline_keyboard: [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
       },
     },
   );
