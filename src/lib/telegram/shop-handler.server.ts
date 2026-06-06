@@ -837,19 +837,25 @@ async function handleReceiptPhoto(msg: TgMessage) {
     return;
   }
 
-  // Anti duplicado 24h
+  // Anti duplicado 24h: el mismo usuario puede reenviar hasta 3 veces el mismo comprobante.
   const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const { data: dup } = await sb
+  const { data: dupRows } = await sb
     .from("receipt_fingerprints")
-    .select("*")
+    .select("telegram_id")
     .eq("file_unique_id", photo.file_unique_id)
-    .gte("created_at", cutoff)
-    .maybeSingle();
-  if (dup) {
+    .gte("created_at", cutoff);
+  const dupList = dupRows ?? [];
+  const otherUser = dupList.some((r) => r.telegram_id !== telegram_id);
+  const sameUserCount = dupList.filter((r) => r.telegram_id === telegram_id).length;
+  if (otherUser) {
+    await sendMessage("shop", chat_id, `Este comprobante ya fue enviado antes.`);
+    return;
+  }
+  if (sameUserCount >= 3) {
     await sendMessage(
       "shop",
       chat_id,
-      `Este comprobante ya fue enviado antes.`,
+      `Ya reenviaste este comprobante 3 veces. Esperá la revisión del admin.`,
     );
     return;
   }
