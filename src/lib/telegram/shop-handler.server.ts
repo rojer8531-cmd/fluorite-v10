@@ -144,8 +144,8 @@ const BOTTOM_MENU = {
   profile: "👤 Perfil",
   keys: "🔑 Mis Keys",
   recharge: "💰 Recargar",
-  announcements: "📣 Anuncios",
-  share: "🤝 Compartir Bot",
+  announcements: "Anuncios",
+  share: "Compartir Bot",
   support: "💬 Soporte",
 };
 
