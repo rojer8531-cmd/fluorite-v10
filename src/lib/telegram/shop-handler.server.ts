@@ -997,29 +997,17 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
 
 
+  const userTag = user.username ? `@${user.username}` : (user.display_name ?? "—");
   let caption: string;
   if (isRecharge) {
     caption =
-      `🧾 <b>Comprobante De Recarga</b>\n\n` +
-      `Pending: <code>${pid}</code>\n` +
-      `Usuario: @${user.username ?? "—"}\n` +
-      `ID: <code>${telegram_id}</code>\n` +
-      `Monto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
-      `País: ${o.payment_methods?.country_name ?? "—"}\n` +
-      `Total: <b>${Number(o.total_usd).toFixed(2)} USD</b>` +
+      `💰 <b>Recarga · $${Number(o.total_usd).toFixed(2)}</b>\n` +
+      `${userTag} · <code>${telegram_id}</code>` +
       ocrSummary;
   } else {
     caption =
-      `🧾 <b>Nuevo comprobante</b>\n\n` +
-      `Usuario   ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
-      `ID        <code>${telegram_id}</code>\n` +
-      `Producto  ${o.products?.name ?? "—"}\n` +
-      `Duración  ${o.product_prices?.duration_label ?? "—"}\n` +
-      `Cantidad  ${o.keys_qty}\n` +
-      `Total     $${Number(o.total_usd).toFixed(2)} USD` +
-      (o.total_local ? ` (${Number(o.total_local).toFixed(2)} ${o.currency})` : "") +
-      `\nMétodo    ${o.payment_methods?.country_name ?? "—"} ${o.payment_methods?.method_name ?? ""}\n` +
-      `Orden     <code>${o.id}</code>` +
+      `🛒 <b>${o.products?.name ?? "—"} · ${o.product_prices?.duration_label ?? "—"}${o.keys_qty > 1 ? ` ×${o.keys_qty}` : ""}</b>\n` +
+      `$${Number(o.total_usd).toFixed(2)} · ${userTag} · <code>${telegram_id}</code>` +
       ocrSummary;
   }
 
