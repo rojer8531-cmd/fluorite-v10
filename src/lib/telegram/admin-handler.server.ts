@@ -485,9 +485,10 @@ async function handleMessage(msg: TgMessage) {
 
 
   if (text === "/start" || text === "/help" || text === "/panel") {
+    await patchContext(msg.from.id, { admin_bar_shown: false });
     await sendMessage(
       msg.chat.id,
-      `Listo. Usá la barra inferior.`,
+      `<b>Panel Admin ✅</b>\nUsá la barra inferior para todas las funciones.`,
       { reply_markup: adminBottomKeyboard() },
     );
     await patchContext(msg.from.id, { admin_bar_shown: true });
