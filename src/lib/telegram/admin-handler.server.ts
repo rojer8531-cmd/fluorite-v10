@@ -1490,7 +1490,6 @@ async function handleCallback(cb: TgCallback) {
       await markReceiptStatus(cb.message.chat.id, photoMid, `✅ APROBADO`, `$${amount.toFixed(2)}`);
     }
     await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
-    if (cb.message) await adminPendientes(cb.message.chat.id);
     return;
   }
 
