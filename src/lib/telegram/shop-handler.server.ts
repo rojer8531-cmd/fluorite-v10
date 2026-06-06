@@ -658,8 +658,15 @@ async function routeBottomMenu(
   };
   const action = map[text];
   if (!action) return false;
-  // borrar y procesar en paralelo
+  // Borrar el mensaje del usuario (el tap) y el screen activo anterior,
+  // así la próxima pantalla aparece fresca al fondo del chat y responde
+  // visiblemente al primer toque (en vez de editar arriba sin que se vea).
   silentDelete("shop", chat_id, message_id).catch(() => {});
+  const active = await getActiveMessage(telegram_id);
+  if (active && active.chat_id === chat_id) {
+    silentDelete("shop", chat_id, active.message_id).catch(() => {});
+    await setActiveMessage(telegram_id, chat_id, 0).catch(() => {});
+  }
   await action(telegram_id, chat_id);
   return true;
 }
