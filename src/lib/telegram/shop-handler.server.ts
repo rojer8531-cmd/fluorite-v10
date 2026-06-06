@@ -191,7 +191,8 @@ async function showShareBot(telegram_id: number, chat_id: number) {
     `Invitados: <b>${shares}</b> / ${REFERRAL_GOAL}\n` +
     `${status}`;
   await renderScreen("shop", telegram_id, chat_id, text, [
-    [{ text: "Copiar link", callback_data: "noop" }],
+    [{ text: "Copiar link", copy_text: { text: link } } as any],
+    [{ text: "Compartir ahora", switch_inline_query: `Probá este bot 👉 ${link}` } as any],
     BACK_BUTTON,
   ]);
 }
