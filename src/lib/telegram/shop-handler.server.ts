@@ -188,15 +188,14 @@ const REFERRAL_DISCOUNT_USD = 1;
 
 async function showMainMenu(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "menu", {});
-  // Limpiamos el "mensaje activo" para que el próximo flujo abra un mensaje
-  // nuevo (en lugar de editar uno antiguo de otra sección).
+  // El próximo flujo debe abrir un mensaje NUEVO (no editar uno viejo).
   await setActiveMessage(telegram_id, chat_id, 0);
-  // Reenviamos la barra inferior (ReplyKeyboard persistente) en cada vuelta
-  // al menú, sin borrarla, así nunca desaparece para el usuario.
+  // Reenviamos la barra inferior (ReplyKeyboard persistente). Es la única
+  // forma de garantizar que el teclado esté visible tras el /start.
   await sendMessage(
     "shop",
     chat_id,
-    `🏠 <b>Inicio</b>\n\nElegí una opción desde la barra inferior.`,
+    `🏠 <b>Inicio</b>`,
     { reply_markup: bottomKeyboard() },
   );
 }
@@ -204,6 +203,7 @@ async function showMainMenu(telegram_id: number, chat_id: number) {
 async function deliverBottomKeyboard(chat_id: number, text: string) {
   await sendMessage("shop", chat_id, text, { reply_markup: bottomKeyboard() });
 }
+
 
 async function showShareBot(telegram_id: number, chat_id: number) {
   const username = await getShopBotUsername();
