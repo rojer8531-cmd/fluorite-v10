@@ -218,8 +218,7 @@ async function showShareBot(telegram_id: number, chat_id: number) {
 }
 
 async function showSupport(telegram_id: number, chat_id: number) {
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>Soporte</b>\n\nEscribinos por Telegram a <b>${SUPPORT_USERNAME}</b>.\nTe respondemos a la brevedad.`,
@@ -265,8 +264,7 @@ async function showProducts(telegram_id: number, chat_id: number) {
     return;
   }
   await setState(telegram_id, "choose_category", {});
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>Productos</b>\n\nElegí una categoría:`,
@@ -278,9 +276,8 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
   const { grouped } = await getVisibleCatalog();
   const section = grouped.find((s) => s.category === category);
   if (!section || section.products.length === 0) {
-    await renderScreen(
-      "shop",
-      telegram_id,
+    await screen(
+    telegram_id,
       chat_id,
       `No hay productos disponibles en ${category}.`,
       [[{ text: "Volver", callback_data: "menu:products" }]],
@@ -292,8 +289,7 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
     { text: p.name, callback_data: `prod:${p.id}` },
   ]);
   rows.push([{ text: "Volver", callback_data: "menu:products" }]);
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>${category}</b>\n\nElegí un producto:`,
@@ -322,9 +318,8 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     return;
   }
   if (balance <= 0) {
-    await renderScreen(
-      "shop",
-      telegram_id,
+    await screen(
+    telegram_id,
       chat_id,
       `<b>Saldo insuficiente</b>\n\nNo tenés saldo para comprar.\nSaldo actual: <b>$0.00 USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
       [[{ text: "Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
@@ -333,9 +328,8 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   }
   const minPrice = Math.min(...prices.map((p) => Number(p.price_usd)));
   if (balance < minPrice) {
-    await renderScreen(
-      "shop",
-      telegram_id,
+    await screen(
+    telegram_id,
       chat_id,
       `<b>Saldo insuficiente</b>\n\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
       [[{ text: "Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
@@ -353,8 +347,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     ];
   });
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>${product.name}</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`,
@@ -364,8 +357,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
 
 async function showQty(telegram_id: number, chat_id: number, price_id: string) {
   await patchContext(telegram_id, { price_id });
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>Cantidad de keys</b>\n\n¿Cuántas necesitás?`,
@@ -415,8 +407,7 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
     kb.push([{ text: `${c.country_name}  ·  ${c.method_name}`, callback_data: `pm:${c.id}` }]);
   }
   kb.push([{ text: "Volver", callback_data: "menu:products" }]);
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>Método de pago</b>\n\nTotal  <b>$${total_usd.toFixed(2)} USD</b>\nSaldo  $${balance.toFixed(2)}${stockNote}`,
@@ -460,9 +451,8 @@ async function showPaymentInstructions(
     .eq("user_id", user!.id)
     .in("status", ["pending_receipt", "pending_approval"]);
   if ((activeOrders ?? 0) >= 3) {
-    await renderScreen(
-      "shop",
-      telegram_id,
+    await screen(
+    telegram_id,
       chat_id,
       `Ya tenés <b>3 órdenes activas</b>. Esperá que alguna sea aprobada para crear otra.`,
       [BACK_BUTTON],
@@ -539,8 +529,7 @@ async function startRecharge(telegram_id: number, chat_id: number) {
     kb.push(row);
   }
   kb.push(BACK_BUTTON);
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>Recargar Saldo</b>\n\nElegí tu país:`,
@@ -561,8 +550,7 @@ async function askRechargeAmount(telegram_id: number, chat_id: number, country_c
     return;
   }
   await setState(telegram_id, "recharge_amount", { country_code });
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>Recargar Saldo Desde ${pmRow.country_name}</b>\n\n` +
@@ -647,8 +635,7 @@ async function showRechargeMethods(
 
 async function startRechargeReceipt(telegram_id: number, chat_id: number, order_id: string) {
   await setState(telegram_id, "awaiting_recharge_receipt", { order_id });
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>Envía tu comprobante de pago</b>\n\nAceptamos imágenes, capturas o documentos.`,
@@ -775,9 +762,8 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     invalidateCatalogCache();
 
     const keysText = avail.map((k) => `<code>${k.key_value}</code>`).join("\n");
-    await renderScreen(
-      "shop",
-      telegram_id,
+    await screen(
+    telegram_id,
       chat_id,
       `<b>Compra completada</b>\n\nProducto  ${(price as { products: { name: string } }).products.name}\nDuración  ${price.duration_label}\nCantidad  ${qty}\n\n<b>Tus keys</b>\n${keysText}`,
       [[{ text: "Menú", callback_data: "menu:main" }]],
@@ -814,8 +800,7 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     }
   }
 
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>Pago con saldo recibido</b>\n\n` +
@@ -1062,8 +1047,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     (isRecharge ? `Pending: <code>${pid}</code>\n\n` : "") +
     `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
     `Se Paciente Y Espera.`;
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     reviewText,
@@ -1176,8 +1160,7 @@ async function handleReceiptDocument(msg: TgMessage) {
   }
 
   await setState(telegram_id, "menu", {});
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `⏳ <b>Comprobante En Revisión</b>\n\n` +
@@ -1191,8 +1174,7 @@ async function handleReceiptDocument(msg: TgMessage) {
 // ===== Login =====
 async function askName(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "login_name", {});
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `<b>Bienvenido</b>\n\n¿Cuál es tu nombre?`,
@@ -1201,8 +1183,7 @@ async function askName(telegram_id: number, chat_id: number) {
 
 async function askPassword(telegram_id: number, chat_id: number, name: string) {
   await setState(telegram_id, "login_password", { display_name: name });
-  await renderScreen(
-    "shop",
+  await screen(
     telegram_id,
     chat_id,
     `Hola <b>${name}</b>.\n\nIngresá la contraseña de acceso:`,
@@ -1374,9 +1355,8 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
     if (n < MIN_RECHARGE_USD) {
-      await renderScreen(
-        "shop",
-        telegram_id,
+      await screen(
+    telegram_id,
         chat_id,
         `El monto mínimo es <b>${MIN_RECHARGE_USD.toFixed(2)} USD</b>. Probá de nuevo.`,
         [[{ text: "Volver", callback_data: "menu:recharge" }]],
