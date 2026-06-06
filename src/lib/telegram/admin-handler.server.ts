@@ -103,10 +103,10 @@ function tpId(createdAt: string) {
 // ===== Barra inferior persistente del admin =====
 const ADMIN_BOTTOM = {
   pendientes: "📥 Pendientes",
-  stock: "📦 Stock",
-  usuarios: "👥 Usuarios",
-  addkeys: "➕ Agregar Keys",
-  precios: "💲 Precios",
+  stock: "Stock",
+  usuarios: "Usuarios",
+  addkeys: "Agregar Keys",
+  precios: "Precios",
   anuncio: "📣 Anuncio",
   metodos: "💳 Métodos",
   borrar: "🗑 Borrar",
