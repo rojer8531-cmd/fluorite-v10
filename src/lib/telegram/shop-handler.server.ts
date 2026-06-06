@@ -1067,6 +1067,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     chat_id,
     reviewText,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    { final: true },
   );
 }
 
