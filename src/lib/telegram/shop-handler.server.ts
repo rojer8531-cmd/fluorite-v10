@@ -107,7 +107,6 @@ function recipientMatches(recipient: string, holder: string, account: string | n
   return false;
 }
 
-const ACCESS_PASSWORD = "117";
 
 interface Update {
   update_id: number;
