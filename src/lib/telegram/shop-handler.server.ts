@@ -154,9 +154,14 @@ const REFERRAL_DISCOUNT_USD = 1;
 
 async function showMainMenu(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "menu", {});
-  // No enviamos ningún mensaje visible. El teclado inferior persiste desde
-  // la primera vez que se entregó (durante el onboarding), así que /start
-  // simplemente deja la barra inferior disponible sin generar burbujas.
+  // Enviamos un mensaje invisible con el teclado inferior y lo borramos al
+  // toque, en paralelo, para no bloquear la respuesta al usuario.
+  const sent = await sendMessage("shop", chat_id, "\u2063", {
+    reply_markup: bottomKeyboard(),
+  });
+  if (sent.ok && sent.result) {
+    silentDelete("shop", chat_id, sent.result.message_id).catch(() => {});
+  }
 }
 
 async function deliverBottomKeyboard(chat_id: number, text: string) {
