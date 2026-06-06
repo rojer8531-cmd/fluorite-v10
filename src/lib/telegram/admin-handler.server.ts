@@ -77,8 +77,10 @@ async function sendMessage(
   extra: Record<string, unknown> = {},
 ) {
   const r = await _rawSendMessage(bot, chat_id, text, extra);
-  if (bot === "admin" && r.ok && r.result && _currentAdminId) {
-    trashPush(_currentAdminId, r.result.message_id).catch(() => {});
+  if (bot === "admin" && r.ok && r.result) {
+    sb.from("admin_trash")
+      .insert({ chat_id: Number(chat_id), message_id: r.result.message_id })
+      .then(() => {}, () => {});
   }
   return r;
 }
@@ -101,10 +103,10 @@ function tpId(createdAt: string) {
 // ===== Barra inferior persistente del admin =====
 const ADMIN_BOTTOM = {
   pendientes: "📥 Pendientes",
-  stock: "📦 Stock",
-  usuarios: "👥 Usuarios",
-  addkeys: "➕ Agregar Keys",
-  precios: "💲 Precios",
+  stock: "Stock",
+  usuarios: "Usuarios",
+  addkeys: "Agregar Keys",
+  precios: "Precios",
   anuncio: "📣 Anuncio",
   metodos: "💳 Métodos",
   borrar: "🗑 Borrar",
@@ -239,24 +241,20 @@ async function ensureAdminBar(chat_id: number, admin_id: number) {
   await patchContext(admin_id, { bar_shown: true });
 }
 
-// Limpieza de mensajes del admin (todo menos los comprobantes)
-async function purgeAdminTrash(chat_id: number, admin_id: number) {
-  const st = await getState(admin_id);
-  const ctx = (st?.context ?? {}) as Record<string, unknown>;
-  const trash = (ctx.trash_ids ?? []) as number[];
-  if (trash.length === 0) return;
+// Limpieza de mensajes del admin (todo menos los comprobantes pendientes)
+async function purgeAdminTrash(chat_id: number, _admin_id: number) {
+  const { data } = await sb
+    .from("admin_trash")
+    .select("message_id")
+    .eq("chat_id", chat_id)
+    .limit(500);
+  if (!data || data.length === 0) return;
   await Promise.all(
-    trash.map((mid) => deleteMessage("admin", chat_id, mid).catch(() => {})),
+    data.map((row) =>
+      deleteMessage("admin", chat_id, row.message_id as number).catch(() => {}),
+    ),
   );
-  await patchContext(admin_id, { trash_ids: [] });
-}
-
-async function trashPush(admin_id: number, message_id: number) {
-  const st = await getState(admin_id);
-  const ctx = (st?.context ?? {}) as Record<string, unknown>;
-  const trash = ((ctx.trash_ids ?? []) as number[]).slice(-200);
-  trash.push(message_id);
-  await patchContext(admin_id, { trash_ids: trash });
+  await sb.from("admin_trash").delete().eq("chat_id", chat_id);
 }
 
 async function replaceAdminList(
