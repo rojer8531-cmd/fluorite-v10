@@ -103,14 +103,14 @@ const SUPPORT_USERNAME = "@smallffx7";
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
-  products: "Productos",
-  buy: "Comprar",
-  status: "Estado",
-  profile: "Perfil",
-  keys: "Mis Keys",
-  recharge: "Recargar",
-  announcements: "Anuncios",
-  support: "Soporte",
+  products: "🛒 Productos",
+  buy: "💳 Comprar",
+  status: "📦 Estado",
+  profile: "👤 Perfil",
+  keys: "🔑 Mis Keys",
+  recharge: "💰 Recargar",
+  announcements: "📣 Anuncios",
+  support: "💬 Soporte",
 };
 
 function bottomKeyboard() {
