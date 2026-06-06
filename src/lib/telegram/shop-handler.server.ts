@@ -204,6 +204,16 @@ async function deliverBottomKeyboard(chat_id: number, text: string) {
   await sendMessage("shop", chat_id, text, { reply_markup: bottomKeyboard() });
 }
 
+// Notificación con botón inline "🏠 Menú Principal" para que el usuario
+// siempre tenga forma de volver al inicio desde cualquier mensaje del bot.
+async function notifyUser(chat_id: number, text: string) {
+  await sendMessage("shop", chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]],
+    },
+  });
+}
+
 
 async function showShareBot(telegram_id: number, chat_id: number) {
   const username = await getShopBotUsername();
@@ -852,21 +862,17 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   const photo = msg.photo[msg.photo.length - 1];
   if (!photo.file_id || !photo.file_unique_id) {
-    await sendMessage("shop", chat_id, `Comprobante inválido.`);
+    await notifyUser(chat_id, `⚠️ Comprobante inválido.`);
     return;
   }
   if (photo.width < 200 || photo.height < 200) {
-    await sendMessage("shop", chat_id, `Imagen demasiado pequeña. Enviá el comprobante completo.`);
+    await notifyUser(chat_id, `⚠️ Imagen demasiado pequeña. Enviá el comprobante completo.`);
     return;
   }
 
   // Límite diario de comprobantes: 10 por día
   if (!(await checkRateLimit(telegram_id, "receipt_day", 10, 86400))) {
-    await sendMessage(
-      "shop",
-      chat_id,
-      `Alcanzaste el límite de 10 comprobantes por día. Probá mañana o esperá una respuesta del admin.`,
-    );
+    await notifyUser(chat_id, `⚠️ Alcanzaste el límite de 10 comprobantes por día. Probá mañana o esperá una respuesta del admin.`);
     return;
   }
 
@@ -881,26 +887,18 @@ async function handleReceiptPhoto(msg: TgMessage) {
   const otherUser = dupList.some((r) => r.telegram_id !== telegram_id);
   const sameUserCount = dupList.filter((r) => r.telegram_id === telegram_id).length;
   if (otherUser) {
-    await sendMessage("shop", chat_id, `Este comprobante ya fue enviado antes.`);
+    await notifyUser(chat_id, `⚠️ Este comprobante ya fue enviado antes.`);
     return;
   }
   if (sameUserCount >= 3) {
-    await sendMessage(
-      "shop",
-      chat_id,
-      `Ya reenviaste este comprobante 3 veces. Esperá la revisión del admin.`,
-    );
+    await notifyUser(chat_id, `⚠️ Ya reenviaste este comprobante 3 veces. Esperá la revisión del admin.`);
     return;
   }
 
   const st = await getState(telegram_id);
   const validReceiptStates = ["awaiting_receipt", "awaiting_recharge_receipt"];
   if (!st || !validReceiptStates.includes(st.state) || !st.context?.order_id) {
-    await sendMessage(
-      "shop",
-      chat_id,
-      `No tenés una orden pendiente. Iniciá una compra o recarga primero.`,
-    );
+    await notifyUser(chat_id, `⚠️ No tenés una orden pendiente. Iniciá una compra o recarga primero.`);
     return;
   }
   const isRecharge = st.state === "awaiting_recharge_receipt";
@@ -942,12 +940,12 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   const fileInfo = await getFile("shop", photo.file_id);
   if (!fileInfo.ok || !fileInfo.result) {
-    await sendMessage("shop", chat_id, `Error procesando imagen. Intentá de nuevo.`);
+    await notifyUser(chat_id, `⚠️ Error procesando imagen. Intentá de nuevo.`);
     return;
   }
   const bytes = await downloadFile("shop", fileInfo.result.file_path);
   if (!bytes) {
-    await sendMessage("shop", chat_id, `Error descargando imagen.`);
+    await notifyUser(chat_id, `⚠️ Error descargando imagen.`);
     return;
   }
 
@@ -980,11 +978,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   // IA: si la imagen no parece un pago, avisar al usuario y NO enviar al admin
   if (ocr?.is_payment === false) {
-    await sendMessage(
-      "shop",
-      chat_id,
-      `Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`,
-    );
+    await notifyUser(chat_id, `⚠️ Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`);
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
     return;
@@ -993,14 +987,10 @@ async function handleReceiptPhoto(msg: TgMessage) {
   // IA: verificar destinatario contra titular/cuenta del método de pago
   if (ocr?.recipient && o.payment_methods?.holder_name) {
     if (!recipientMatches(ocr.recipient, o.payment_methods.holder_name, o.payment_methods.account_info)) {
-      await sendMessage(
-        "shop",
-        chat_id,
-        `<b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
-          `Por favor, envía el dinero a los datos correctos:\n\n` +
-          `Titular  <code>${o.payment_methods.holder_name}</code>\n` +
-          `Cuenta   ${o.payment_methods.account_info ?? "—"}`,
-      );
+      await notifyUser(chat_id, `⚠️ <b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
+        `Por favor, envía el dinero a los datos correctos:\n\n` +
+        `🪪 Titular: <code>${o.payment_methods.holder_name}</code>\n` +
+        `📋 Cuenta: <code>${o.payment_methods.account_info ?? "—"}</code>`);
       await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
       await sb.from("receipts").delete().eq("id", receipt!.id);
       return;
@@ -1037,7 +1027,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) {
-    await sendMessage("shop", chat_id, `Admin no configurado. Avisá a soporte.`);
+    await notifyUser(chat_id, `⚠️ Admin no configurado. Avisá a soporte.`);
     return;
   }
 
@@ -1095,7 +1085,7 @@ async function handleReceiptDocument(msg: TgMessage) {
 
   const st = await getState(telegram_id);
   if (!st || !["awaiting_receipt", "awaiting_recharge_receipt"].includes(st.state) || !st.context?.order_id) {
-    await sendMessage("shop", chat_id, `No tenés una recarga pendiente.`);
+    await notifyUser(chat_id, `⚠️ No tenés una recarga pendiente.`);
     return;
   }
   const isRecharge = st.state === "awaiting_recharge_receipt";
@@ -1256,7 +1246,7 @@ async function handleMessage(msg: TgMessage) {
     if (st0?.state === "awaiting_recharge_receipt" || st0?.state === "awaiting_receipt") {
       await handleReceiptDocument(msg);
     } else {
-      await sendMessage("shop", chat_id, `Para enviar comprobante iniciá una recarga primero.`);
+      await notifyUser(chat_id, `⚠️ Para enviar comprobante iniciá una recarga primero.`);
     }
     return;
   }
@@ -1490,12 +1480,13 @@ export async function notifyUserApproved(opts: {
   await sendMessage(
     "shop",
     opts.chat_id,
-    `<b>Recarga Aprobada</b>\n\n` +
-      (pid ? `Pending: <code>${pid}</code>\n` : "") +
-      `Monto Aprobado: <b>${opts.amount_usd.toFixed(2)} USD</b>\n` +
-      `Saldo Agregado: <b>${opts.amount_usd.toFixed(2)} USD</b>\n` +
-      `Saldo Disponible: <b>${opts.new_balance.toFixed(2)} USD</b>\n\n` +
+    `✅ <b>Recarga Aprobada</b>\n\n` +
+      (pid ? `🆔 Pending: <code>${pid}</code>\n` : "") +
+      `💰 Monto Aprobado: <b>${opts.amount_usd.toFixed(2)} USD</b>\n` +
+      `➕ Saldo Agregado: <b>${opts.amount_usd.toFixed(2)} USD</b>\n` +
+      `💵 Saldo Disponible: <b>${opts.new_balance.toFixed(2)} USD</b>\n\n` +
       `Ya puedes utilizar tu saldo para realizar compras dentro del bot.`,
+    { reply_markup: { inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]] } },
   );
 }
 
@@ -1509,10 +1500,11 @@ export async function notifyUserRejected(opts: {
   await sendMessage(
     "shop",
     opts.chat_id,
-    `<b>Recarga Rechazada</b>\n\n` +
-      (pid ? `Pending: <code>${pid}</code>\n` : "") +
-      `Motivo: ${opts.note ?? "Sin especificar"}\n\n` +
+    `❌ <b>Recarga Rechazada</b>\n\n` +
+      (pid ? `🆔 Pending: <code>${pid}</code>\n` : "") +
+      `📝 Motivo: ${opts.note ?? "Sin especificar"}\n\n` +
       `Tu comprobante fue rechazado. Puedes enviar uno nuevo.`,
+    { reply_markup: { inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]] } },
   );
 }
 
