@@ -204,6 +204,16 @@ async function deliverBottomKeyboard(chat_id: number, text: string) {
   await sendMessage("shop", chat_id, text, { reply_markup: bottomKeyboard() });
 }
 
+// Notificación con botón inline "🏠 Menú Principal" para que el usuario
+// siempre tenga forma de volver al inicio desde cualquier mensaje del bot.
+async function notifyUser(chat_id: number, text: string) {
+  await sendMessage("shop", chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]],
+    },
+  });
+}
+
 
 async function showShareBot(telegram_id: number, chat_id: number) {
   const username = await getShopBotUsername();
