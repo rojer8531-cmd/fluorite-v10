@@ -945,7 +945,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
       await sendMessage(
         "shop",
         chat_id,
-        `⛔ <b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
+        `<b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
           `Por favor, envía el dinero a los datos correctos:\n\n` +
           `Titular  <code>${o.payment_methods.holder_name}</code>\n` +
           `Cuenta   ${o.payment_methods.account_info ?? "—"}`,
