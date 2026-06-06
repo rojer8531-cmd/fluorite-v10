@@ -971,7 +971,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
       ocrSummary;
   } else {
     caption =
-      `📩 <b>Nuevo comprobante</b>\n\n` +
+      `<b>Nuevo comprobante</b>\n\n` +
       `Usuario   ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
       `ID        <code>${telegram_id}</code>\n` +
       `Producto  ${o.products?.name ?? "—"}\n` +
