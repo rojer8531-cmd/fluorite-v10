@@ -1146,9 +1146,6 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== barra inferior persistente =====
   switch (text) {
-    case ADMIN_BOTTOM.pendientes:
-      await adminPendientes(msg.chat.id);
-      return;
     case ADMIN_BOTTOM.stock:
       await adminStockView(msg.chat.id);
       return;
