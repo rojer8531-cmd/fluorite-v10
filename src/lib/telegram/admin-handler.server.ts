@@ -152,10 +152,34 @@ async function ensureAdminBar(chat_id: number, admin_id: number) {
   const st = await getState(admin_id);
   const ctx = (st?.context ?? {}) as Record<string, unknown>;
   if (ctx.bar_shown) return;
-  await sendMessage("admin", chat_id, `Listo. Usá la barra inferior.`, {
+  // Adjuntar la barra inferior sin mostrar texto visible
+  const sent = await sendMessage("admin", chat_id, "\u2063", {
     reply_markup: adminBottomKeyboard(),
   });
+  if (sent.ok && sent.result) {
+    deleteMessage("admin", chat_id, sent.result.message_id).catch(() => {});
+  }
   await patchContext(admin_id, { bar_shown: true });
+}
+
+// Limpieza de mensajes del admin (todo menos los comprobantes)
+async function purgeAdminTrash(chat_id: number, admin_id: number) {
+  const st = await getState(admin_id);
+  const ctx = (st?.context ?? {}) as Record<string, unknown>;
+  const trash = (ctx.trash_ids ?? []) as number[];
+  if (trash.length === 0) return;
+  await Promise.all(
+    trash.map((mid) => deleteMessage("admin", chat_id, mid).catch(() => {})),
+  );
+  await patchContext(admin_id, { trash_ids: [] });
+}
+
+async function trashPush(admin_id: number, message_id: number) {
+  const st = await getState(admin_id);
+  const ctx = (st?.context ?? {}) as Record<string, unknown>;
+  const trash = ((ctx.trash_ids ?? []) as number[]).slice(-200);
+  trash.push(message_id);
+  await patchContext(admin_id, { trash_ids: trash });
 }
 
 async function replaceAdminList(
