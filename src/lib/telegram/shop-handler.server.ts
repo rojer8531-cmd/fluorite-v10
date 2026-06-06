@@ -780,6 +780,7 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
       chat_id,
       `✅ <b>Compra completada</b>\n\nProducto  ${(price as { products: { name: string } }).products.name}\nDuración  ${price.duration_label}\nCantidad  ${qty}\n\n<b>Tus keys</b>\n${keysText}`,
       [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+      { final: true },
     );
     return;
   }
