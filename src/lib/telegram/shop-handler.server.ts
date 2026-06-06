@@ -1505,14 +1505,9 @@ export async function notifyUserKey(opts: {
   product_name?: string;
   duration_label?: string;
 }) {
-  // Borrar el mensaje activo previo para que no se amontone
-  const active = await getActiveMessage(opts.telegram_id);
-  if (active && active.chat_id === opts.chat_id) {
-    silentDelete("shop", opts.chat_id, active.message_id).catch(() => {});
-  }
   const header = opts.product_name
-    ? `<b>Key entregada</b>\n\n${opts.product_name}${opts.duration_label ? `  ·  ${opts.duration_label}` : ""}\n\n`
-    : `<b>Key entregada</b>\n\n`;
+    ? `🔑 <b>Key entregada</b>\n\n${opts.product_name}${opts.duration_label ? `  ·  ${opts.duration_label}` : ""}\n\n`
+    : `🔑 <b>Key entregada</b>\n\n`;
   const sent = await sendMessage(
     "shop",
     opts.chat_id,
