@@ -163,7 +163,6 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
     const idleMs = await getIdleMs(admin_id);
     if (idleMs >= ADMIN_IDLE_PURGE_MS) {
       await purgeAdminTrash(chat_id, admin_id).catch(() => {});
-      await purgeReviewedReceipts(chat_id).catch(() => {});
     }
     await touchAdminSeen(admin_id).catch(() => {});
     await ensureAdminBar(chat_id, admin_id).catch(() => {});
