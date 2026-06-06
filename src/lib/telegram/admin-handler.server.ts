@@ -1434,9 +1434,14 @@ async function handleCallback(cb: TgCallback) {
   }
 
   if (action === "reject") {
-    // Pedir motivo del rechazo, llevando el msg_id del comprobante en el marker
     if (!chat_id) return;
-    const photoMid = cb.message?.message_id ?? 0;
+    // Preferir el msg_id real del comprobante (si lo conocemos) sobre el del panel.
+    const { data: rcpt } = await sb
+      .from("receipts")
+      .select("admin_message_id")
+      .eq("order_id", target)
+      .maybeSingle();
+    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
     const sent = await sendMessage(
       "admin",
       chat_id,
@@ -1446,6 +1451,7 @@ async function handleCallback(cb: TgCallback) {
     if (sent.ok && sent.result) {
       await sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", target);
     }
+    await answerCallbackQuery("admin", cb.id, "Esperando motivo…");
     return;
   }
 
