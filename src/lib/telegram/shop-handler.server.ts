@@ -7,6 +7,7 @@ import {
   answerCallbackQuery,
   getAdminChatId,
   deleteMessage,
+  tg,
 } from "./api.server";
 import {
   getOrCreateUser,
@@ -110,6 +111,7 @@ const BOTTOM_MENU = {
   keys: "🔑 Mis Keys",
   recharge: "💰 Recargar",
   announcements: "📣 Anuncios",
+  share: "📤 Compartir Bot",
   support: "💬 Soporte",
 };
 
@@ -119,7 +121,8 @@ function bottomKeyboard() {
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.buy }],
       [{ text: BOTTOM_MENU.status }, { text: BOTTOM_MENU.profile }],
       [{ text: BOTTOM_MENU.keys }, { text: BOTTOM_MENU.recharge }],
-      [{ text: BOTTOM_MENU.announcements }, { text: BOTTOM_MENU.support }],
+      [{ text: BOTTOM_MENU.announcements }, { text: BOTTOM_MENU.share }],
+      [{ text: BOTTOM_MENU.support }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -129,21 +132,68 @@ function bottomKeyboard() {
 
 const BACK_BUTTON = [{ text: "Volver", callback_data: "menu:main" }];
 
+// Cache del username del bot para los links de referidos
+let _shopBotUsername: string | null = null;
+async function getShopBotUsername(): Promise<string | null> {
+  if (_shopBotUsername) return _shopBotUsername;
+  const env = process.env.TELEGRAM_SHOP_BOT_USERNAME;
+  if (env) {
+    _shopBotUsername = env.replace(/^@/, "");
+    return _shopBotUsername;
+  }
+  const res = await tg<{ username: string }>("shop", "getMe");
+  if (res.ok && res.result?.username) {
+    _shopBotUsername = res.result.username;
+    return _shopBotUsername;
+  }
+  return null;
+}
+
+const REFERRAL_GOAL = 30;
+const REFERRAL_DISCOUNT_USD = 1;
+
 async function showMainMenu(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "menu", {});
   const active = await getActiveMessage(telegram_id);
   if (active && active.chat_id === chat_id) {
     silentDelete("shop", chat_id, active.message_id).catch(() => {});
   }
-  const sent = await sendMessage(
-    "shop",
-    chat_id,
-    `<b>Tienda Principal</b>\n\nUsá el menú inferior para navegar.`,
-    { reply_markup: bottomKeyboard() },
-  );
+  // Asegurar barra inferior sin mostrar texto adicional al usuario
+  const sent = await sendMessage("shop", chat_id, "\u2063", {
+    reply_markup: bottomKeyboard(),
+  });
   if (sent.ok && sent.result) {
-    await setActiveMessage(telegram_id, chat_id, sent.result.message_id);
+    silentDelete("shop", chat_id, sent.result.message_id).catch(() => {});
   }
+}
+
+async function showShareBot(telegram_id: number, chat_id: number) {
+  const username = await getShopBotUsername();
+  if (!username) {
+    await renderScreen("shop", telegram_id, chat_id, `No se pudo generar el link. Intentá más tarde.`, [BACK_BUTTON]);
+    return;
+  }
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("shares_count")
+    .eq("telegram_id", telegram_id)
+    .single();
+  const shares = Number(u?.shares_count ?? 0);
+  const link = `https://t.me/${username}?start=ref${telegram_id}`;
+  const remaining = Math.max(0, REFERRAL_GOAL - shares);
+  const status =
+    shares >= REFERRAL_GOAL
+      ? `<b>Descuento activo:</b> $${REFERRAL_DISCOUNT_USD.toFixed(2)} USD menos por cada key.`
+      : `Te faltan <b>${remaining}</b> invitados para activar <b>$${REFERRAL_DISCOUNT_USD.toFixed(2)} USD</b> de descuento por cada key.`;
+  const text =
+    `<b>Compartir Bot</b>\n\n` +
+    `Tu link personal:\n<code>${link}</code>\n\n` +
+    `Invitados: <b>${shares}</b> / ${REFERRAL_GOAL}\n` +
+    `${status}`;
+  await renderScreen("shop", telegram_id, chat_id, text, [
+    [{ text: "Copiar link", callback_data: "noop" }],
+    BACK_BUTTON,
+  ]);
 }
 
 async function showSupport(telegram_id: number, chat_id: number) {
@@ -601,6 +651,7 @@ async function routeBottomMenu(
     [BOTTOM_MENU.keys]: showMyKeys,
     [BOTTOM_MENU.recharge]: startRecharge,
     [BOTTOM_MENU.announcements]: showAnnouncements,
+    [BOTTOM_MENU.share]: showShareBot,
     [BOTTOM_MENU.support]: showSupport,
   };
   const action = map[text];
@@ -621,7 +672,17 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     .single();
   if (!price) return;
   const qty = Number(ctx.qty ?? 1);
-  const total_usd = Number(price.price_usd) * qty;
+  const { data: shareU } = await sb
+    .from("bot_users")
+    .select("shares_count")
+    .eq("telegram_id", telegram_id)
+    .single();
+  const hasReferralDiscount = Number(shareU?.shares_count ?? 0) >= REFERRAL_GOAL;
+  const unit_price = Math.max(
+    0,
+    Number(price.price_usd) - (hasReferralDiscount ? REFERRAL_DISCOUNT_USD : 0),
+  );
+  const total_usd = unit_price * qty;
 
   const { data: user } = await sb
     .from("bot_users")
@@ -1157,8 +1218,36 @@ async function handleMessage(msg: TgMessage) {
 
   const text = (msg.text ?? "").trim();
 
-  if (text === "/start") {
+  if (text === "/start" || text.startsWith("/start ")) {
     if (!(await tryAcquireStartLock(telegram_id))) return;
+    const param = text.startsWith("/start ") ? text.slice(7).trim() : "";
+    if (param.startsWith("ref")) {
+      const refId = Number(param.slice(3));
+      if (Number.isFinite(refId) && refId > 0 && refId !== telegram_id) {
+        const { data: meRow } = await sb
+          .from("bot_users")
+          .select("referred_by_telegram_id")
+          .eq("telegram_id", telegram_id)
+          .single();
+        if (meRow && meRow.referred_by_telegram_id == null) {
+          const { data: refUser } = await sb
+            .from("bot_users")
+            .select("telegram_id, shares_count")
+            .eq("telegram_id", refId)
+            .maybeSingle();
+          if (refUser) {
+            await sb
+              .from("bot_users")
+              .update({ referred_by_telegram_id: refId })
+              .eq("telegram_id", telegram_id);
+            await sb
+              .from("bot_users")
+              .update({ shares_count: Number(refUser.shares_count ?? 0) + 1 })
+              .eq("telegram_id", refId);
+          }
+        }
+      }
+    }
     const { data: u } = await sb
       .from("bot_users")
       .select("*")

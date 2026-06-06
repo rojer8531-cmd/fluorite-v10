@@ -1,6 +1,6 @@
 // Admin Bot — handler (UI limpia, barra inferior persistente)
 import {
-  sendMessage,
+  sendMessage as _rawSendMessage,
   editMessageReplyMarkup,
   deleteMessage,
   answerCallbackQuery,
@@ -66,6 +66,22 @@ interface TgCallback {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Admin actualmente activo (para tracking de mensajes a limpiar)
+let _currentAdminId: number | null = null;
+
+async function sendMessage(
+  bot: "shop" | "admin",
+  chat_id: number | string,
+  text: string,
+  extra: Record<string, unknown> = {},
+) {
+  const r = await _rawSendMessage(bot, chat_id, text, extra);
+  if (bot === "admin" && r.ok && r.result && _currentAdminId) {
+    trashPush(_currentAdminId, r.result.message_id).catch(() => {});
+  }
+  return r;
+}
+
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -118,14 +134,26 @@ async function resolvePriceId(rawId: string) {
 }
 
 export async function handleAdminUpdate(update: Update): Promise<void> {
-  // Asegurar barra inferior visible automáticamente al admin (una vez por sesión)
-  if (update.message?.from && isAdmin(update.message.from.id)) {
-    await ensureAdminBar(update.message.chat.id, update.message.from.id).catch(() => {});
-  } else if (update.callback_query?.from && isAdmin(update.callback_query.from.id) && update.callback_query.message) {
-    await ensureAdminBar(update.callback_query.message.chat.id, update.callback_query.from.id).catch(() => {});
+  const admin_id =
+    (update.message?.from && isAdmin(update.message.from.id) && update.message.from.id) ||
+    (update.callback_query?.from && isAdmin(update.callback_query.from.id) && update.callback_query.from.id) ||
+    null;
+  const chat_id =
+    update.message?.chat.id ?? update.callback_query?.message?.chat.id ?? null;
+
+  if (admin_id && chat_id) {
+    _currentAdminId = admin_id;
+    // Limpiar mensajes anteriores del admin (menos comprobantes, que viven en otra ruta)
+    await purgeAdminTrash(chat_id, admin_id).catch(() => {});
+    await ensureAdminBar(chat_id, admin_id).catch(() => {});
   }
-  if (update.message) await handleMessage(update.message);
-  else if (update.callback_query) await handleCallback(update.callback_query);
+
+  try {
+    if (update.message) await handleMessage(update.message);
+    else if (update.callback_query) await handleCallback(update.callback_query);
+  } finally {
+    _currentAdminId = null;
+  }
 }
 
 // ===== Panel admin (inline) =====
@@ -152,10 +180,34 @@ async function ensureAdminBar(chat_id: number, admin_id: number) {
   const st = await getState(admin_id);
   const ctx = (st?.context ?? {}) as Record<string, unknown>;
   if (ctx.bar_shown) return;
-  await sendMessage("admin", chat_id, `Listo. Usá la barra inferior.`, {
+  // Adjuntar la barra inferior sin mostrar texto visible
+  const sent = await sendMessage("admin", chat_id, "\u2063", {
     reply_markup: adminBottomKeyboard(),
   });
+  if (sent.ok && sent.result) {
+    deleteMessage("admin", chat_id, sent.result.message_id).catch(() => {});
+  }
   await patchContext(admin_id, { bar_shown: true });
+}
+
+// Limpieza de mensajes del admin (todo menos los comprobantes)
+async function purgeAdminTrash(chat_id: number, admin_id: number) {
+  const st = await getState(admin_id);
+  const ctx = (st?.context ?? {}) as Record<string, unknown>;
+  const trash = (ctx.trash_ids ?? []) as number[];
+  if (trash.length === 0) return;
+  await Promise.all(
+    trash.map((mid) => deleteMessage("admin", chat_id, mid).catch(() => {})),
+  );
+  await patchContext(admin_id, { trash_ids: [] });
+}
+
+async function trashPush(admin_id: number, message_id: number) {
+  const st = await getState(admin_id);
+  const ctx = (st?.context ?? {}) as Record<string, unknown>;
+  const trash = ((ctx.trash_ids ?? []) as number[]).slice(-200);
+  trash.push(message_id);
+  await patchContext(admin_id, { trash_ids: trash });
 }
 
 async function replaceAdminList(
