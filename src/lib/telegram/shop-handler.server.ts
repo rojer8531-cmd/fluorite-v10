@@ -147,7 +147,7 @@ function bottomKeyboard() {
   };
 }
 
-const BACK_BUTTON = [{ text: "Volver", callback_data: "menu:main" }];
+const BACK_BUTTON = [{ text: "↩️ Volver", callback_data: "menu:main" }];
 
 // Cache del username del bot para los links de referidos
 let _shopBotUsername: string | null = null;
