@@ -77,8 +77,10 @@ async function sendMessage(
   extra: Record<string, unknown> = {},
 ) {
   const r = await _rawSendMessage(bot, chat_id, text, extra);
-  if (bot === "admin" && r.ok && r.result && _currentAdminId) {
-    trashPush(_currentAdminId, r.result.message_id).catch(() => {});
+  if (bot === "admin" && r.ok && r.result) {
+    sb.from("admin_trash")
+      .insert({ chat_id: Number(chat_id), message_id: r.result.message_id })
+      .then(() => {}, () => {});
   }
   return r;
 }
