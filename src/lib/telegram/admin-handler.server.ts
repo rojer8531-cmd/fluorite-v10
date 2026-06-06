@@ -9,7 +9,6 @@ import {
   downloadFile,
   sendPhoto,
   sendPhotoMultipart,
-  copyMessage,
 } from "./api.server";
 import {
   sb,
@@ -880,17 +879,40 @@ async function handleBroadcast(msg: TgMessage) {
 
   await sendMessage("admin", msg.chat.id, `Enviando anuncio a ${targets.length} usuarios…`);
 
+  // Preparar contenido reutilizable para enviar vía bot de SHOP.
+  // (copyMessage entre bots distintos no funciona: el shop bot no ve el chat del admin.)
+  const textBody = (msg.text ?? "").trim();
+  const caption = (msg.caption ?? "").trim();
+  let photoBytes: ArrayBuffer | null = null;
+  let photoName = "anuncio.jpg";
+  if (msg.photo && msg.photo.length > 0) {
+    const largest = msg.photo[msg.photo.length - 1];
+    const f = await getFile("admin", largest.file_id);
+    if (f.ok && f.result?.file_path) {
+      photoBytes = await downloadFile("admin", f.result.file_path);
+      const parts = f.result.file_path.split("/");
+      photoName = parts[parts.length - 1] || photoName;
+    }
+  }
+
   let ok = 0;
   let fail = 0;
   for (const u of targets) {
-    const r = await copyMessage("shop", u.chat_id, msg.chat.id, msg.message_id);
-    if (r.ok && r.result) {
+    let sent: { ok: boolean; result?: { message_id: number } } = { ok: false };
+    if (photoBytes) {
+      sent = await sendPhotoMultipart("shop", u.chat_id, photoBytes, photoName, caption);
+    } else if (textBody) {
+      sent = await _rawSendMessage("shop", u.chat_id, textBody);
+    } else if (caption) {
+      sent = await _rawSendMessage("shop", u.chat_id, caption);
+    }
+    if (sent.ok && sent.result) {
       ok++;
       await recordAnnouncementDelivery({
         announcement_id: ann.id,
         telegram_id: u.telegram_id,
         chat_id: u.chat_id,
-        message_id: r.result.message_id,
+        message_id: sent.result.message_id,
       });
     } else {
       fail++;
@@ -983,7 +1005,6 @@ async function handleMessage(msg: TgMessage) {
       } else {
         await sendMessage("admin", msg.chat.id, `❌ Rechazado · ${escapeHtml(note)}`);
       }
-      await adminPendientes(msg.chat.id);
       return;
     }
 
@@ -1491,7 +1512,6 @@ async function handleCallback(cb: TgCallback) {
       await markReceiptStatus(cb.message.chat.id, photoMid, `✅ APROBADO`, `$${amount.toFixed(2)}`);
     }
     await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
-    if (cb.message) await adminPendientes(cb.message.chat.id);
     return;
   }
 
