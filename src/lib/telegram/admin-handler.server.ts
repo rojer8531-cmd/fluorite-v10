@@ -540,7 +540,7 @@ async function adminPendientes(chat_id: number) {
     .order("created_at", { ascending: false })
     .limit(20);
   if (!orders || orders.length === 0) {
-    await replaceAdminList(chat_id, adminId(), "pendientes", `<b>Pendientes</b>\n\nNo hay órdenes pendientes.`);
+    await replaceAdminList(chat_id, adminId(), "pendientes", `<b>📥 Pendientes</b>\n\nNo hay órdenes pendientes.`);
     return;
   }
   const lines: string[] = [];
@@ -555,17 +555,70 @@ async function adminPendientes(chat_id: number) {
       `<b>${n}.</b> <code>${o.id.slice(0, 8)}</code> · <code>${o.telegram_id}</code> · $${Number(o.total_usd).toFixed(2)} · ${label}`,
     );
     kb.push([
-      { text: `${n} Aprobar`, callback_data: `ord:approve:${o.id}` },
-      { text: `${n} Rechazar`, callback_data: `ord:reject:${o.id}` },
+      { text: `${n} ✅`, callback_data: `ord:approve:${o.id}` },
+      { text: `${n} ❌`, callback_data: `ord:reject:${o.id}` },
     ]);
   });
   await replaceAdminList(
     chat_id,
     adminId(),
     "pendientes",
-    `<b>Pendientes (${orders.length})</b>\n\n${lines.join("\n")}`,
+    `<b>📥 Pendientes (${orders.length})</b>\n\n${lines.join("\n")}`,
     kb,
   );
+
+  // Re-enviar la foto de cada comprobante pendiente con sus botones
+  const orderIds = orders.map((o) => o.id);
+  const { data: receipts } = await sb
+    .from("receipts")
+    .select("order_id, file_id, admin_message_id")
+    .in("order_id", orderIds)
+    .eq("status", "pending");
+  const byOrder = new Map((receipts ?? []).map((r) => [r.order_id, r]));
+  for (let i = 0; i < orders.length; i++) {
+    const o = orders[i];
+    const r = byOrder.get(o.id);
+    if (!r?.file_id) continue;
+    // Borrar la foto anterior si existía, para no duplicar
+    if (r.admin_message_id) {
+      deleteMessage("admin", chat_id, r.admin_message_id as number).catch(() => {});
+    }
+    const label =
+      o.order_type === "recharge"
+        ? "Recarga"
+        : (o as { products: { name: string } | null }).products?.name ?? "—";
+    const caption =
+      `<b>${i + 1}. Comprobante</b>\n` +
+      `Usuario  <code>${o.telegram_id}</code>\n` +
+      `Monto    $${Number(o.total_usd).toFixed(2)}\n` +
+      `Tipo     ${label}\n` +
+      `Orden    <code>${o.id.slice(0, 8)}</code>`;
+    const sent = await sendPhoto("admin", chat_id, r.file_id, caption, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
+            { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
+          ],
+        ],
+      },
+    });
+    if (sent.ok && sent.result) {
+      await sb
+        .from("receipts")
+        .update({ admin_message_id: sent.result.message_id })
+        .eq("order_id", o.id);
+    }
+  }
+}
+
+/** Borra todos los mensajes del admin excepto los comprobantes pendientes. */
+async function cleanAdminChat(chat_id: number, admin_id: number) {
+  await purgeAdminTrash(chat_id, admin_id).catch(() => {});
+  await purgeReviewedReceipts(chat_id).catch(() => {});
+  // También limpiar la lista de paneles guardados (pendientes, usuarios, etc.)
+  await patchContext(admin_id, { list_msgs: {} });
+  await sendMessage("admin", chat_id, `🗑 Chat limpio. Solo quedan comprobantes pendientes.`);
 }
 
 const USERS_PAGE_SIZE = 8;
