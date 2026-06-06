@@ -1078,11 +1078,12 @@ async function handleMessage(msg: TgMessage) {
   }
 
   if (text === "/start" || text === "/help" || text === "/panel") {
-    // Solo mostrar la barra inferior, sin panel ni listas de comandos.
+    // Forzar siempre la barra inferior (aunque ya se haya mostrado antes).
+    await patchContext(msg.from.id, { bar_shown: false });
     await sendMessage(
       "warehouse",
       msg.chat.id,
-      `Listo. Usá la barra inferior.`,
+      `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
       { reply_markup: adminBottomKeyboard() },
     );
     await patchContext(msg.from.id, { bar_shown: true });
