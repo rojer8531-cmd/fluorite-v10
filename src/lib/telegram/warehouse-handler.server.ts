@@ -99,9 +99,8 @@ function tpId(createdAt: string) {
   return `TP${new Date(createdAt).getTime()}`;
 }
 
-// ===== Barra inferior persistente del admin =====
+// ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
-  pendientes: "📥 Pendientes",
   stock: "Stock",
   usuarios: "Usuarios",
   addkeys: "Agregar Keys",
@@ -114,10 +113,10 @@ const ADMIN_BOTTOM = {
 function adminBottomKeyboard() {
   return {
     keyboard: [
-      [{ text: ADMIN_BOTTOM.pendientes }, { text: ADMIN_BOTTOM.stock }],
-      [{ text: ADMIN_BOTTOM.usuarios }, { text: ADMIN_BOTTOM.addkeys }],
-      [{ text: ADMIN_BOTTOM.precios }, { text: ADMIN_BOTTOM.anuncio }],
-      [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_BOTTOM.borrar }],
+      [{ text: ADMIN_BOTTOM.stock }, { text: ADMIN_BOTTOM.usuarios }],
+      [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.precios }],
+      [{ text: ADMIN_BOTTOM.anuncio }, { text: ADMIN_BOTTOM.metodos }],
+      [{ text: ADMIN_BOTTOM.borrar }],
     ],
     resize_keyboard: true,
     is_persistent: true,
