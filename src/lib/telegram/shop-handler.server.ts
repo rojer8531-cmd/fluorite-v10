@@ -672,7 +672,17 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     .single();
   if (!price) return;
   const qty = Number(ctx.qty ?? 1);
-  const total_usd = Number(price.price_usd) * qty;
+  const { data: shareU } = await sb
+    .from("bot_users")
+    .select("shares_count")
+    .eq("telegram_id", telegram_id)
+    .single();
+  const hasReferralDiscount = Number(shareU?.shares_count ?? 0) >= REFERRAL_GOAL;
+  const unit_price = Math.max(
+    0,
+    Number(price.price_usd) - (hasReferralDiscount ? REFERRAL_DISCOUNT_USD : 0),
+  );
+  const total_usd = unit_price * qty;
 
   const { data: user } = await sb
     .from("bot_users")
