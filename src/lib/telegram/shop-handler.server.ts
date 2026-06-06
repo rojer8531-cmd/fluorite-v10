@@ -191,7 +191,7 @@ async function showShareBot(telegram_id: number, chat_id: number) {
     `Invitados: <b>${shares}</b> / ${REFERRAL_GOAL}\n` +
     `${status}`;
   await renderScreen("shop", telegram_id, chat_id, text, [
-    [{ text: "Compartir link", url: `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("Unite a la tienda")}` }],
+    [{ text: "Copiar link", callback_data: "noop" }],
     BACK_BUTTON,
   ]);
 }
