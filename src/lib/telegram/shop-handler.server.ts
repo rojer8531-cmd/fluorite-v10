@@ -189,14 +189,17 @@ const REFERRAL_DISCOUNT_USD = 1;
 
 async function showMainMenu(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "menu", {});
-  // Enviamos un mensaje invisible con el teclado inferior y lo borramos al
-  // toque, en paralelo, para no bloquear la respuesta al usuario.
-  const sent = await sendMessage("shop", chat_id, "\u2063", {
-    reply_markup: bottomKeyboard(),
-  });
-  if (sent.ok && sent.result) {
-    silentDelete("shop", chat_id, sent.result.message_id).catch(() => {});
-  }
+  // Limpiamos el "mensaje activo" para que el próximo flujo abra un mensaje
+  // nuevo (en lugar de editar uno antiguo de otra sección).
+  await setActiveMessage(telegram_id, chat_id, 0);
+  // Reenviamos la barra inferior (ReplyKeyboard persistente) en cada vuelta
+  // al menú, sin borrarla, así nunca desaparece para el usuario.
+  await sendMessage(
+    "shop",
+    chat_id,
+    `🏠 <b>Inicio</b>\n\nElegí una opción desde la barra inferior.`,
+    { reply_markup: bottomKeyboard() },
+  );
 }
 
 async function deliverBottomKeyboard(chat_id: number, text: string) {
