@@ -32,6 +32,45 @@ function tpId(createdAt: string | Date) {
   return `TP${t}`;
 }
 
+/** Normaliza string para comparación: minúsculas, sin acentos, sin signos. */
+function normTxt(s: string) {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * ¿El destinatario detectado por la IA coincide con el titular o la cuenta del método?
+ * Tolerante: basta con que UN token significativo (>=3 chars) coincida,
+ * o que la cuenta/alias aparezca como substring del recipient.
+ */
+function recipientMatches(recipient: string, holder: string, account: string | null): boolean {
+  const r = normTxt(recipient);
+  if (!r) return true; // sin datos: no bloquear
+  const h = normTxt(holder);
+  if (h && r.includes(h)) return true;
+  if (h) {
+    const tokens = h.split(" ").filter((t) => t.length >= 3);
+    let hits = 0;
+    for (const t of tokens) if (r.includes(t)) hits++;
+    if (hits >= 1) return true;
+  }
+  if (account) {
+    const a = normTxt(account);
+    if (a && a.length >= 4 && r.includes(a)) return true;
+    // si el alias/cuenta tiene tokens largos, también permitir
+    if (a) {
+      const at = a.split(" ").filter((t) => t.length >= 4);
+      for (const t of at) if (r.includes(t)) return true;
+    }
+  }
+  return false;
+}
+
 const ACCESS_PASSWORD = "117";
 
 interface Update {
@@ -64,14 +103,14 @@ const SUPPORT_USERNAME = "@smallffx7";
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
-  products: "Productos",
-  buy: "Comprar",
-  status: "Estado",
-  profile: "Perfil",
-  keys: "Mis Keys",
-  recharge: "Recargar",
-  announcements: "Anuncios",
-  support: "Soporte",
+  products: "🛒 Productos",
+  buy: "💳 Comprar",
+  status: "📦 Estado",
+  profile: "👤 Perfil",
+  keys: "🔑 Mis Keys",
+  recharge: "💰 Recargar",
+  announcements: "📣 Anuncios",
+  support: "💬 Soporte",
 };
 
 function bottomKeyboard() {
@@ -805,7 +844,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   const { data: order } = await sb
     .from("orders")
-    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, method_name)")
+    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, method_name, holder_name, account_info)")
     .eq("id", order_id)
     .single();
 
@@ -818,7 +857,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     keys_qty: number;
     products: { name: string } | null;
     product_prices: { duration_label: string } | null;
-    payment_methods: { country_name: string; method_name: string } | null;
+    payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null } | null;
   };
   const pid = tpId(o.created_at);
 
@@ -830,33 +869,35 @@ async function handleReceiptPhoto(msg: TgMessage) {
     o.total_local ? Number(o.total_local) : null,
   );
 
-  // IA: si la imagen no parece un pago, avisar al usuario y al admin sin procesar el comprobante
+  // IA: si la imagen no parece un pago, avisar al usuario y NO enviar al admin
   if (ocr?.is_payment === false) {
     await sendMessage(
       "shop",
       chat_id,
-      `Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`,
+      `⛔ Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`,
     );
-    const adminCid = getAdminChatId();
-    if (adminCid) {
-      await sendPhotoMultipart(
-        "admin",
-        adminCid,
-        bytes,
-        "no_es_pago.jpg",
-        `⛔ <b>IA</b>  ·  imagen no parece un pago\n\n` +
-          `Usuario   ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
-          `ID        <code>${telegram_id}</code>\n` +
-          `Pending   <code>${pid}</code>\n` +
-          `Destino   ${ocr.recipient ?? "—"}` +
-          ocrSummary,
-      );
-    }
-    // No procesamos como comprobante oficial: dejar la orden pendiente de comprobante
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
     return;
   }
+
+  // IA: verificar destinatario contra titular/cuenta del método de pago
+  if (ocr?.recipient && o.payment_methods?.holder_name) {
+    if (!recipientMatches(ocr.recipient, o.payment_methods.holder_name, o.payment_methods.account_info)) {
+      await sendMessage(
+        "shop",
+        chat_id,
+        `⛔ <b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
+          `Por favor, envía el dinero a los datos correctos:\n\n` +
+          `Titular  <code>${o.payment_methods.holder_name}</code>\n` +
+          `Cuenta   ${o.payment_methods.account_info ?? "—"}`,
+      );
+      await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+      await sb.from("receipts").delete().eq("id", receipt!.id);
+      return;
+    }
+  }
+
 
 
   let caption: string;
