@@ -402,10 +402,9 @@ async function handleMessage(msg: TgMessage) {
       deleteMessage("admin", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
       deleteMessage("admin", msg.chat.id, msg.message_id).catch(() => {});
       if (photoMid > 0) {
-        await markReceiptStatus(msg.chat.id, photoMid, `❌ RECHAZADO`, note.slice(0, 60));
-      } else {
-        await sendMessage(msg.chat.id, `❌ Rechazado · ${escapeHtml(note)}`);
+        await deleteMessage("admin", msg.chat.id, photoMid).catch(() => {});
       }
+      await sendMessage(msg.chat.id, `❌ Rechazado · ${escapeHtml(note).slice(0, 80)}`);
       return;
     }
 
@@ -627,7 +626,7 @@ async function handleCallback(cb: TgCallback) {
       .maybeSingle();
     const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
     if (photoMid && cb.message) {
-      await markReceiptStatus(cb.message.chat.id, photoMid, `✅ APROBADO`, `$${amount.toFixed(2)}`);
+      await deleteMessage("admin", cb.message.chat.id, photoMid).catch(() => {});
     }
     await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
     return;
