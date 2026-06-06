@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.apply_referral(bigint, bigint) FROM PUBLIC, anon, authenticated;

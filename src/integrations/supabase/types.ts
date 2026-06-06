@@ -695,7 +695,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      apply_referral: {
+        Args: { _new_user: number; _referrer: number }
+        Returns: Json
+      }
     }
     Enums: {
       order_status:
