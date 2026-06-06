@@ -123,12 +123,12 @@ const SUPPORT_USERNAME = "@smallffx7";
 const BOTTOM_MENU = {
   products: "🛒 Productos",
   buy: "💳 Comprar",
-  status: "Estado",
-  profile: "Perfil",
-  keys: "Mis Keys",
+  status: "📦 Estado",
+  profile: "👤 Perfil",
+  keys: "🔑 Mis Keys",
   recharge: "💰 Recargar",
-  announcements: "Anuncios",
-  share: "Compartir Bot",
+  announcements: "📣 Anuncios",
+  share: "🤝 Compartir Bot",
   support: "💬 Soporte",
 };
 
