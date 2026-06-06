@@ -1053,7 +1053,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
 async function handleReceiptDocument(msg: TgMessage) {
   const telegram_id = msg.from!.id;
   const chat_id = msg.chat.id;
-  silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+  // Conservamos el documento del usuario en el chat.
   const doc = msg.document!;
   if (!doc.file_id || !doc.file_unique_id) return;
 
