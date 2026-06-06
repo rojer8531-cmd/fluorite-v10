@@ -1342,6 +1342,7 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
     const cc = (st.context?.country_code as string) ?? "";
+    await silentDelete("shop", chat_id, msg.message_id).catch(() => {});
     await showRechargeMethods(telegram_id, chat_id, cc, Math.round(n * 100) / 100);
     return;
   }
