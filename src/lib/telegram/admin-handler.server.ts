@@ -479,7 +479,11 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_BOTTOM.bloqueos:
       await adminBloqueos(msg.chat.id);
       return;
+    case ADMIN_BOTTOM.usuario:
+      await startUserLookup(msg.from.id, msg.chat.id);
+      return;
   }
+
 
   if (text === "/start" || text === "/help" || text === "/panel") {
     await sendMessage(
