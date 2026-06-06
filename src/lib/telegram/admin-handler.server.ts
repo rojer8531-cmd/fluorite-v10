@@ -152,6 +152,12 @@ export async function handleAdminUpdate(update: Update): Promise<void> {
 
   if (admin_id && chat_id) {
     _currentAdminId = admin_id;
+    // Trackear los mensajes que el admin envía para poder borrarlos también
+    if (update.message?.message_id) {
+      sb.from("admin_trash")
+        .insert({ chat_id: Number(chat_id), message_id: update.message.message_id })
+        .then(() => {}, () => {});
+    }
     // Si el admin "se salió" del chat (sin actividad por un rato), borramos
     // todo lo anterior antes de continuar. Si todavía está activo no tocamos
     // nada para no romper su navegación.
