@@ -562,7 +562,7 @@ async function adminPromptFindUser(chat_id: number) {
   await sendMessage(
     "admin",
     chat_id,
-    `🔍 <b>FINDUSER</b>\n\nRespondé a este mensaje con el ID de Telegram del usuario.`,
+    `<b>Buscar usuario</b>\n\nRespondé a este mensaje con el ID de Telegram del usuario.`,
     { reply_markup: { force_reply: true, selective: true } },
   );
 }
