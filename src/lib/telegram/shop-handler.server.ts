@@ -664,15 +664,9 @@ async function routeBottomMenu(
   };
   const action = map[text];
   if (!action) return false;
-  // Borrar el mensaje del usuario (el tap) y el screen activo anterior,
-  // así la próxima pantalla aparece fresca al fondo del chat y responde
-  // visiblemente al primer toque (en vez de editar arriba sin que se vea).
-  silentDelete("shop", chat_id, message_id).catch(() => {});
-  const active = await getActiveMessage(telegram_id);
-  if (active && active.chat_id === chat_id) {
-    silentDelete("shop", chat_id, active.message_id).catch(() => {});
-    await setActiveMessage(telegram_id, chat_id, 0).catch(() => {});
-  }
+  // No borramos nada: cada acción envía una nueva pantalla y se conserva
+  // el historial. Solo silenciamos el "tap" del menú del usuario? NO —
+  // tampoco se borra, para que quede todo en el chat.
   await action(telegram_id, chat_id);
   return true;
 }
