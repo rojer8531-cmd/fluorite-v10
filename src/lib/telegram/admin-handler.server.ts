@@ -68,16 +68,21 @@ function tpId(createdAt: string) {
 const ADMIN_BOTTOM = {
   pendientes: "📥 Pendientes",
   bloqueos: "🚫 Bloqueos",
+  usuario: "🔍 Usuario",
 };
 
 function adminBottomKeyboard() {
   return {
-    keyboard: [[{ text: ADMIN_BOTTOM.pendientes }, { text: ADMIN_BOTTOM.bloqueos }]],
+    keyboard: [
+      [{ text: ADMIN_BOTTOM.pendientes }, { text: ADMIN_BOTTOM.bloqueos }],
+      [{ text: ADMIN_BOTTOM.usuario }],
+    ],
     resize_keyboard: true,
     is_persistent: true,
     one_time_keyboard: false,
   };
 }
+
 
 export async function handleAdminUpdate(update: Update): Promise<void> {
   const admin_id =
