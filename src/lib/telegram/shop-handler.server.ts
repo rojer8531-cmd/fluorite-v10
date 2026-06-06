@@ -144,8 +144,8 @@ const BOTTOM_MENU = {
   profile: "👤 Perfil",
   keys: "🔑 Mis Keys",
   recharge: "💰 Recargar",
-  announcements: "📣 Anuncios",
-  share: "🤝 Compartir Bot",
+  announcements: "Anuncios",
+  share: "Compartir Bot",
   support: "💬 Soporte",
 };
 
@@ -234,7 +234,7 @@ async function showShareBot(telegram_id: number, chat_id: number) {
       ? `<b>Descuento activo:</b> $${REFERRAL_DISCOUNT_USD.toFixed(2)} USD menos por cada key.`
       : `Te faltan <b>${remaining}</b> invitados para activar <b>$${REFERRAL_DISCOUNT_USD.toFixed(2)} USD</b> de descuento por cada key.`;
   const text =
-    `🤝 <b>Compartir Bot</b>\n\n` +
+    `<b>Compartir Bot</b>\n\n` +
     `Tu link personal:\n<code>${link}</code>\n\n` +
     `Invitados: <b>${shares}</b> / ${REFERRAL_GOAL}\n` +
     `${status}`;
@@ -1461,7 +1461,7 @@ async function showAnnouncements(telegram_id: number, chat_id: number) {
     kb.push(row);
   }
   kb.push([{ text: "Volver", callback_data: "menu:main" }]);
-  return screen(telegram_id, chat_id, `📣 <b>Anuncios</b>\n\n${blocks.join("\n\n")}`, kb);
+  return screen(telegram_id, chat_id, `<b>Anuncios</b>\n\n${blocks.join("\n\n")}`, kb);
 }
 
 function escapeHtml(s: string) {
