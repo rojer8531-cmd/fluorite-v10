@@ -1186,7 +1186,6 @@ async function handleMessage(msg: TgMessage) {
     return;
   }
 
-  if (text === "/pendientes") return adminPendientes(msg.chat.id);
   if (text === "/stock") return adminStockView(msg.chat.id);
   if (text === "/precios") return adminListaPrecios(msg.chat.id);
 
