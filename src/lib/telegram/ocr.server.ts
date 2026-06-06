@@ -23,11 +23,14 @@ function toNumber(v: unknown): number | null {
 export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promise<OcrResult | null> {
   const key = process.env.LOVABLE_API_KEY;
   if (!key) return null;
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 3_500);
   try {
     const b64 = Buffer.from(bytes).toString("base64");
     const dataUrl = `data:${mime};base64,${b64}`;
     const res = await fetch(GATEWAY, {
       method: "POST",
+      signal: ac.signal,
       headers: {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
@@ -74,6 +77,8 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
   } catch (e) {
     console.error("[ocr] err", e);
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
