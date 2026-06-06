@@ -622,26 +622,26 @@ async function showRechargeMethods(
   await setState(telegram_id, "recharge_ready", { order_id: order.id, country_code, amount });
 
   const pid = tpId(order.created_at);
+  const flag = countryFlag(country_code);
+  const localTotal = amount * Number(methods[0].usd_rate);
+  const currency = methods[0].currency;
+  const fmtLocal = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const lines: string[] = [
-    `💳 <b>Métodos De Pago - ${methods[0].country_name}</b>`,
+    `💳 <b>Métodos De Pago - ${methods[0].country_name}</b> ${flag}`,
     ``,
-    `ID De Recarga: <code>${pid}</code>`,
-    `Monto: <b>${amount.toFixed(2)} USD</b>`,
-    `Total A Pagar: <b>${amount.toFixed(2)} USD</b>`,
+    `🆔 Recarga: <code>${pid}</code>`,
+    `💰 Monto: <b>${amount.toFixed(2)} USD</b>`,
+    `🧾 Pagas: <b>${fmtLocal(localTotal)} ${currency}</b>`,
     ``,
   ];
   for (const m of methods) {
     const local = amount * Number(m.usd_rate);
-    lines.push(`💳 <b>Método De Pago</b>`);
-    lines.push(`Nombre: <b>${m.method_name}</b>`);
-    lines.push(`Titular: <code>${m.holder_name}</code>`);
-    lines.push(`Cuenta: <code>${m.account_info}</code>`);
-    if (m.extra_info) lines.push(`Nota: ${m.extra_info}`);
-    if (Number(m.usd_rate) !== 1) {
-      lines.push(`Total: <b>${local.toFixed(2)} ${m.currency}</b>`);
-    } else {
-      lines.push(`Total: <b>${amount.toFixed(2)} ${m.currency}</b>`);
-    }
+    lines.push(`🏦 <b>${m.method_name}</b>`);
+    if (m.holder_name) lines.push(`🪪 Nombre: <code>${m.holder_name}</code>`);
+    if (m.account_info) lines.push(`📋 Número: <code>${m.account_info}</code>`);
+    if (m.extra_info) lines.push(`📝 Nota: ${m.extra_info}`);
+    lines.push(`💵 Total: <b>${fmtLocal(local)} ${m.currency}</b>`);
     lines.push(``);
   }
 
@@ -651,12 +651,27 @@ async function showRechargeMethods(
   ]);
 }
 
+function countryFlag(code: string): string {
+  if (!code || code.length !== 2) return "";
+  const cc = code.toUpperCase();
+  const A = 0x1f1e6;
+  return String.fromCodePoint(A + cc.charCodeAt(0) - 65, A + cc.charCodeAt(1) - 65);
+}
+
 async function startRechargeReceipt(telegram_id: number, chat_id: number, order_id: string) {
   await setState(telegram_id, "awaiting_recharge_receipt", { order_id });
+  const { data: order } = await sb
+    .from("orders")
+    .select("created_at")
+    .eq("id", order_id)
+    .single();
+  const pid = order ? tpId(order.created_at) : "";
   await screen(
     telegram_id,
     chat_id,
-    `📤 <b>Envía tu comprobante de pago</b>\n\nAceptamos imágenes, capturas o documentos.`,
+    `📸 <b>Envía El Comprobante De Pago</b>\n\n` +
+      `🆔 Recarga: <code>${pid}</code>\n\n` +
+      `⏳ Apenas Lo Envíes, Lo Revisaremos.`,
     [[{ text: "✖️ Cancelar", callback_data: "menu:main" }]],
   );
 }
