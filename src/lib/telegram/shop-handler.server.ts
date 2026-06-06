@@ -932,7 +932,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     await sendMessage(
       "shop",
       chat_id,
-      `⛔ Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`,
+      `Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`,
     );
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
