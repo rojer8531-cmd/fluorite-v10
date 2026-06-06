@@ -133,6 +133,12 @@ async function resolvePriceId(rawId: string) {
   return matches[0].id;
 }
 
+// Si el admin estuvo ausente más de este umbral, al volver se borran todos
+// los mensajes de la sesión anterior. Los comprobantes pendientes nunca se
+// tocan; los comprobantes ya revisados (aprobados/rechazados/key enviada)
+// también se eliminan junto con el resto.
+const ADMIN_IDLE_PURGE_MS = 90_000;
+
 export async function handleAdminUpdate(update: Update): Promise<void> {
   const admin_id =
     (update.message?.from && isAdmin(update.message.from.id) && update.message.from.id) ||
@@ -143,8 +149,15 @@ export async function handleAdminUpdate(update: Update): Promise<void> {
 
   if (admin_id && chat_id) {
     _currentAdminId = admin_id;
-    // Limpiar mensajes anteriores del admin (menos comprobantes, que viven en otra ruta)
-    await purgeAdminTrash(chat_id, admin_id).catch(() => {});
+    // Si el admin "se salió" del chat (sin actividad por un rato), borramos
+    // todo lo anterior antes de continuar. Si todavía está activo no tocamos
+    // nada para no romper su navegación.
+    const idleMs = await getIdleMs(admin_id);
+    if (idleMs >= ADMIN_IDLE_PURGE_MS) {
+      await purgeAdminTrash(chat_id, admin_id).catch(() => {});
+      await purgeReviewedReceipts(chat_id).catch(() => {});
+    }
+    await touchAdminSeen(admin_id).catch(() => {});
     await ensureAdminBar(chat_id, admin_id).catch(() => {});
   }
 
@@ -154,6 +167,40 @@ export async function handleAdminUpdate(update: Update): Promise<void> {
   } finally {
     _currentAdminId = null;
   }
+}
+
+async function getIdleMs(admin_id: number): Promise<number> {
+  const st = await getState(admin_id);
+  const ctx = (st?.context ?? {}) as Record<string, unknown>;
+  const last = Number(ctx.last_seen_ms ?? 0);
+  if (!last) return Number.POSITIVE_INFINITY;
+  return Date.now() - last;
+}
+
+async function touchAdminSeen(admin_id: number) {
+  await patchContext(admin_id, { last_seen_ms: Date.now() });
+}
+
+async function purgeReviewedReceipts(chat_id: number) {
+  // Borrar comprobantes ya revisados (no pendientes) del chat del admin.
+  const { data } = await sb
+    .from("receipts")
+    .select("admin_message_id, status")
+    .neq("status", "pending")
+    .not("admin_message_id", "is", null)
+    .limit(200);
+  if (!data || data.length === 0) return;
+  await Promise.all(
+    data.map((r) =>
+      deleteMessage("admin", chat_id, r.admin_message_id as number).catch(() => {}),
+    ),
+  );
+  // Limpiar referencias para no volver a intentar borrarlos.
+  await sb
+    .from("receipts")
+    .update({ admin_message_id: null })
+    .neq("status", "pending")
+    .not("admin_message_id", "is", null);
 }
 
 // ===== Panel admin (inline) =====
