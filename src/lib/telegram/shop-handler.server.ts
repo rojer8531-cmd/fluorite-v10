@@ -870,11 +870,8 @@ async function handleReceiptPhoto(msg: TgMessage) {
     return;
   }
 
-  // Límite diario de comprobantes: 10 por día
-  if (!(await checkRateLimit(telegram_id, "receipt_day", 10, 86400))) {
-    await notifyUser(chat_id, `⚠️ Alcanzaste el límite de 10 comprobantes por día. Probá mañana o esperá una respuesta del admin.`);
-    return;
-  }
+  // (Sin límite diario de comprobantes — los usuarios pueden enviar los que necesiten.)
+
 
   // Anti duplicado 24h: el mismo usuario puede reenviar hasta 3 veces el mismo comprobante.
   const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();

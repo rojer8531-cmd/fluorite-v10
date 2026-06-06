@@ -41,8 +41,9 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
           {
             role: "system",
             content:
-              "Analizás imágenes para detectar comprobantes de pago/transferencias bancarias. Respondé SOLO con JSON con campos: is_payment (boolean, true si la imagen es claramente un comprobante de transferencia, depósito o pago electrónico), amount (número, sin símbolos), reference (string del número de referencia/operación), date (YYYY-MM-DD si es posible), recipient (string con el nombre o cuenta del destinatario del pago si se ve). Usá null si no encontrás algo. Si la imagen NO es un comprobante de pago (foto cualquiera, captura no relacionada, meme, etc) poné is_payment=false.",
+              "Sos un verificador de comprobantes de pago bancario / billetera digital (Nequi, Daviplata, Bancolombia, Zelle, PayPal, transferencias, depósitos, etc). Respondé SOLO con JSON con los campos: is_payment (boolean), amount (número sin símbolos), reference (string del número de operación/referencia), date (YYYY-MM-DD si es posible), recipient (nombre del destinatario o número de cuenta visible). Reglas para is_payment: marcá true si la imagen muestra señales claras de un movimiento de dinero exitoso: monto + fecha/hora + (referencia/comprobante/operación/transacción) o un banner de 'Transferencia exitosa', 'Pago realizado', 'Comprobante de pago', etc. No exijas que TODOS los datos estén presentes — si dudás pero hay monto + algún identificador bancario/billetera, marcá true. Marcá false SOLO si claramente no es un comprobante (selfie, meme, foto random, captura de chat sin datos de pago, pantalla de saldo, formulario en blanco, error de transacción). Si no estás seguro, preferí true. Usá null en los campos que no puedas leer.",
           },
+
           {
             role: "user",
             content: [
