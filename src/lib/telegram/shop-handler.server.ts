@@ -1218,8 +1218,36 @@ async function handleMessage(msg: TgMessage) {
 
   const text = (msg.text ?? "").trim();
 
-  if (text === "/start") {
+  if (text === "/start" || text.startsWith("/start ")) {
     if (!(await tryAcquireStartLock(telegram_id))) return;
+    const param = text.startsWith("/start ") ? text.slice(7).trim() : "";
+    if (param.startsWith("ref")) {
+      const refId = Number(param.slice(3));
+      if (Number.isFinite(refId) && refId > 0 && refId !== telegram_id) {
+        const { data: meRow } = await sb
+          .from("bot_users")
+          .select("referred_by_telegram_id")
+          .eq("telegram_id", telegram_id)
+          .single();
+        if (meRow && meRow.referred_by_telegram_id == null) {
+          const { data: refUser } = await sb
+            .from("bot_users")
+            .select("telegram_id, shares_count")
+            .eq("telegram_id", refId)
+            .maybeSingle();
+          if (refUser) {
+            await sb
+              .from("bot_users")
+              .update({ referred_by_telegram_id: refId })
+              .eq("telegram_id", telegram_id);
+            await sb
+              .from("bot_users")
+              .update({ shares_count: Number(refUser.shares_count ?? 0) + 1 })
+              .eq("telegram_id", refId);
+          }
+        }
+      }
+    }
     const { data: u } = await sb
       .from("bot_users")
       .select("*")
