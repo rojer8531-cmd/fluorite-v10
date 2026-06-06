@@ -29,7 +29,7 @@ export interface TgResult<T = unknown> {
   parameters?: { retry_after?: number };
 }
 
-const TG_TIMEOUT_MS = 8000;
+const TG_TIMEOUT_MS = 5_000;
 
 export async function tg<T = unknown>(
   bot: BotKind,
@@ -55,7 +55,7 @@ export async function tg<T = unknown>(
     const res = await fetch(url, init);
     const data = (await res.json()) as TgResult<T>;
     if (!data.ok) {
-      if (data.error_code === 429 && data.parameters?.retry_after && attempt < 2) {
+      if (data.error_code === 429 && data.parameters?.retry_after && data.parameters.retry_after <= 2 && attempt < 1) {
         await sleep((data.parameters.retry_after + 1) * 1000);
         return tg<T>(bot, method, payload, attempt + 1);
       }
@@ -217,9 +217,18 @@ export async function downloadFile(
   const token = tokenFor(bot);
   if (!token) return null;
   const url = `https://api.telegram.org/file/bot${token}/${file_path}`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  return res.arrayBuffer();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), TG_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: ac.signal });
+    if (!res.ok) return null;
+    return res.arrayBuffer();
+  } catch (err) {
+    console.error(`[tg ${bot}/file] fetch error`, err);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function setWebhook(bot: BotKind, url: string, secret_token: string) {
