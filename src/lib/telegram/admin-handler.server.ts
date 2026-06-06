@@ -1058,9 +1058,9 @@ async function handleMessage(msg: TgMessage) {
         .eq("order_id", ord.id)
         .maybeSingle();
       if (receipt?.admin_message_id) {
-        await markReceiptStatus(msg.chat.id, receipt.admin_message_id, `🔑 KEY ENVIADA`, String(u?.telegram_id ?? ord.telegram_id));
+        await markReceiptStatus(msg.chat.id, receipt.admin_message_id, `KEY ENVIADA`, String(u?.telegram_id ?? ord.telegram_id));
       } else {
-        await sendMessage("admin", msg.chat.id, `🔑 Key enviada a <code>${u?.telegram_id ?? ord.telegram_id}</code>.`);
+        await sendMessage("admin", msg.chat.id, `Key enviada a <code>${u?.telegram_id ?? ord.telegram_id}</code>.`);
       }
       return;
     }
