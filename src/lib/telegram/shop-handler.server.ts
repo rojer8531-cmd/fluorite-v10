@@ -1225,7 +1225,6 @@ async function handleMessage(msg: TgMessage) {
     if (st0?.state === "awaiting_recharge_receipt" || st0?.state === "awaiting_receipt") {
       await handleReceiptDocument(msg);
     } else {
-      silentDelete("shop", chat_id, msg.message_id).catch(() => {});
       await sendMessage("shop", chat_id, `Para enviar comprobante iniciá una recarga primero.`);
     }
     return;
