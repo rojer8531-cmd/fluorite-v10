@@ -1237,14 +1237,19 @@ async function handleMessage(msg: TgMessage) {
             .eq("telegram_id", refId)
             .maybeSingle();
           if (refUser) {
+            const prev = Number(refUser.shares_count ?? 0);
+            const next = prev + 1;
             await sb
               .from("bot_users")
               .update({ referred_by_telegram_id: refId })
               .eq("telegram_id", telegram_id);
             await sb
               .from("bot_users")
-              .update({ shares_count: Number(refUser.shares_count ?? 0) + 1 })
+              .update({ shares_count: next })
               .eq("telegram_id", refId);
+            if (prev < REFERRAL_GOAL && next >= REFERRAL_GOAL) {
+              sendMessage("shop", refId, `🎉 <b>Felicidades, descuento aplicado</b>\n\nDesde ahora cada key te cuesta $${REFERRAL_DISCOUNT_USD.toFixed(2)} USD menos.`).catch(() => {});
+            }
           }
         }
       }
