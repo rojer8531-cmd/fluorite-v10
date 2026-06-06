@@ -873,44 +873,6 @@ async function handleMessage(msg: TgMessage) {
 
 
 
-    // ===== Rechazo con motivo =====
-    const rejectMatch = replySource.match(/REJECT:([a-f0-9-]{36})(?::(\d+))?/);
-    if (rejectMatch) {
-      const orderId = rejectMatch[1];
-      const photoMid = rejectMatch[2] ? parseInt(rejectMatch[2], 10) : 0;
-      const note = text || "Sin motivo";
-      const { data: order } = await sb
-        .from("orders")
-        .select("*, bot_users(telegram_id, chat_id)")
-        .eq("id", orderId)
-        .single();
-      if (!order) {
-        await sendMessage("warehouse", msg.chat.id, `Orden no encontrada.`);
-        return;
-      }
-      await Promise.all([
-        sb.from("orders").update({ status: "rejected", admin_note: note }).eq("id", orderId),
-        sb.from("receipts").update({ status: "rejected" }).eq("order_id", orderId),
-        sb.from("admin_logs").insert({
-          admin_telegram_id: msg.from.id,
-          action: "reject_order",
-          target_type: "order",
-          target_id: orderId,
-          details: { note } as never,
-        }),
-      ]);
-      const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
-      await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id, note, pending: tpId(order.created_at) });
-      // Limpiar el prompt y marcar el comprobante visualmente
-      deleteMessage("warehouse", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
-      deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
-      if (photoMid > 0) {
-        await markReceiptStatus(msg.chat.id, photoMid, `❌ RECHAZADO`, note.slice(0, 60));
-      } else {
-        await sendMessage("warehouse", msg.chat.id, `❌ Rechazado · ${escapeHtml(note)}`);
-      }
-      return;
-    }
 
 
     // ===== Editar método de pago =====
