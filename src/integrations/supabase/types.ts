@@ -65,6 +65,24 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_trash: {
+        Row: {
+          chat_id: number
+          created_at: string
+          message_id: number
+        }
+        Insert: {
+          chat_id: number
+          created_at?: string
+          message_id: number
+        }
+        Update: {
+          chat_id?: number
+          created_at?: string
+          message_id?: number
+        }
+        Relationships: []
+      }
       announcement_deliveries: {
         Row: {
           announcement_id: string
