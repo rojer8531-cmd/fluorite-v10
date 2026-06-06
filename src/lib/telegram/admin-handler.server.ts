@@ -527,7 +527,7 @@ async function adminUsuarios(chat_id: number, page = 0) {
     .range(from, to);
 
   if (!users || users.length === 0) {
-    await replaceAdminList(chat_id, adminId(), "usuarios", `👥 <b>Usuarios</b>  ·  Total ${total}\n\nSin usuarios.`);
+    await replaceAdminList(chat_id, adminId(), "usuarios", `<b>Usuarios</b>  ·  Total ${total}\n\nSin usuarios.`);
     return;
   }
 
