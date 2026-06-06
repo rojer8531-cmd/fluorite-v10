@@ -7,6 +7,7 @@ import {
   getAdminChatId,
   getFile,
   downloadFile,
+  sendPhoto,
   sendPhotoMultipart,
   copyMessage,
 } from "./api.server";
