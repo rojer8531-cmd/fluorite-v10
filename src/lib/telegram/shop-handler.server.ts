@@ -1289,6 +1289,11 @@ async function handleMessage(msg: TgMessage) {
       is_authenticated: true,
       display_name: name,
     });
+    const active = await getActiveMessage(telegram_id);
+    if (active && active.chat_id === chat_id) {
+      silentDelete("shop", chat_id, active.message_id).catch(() => {});
+    }
+    await deliverBottomKeyboard(chat_id, `Listo, <b>${name}</b>.`);
     await showMainMenu(telegram_id, chat_id);
     return;
   }
