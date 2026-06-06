@@ -1,16 +1,20 @@
 // Telegram Bot API client con retry exponencial y cola simple
 // SERVER-ONLY. No importar desde código cliente.
 
-export type BotKind = "shop" | "admin";
+export type BotKind = "shop" | "admin" | "warehouse";
 
 function tokenFor(bot: BotKind) {
-  return bot === "shop"
-    ? process.env.TELEGRAM_SHOP_BOT_TOKEN
-    : process.env.TELEGRAM_ADMIN_BOT_TOKEN;
+  if (bot === "shop") return process.env.TELEGRAM_SHOP_BOT_TOKEN;
+  if (bot === "warehouse") return process.env.TELEGRAM_WAREHOUSE_BOT_TOKEN;
+  return process.env.TELEGRAM_ADMIN_BOT_TOKEN;
 }
 
 export function getAdminChatId() {
   return process.env.TELEGRAM_ADMIN_CHAT_ID;
+}
+
+export function getWarehouseChatId() {
+  return process.env.TELEGRAM_WAREHOUSE_CHAT_ID;
 }
 
 async function sleep(ms: number) {
