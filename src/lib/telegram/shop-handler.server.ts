@@ -104,15 +104,15 @@ const SUPPORT_USERNAME = "@smallffx7";
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
-  products: "🛒 Productos",
-  buy: "💳 Comprar",
-  status: "📦 Estado",
-  profile: "👤 Perfil",
-  keys: "🔑 Mis Keys",
-  recharge: "💰 Recargar",
-  announcements: "📣 Anuncios",
-  share: "📤 Compartir Bot",
-  support: "💬 Soporte",
+  products: "Productos",
+  buy: "Comprar",
+  status: "Estado",
+  profile: "Perfil",
+  keys: "Mis Keys",
+  recharge: "Recargar",
+  announcements: "Anuncios",
+  share: "Compartir Bot",
+  support: "Soporte",
 };
 
 function bottomKeyboard() {
@@ -154,17 +154,13 @@ const REFERRAL_DISCOUNT_USD = 1;
 
 async function showMainMenu(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "menu", {});
-  const active = await getActiveMessage(telegram_id);
-  if (active && active.chat_id === chat_id) {
-    silentDelete("shop", chat_id, active.message_id).catch(() => {});
-  }
-  // Asegurar barra inferior sin mostrar texto adicional al usuario
-  const sent = await sendMessage("shop", chat_id, "\u2063", {
-    reply_markup: bottomKeyboard(),
-  });
-  if (sent.ok && sent.result) {
-    silentDelete("shop", chat_id, sent.result.message_id).catch(() => {});
-  }
+  // No enviamos ningún mensaje visible. El teclado inferior persiste desde
+  // la primera vez que se entregó (durante el onboarding), así que /start
+  // simplemente deja la barra inferior disponible sin generar burbujas.
+}
+
+async function deliverBottomKeyboard(chat_id: number, text: string) {
+  await sendMessage("shop", chat_id, text, { reply_markup: bottomKeyboard() });
 }
 
 async function showShareBot(telegram_id: number, chat_id: number) {
@@ -191,7 +187,7 @@ async function showShareBot(telegram_id: number, chat_id: number) {
     `Invitados: <b>${shares}</b> / ${REFERRAL_GOAL}\n` +
     `${status}`;
   await renderScreen("shop", telegram_id, chat_id, text, [
-    [{ text: "Copiar link", copy_text: { text: link } } as any, { text: "Compartir ahora", switch_inline_query: `Probá este bot 👉 ${link}` } as any],
+    [{ text: "Copiar link", copy_text: { text: link } } as any, { text: "Compartir ahora", switch_inline_query: `Probá este bot ${link}` } as any],
     [{ text: "Mostrar link", callback_data: `shlink:${telegram_id}` }],
     BACK_BUTTON,
   ]);
@@ -936,7 +932,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     await sendMessage(
       "shop",
       chat_id,
-      `⛔ Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`,
+      `Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`,
     );
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
@@ -949,7 +945,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
       await sendMessage(
         "shop",
         chat_id,
-        `⛔ <b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
+        `<b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
           `Por favor, envía el dinero a los datos correctos:\n\n` +
           `Titular  <code>${o.payment_methods.holder_name}</code>\n` +
           `Cuenta   ${o.payment_methods.account_info ?? "—"}`,
@@ -965,7 +961,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
   let caption: string;
   if (isRecharge) {
     caption =
-      `💰 <b>Comprobante De Recarga</b>\n\n` +
+      `<b>Comprobante De Recarga</b>\n\n` +
       `Pending: <code>${pid}</code>\n` +
       `Usuario: @${user.username ?? "—"}\n` +
       `ID: <code>${telegram_id}</code>\n` +
@@ -975,7 +971,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
       ocrSummary;
   } else {
     caption =
-      `📩 <b>Nuevo comprobante</b>\n\n` +
+      `<b>Nuevo comprobante</b>\n\n` +
       `Usuario   ${user.display_name ?? "—"} (@${user.username ?? "—"})\n` +
       `ID        <code>${telegram_id}</code>\n` +
       `Producto  ${o.products?.name ?? "—"}\n` +
@@ -1293,6 +1289,11 @@ async function handleMessage(msg: TgMessage) {
       is_authenticated: true,
       display_name: name,
     });
+    const active = await getActiveMessage(telegram_id);
+    if (active && active.chat_id === chat_id) {
+      silentDelete("shop", chat_id, active.message_id).catch(() => {});
+    }
+    await deliverBottomKeyboard(chat_id, `Listo, <b>${name}</b>.`);
     await showMainMenu(telegram_id, chat_id);
     return;
   }
