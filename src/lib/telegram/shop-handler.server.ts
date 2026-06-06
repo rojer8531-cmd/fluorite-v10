@@ -1532,7 +1532,7 @@ async function openAnnouncement(telegram_id: number, chat_id: number, deliveryId
     .maybeSingle();
   if (!del) return;
   const a = (del as { announcements: { source_chat_id: number; source_message_id: number } | null }).announcements;
-  // Reenviar (copyMessage) el contenido al usuario
+  // Mostrar el anuncio (lo dejamos también en el historial — no borramos el original).
   if (a) {
     const { copyMessage } = await import("./api.server");
     await copyMessage("shop", chat_id, a.source_chat_id, a.source_message_id);
