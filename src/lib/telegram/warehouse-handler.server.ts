@@ -997,67 +997,8 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
-    const { data: ord } = await sb
-      .from("orders")
-      .select("id, telegram_id, user_id, product_id, price_id, keys_qty, order_type, total_usd, status")
-      .eq("admin_message_id", msg.reply_to_message.message_id)
-      .maybeSingle();
 
-    if (ord && ord.order_type === "recharge") {
-      const amount = Number(text.replace(",", "."));
-      if (!Number.isFinite(amount) || amount <= 0) {
-        await sendMessage("warehouse", msg.chat.id, `Monto inválido. Respondé con un número en USD, ej: 10`);
-        return;
-      }
-      await creditRecharge(ord, amount, msg.from.id, msg.chat.id);
-      return;
-    }
 
-    if (ord && text.length > 0) {
-      await Promise.all([
-        sb.from("order_keys").insert({
-          order_id: ord.id,
-          user_id: ord.user_id,
-          key_value: text,
-        }),
-        sb.from("orders").update({ status: "delivered" }).eq("id", ord.id),
-      ]);
-      const [{ data: u }, { data: prod }, { data: pr }] = await Promise.all([
-        sb.from("bot_users").select("telegram_id, chat_id").eq("id", ord.user_id).single(),
-        ord.product_id
-          ? sb.from("products").select("name").eq("id", ord.product_id).maybeSingle()
-          : Promise.resolve({ data: null }),
-        ord.price_id
-          ? sb.from("product_prices").select("duration_label").eq("id", ord.price_id).maybeSingle()
-          : Promise.resolve({ data: null }),
-      ]);
-      if (u) {
-        await notifyUserKey({
-          telegram_id: u.telegram_id,
-          chat_id: u.chat_id,
-          key_value: text,
-          product_name: (prod as { name: string } | null)?.name,
-          duration_label: (pr as { duration_label: string } | null)?.duration_label,
-        });
-      }
-      // Limpieza visual
-      deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
-      if (msg.reply_to_message) {
-        deleteMessage("warehouse", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
-      }
-      // Marcar el comprobante original (si existe vía receipts)
-      const { data: receipt } = await sb
-        .from("receipts")
-        .select("admin_message_id")
-        .eq("order_id", ord.id)
-        .maybeSingle();
-      if (receipt?.admin_message_id) {
-        await markReceiptStatus(msg.chat.id, receipt.admin_message_id, `KEY ENVIADA`, String(u?.telegram_id ?? ord.telegram_id));
-      } else {
-        await sendMessage("warehouse", msg.chat.id, `Key enviada a <code>${u?.telegram_id ?? ord.telegram_id}</code>.`);
-      }
-      return;
-    }
 
 
     const addKeysMatch = replySource.match(/ADDKEYS:([a-f0-9-]{36})/i);
