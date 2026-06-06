@@ -36,11 +36,14 @@ export const Route = createFileRoute("/api/public/telegram/setup")({
         const base = resolveStableBaseUrl(url, request.headers.get("host"));
         const shopUrl = `${base}/api/public/telegram/shop`;
         const adminUrl = `${base}/api/public/telegram/admin`;
+        const warehouseUrl = `${base}/api/public/telegram/warehouse`;
 
         const shopToken = process.env.TELEGRAM_SHOP_BOT_TOKEN;
         const adminToken = process.env.TELEGRAM_ADMIN_BOT_TOKEN;
+        const warehouseToken = process.env.TELEGRAM_WAREHOUSE_BOT_TOKEN;
         const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
-        if (!shopToken || !adminToken || !adminChatId) {
+        const warehouseChatId = process.env.TELEGRAM_WAREHOUSE_CHAT_ID;
+        if (!shopToken || !adminToken || !warehouseToken || !adminChatId || !warehouseChatId) {
           return Response.json(
             { ok: false, error: "Faltan secrets TELEGRAM_*" },
             { status: 500 },
@@ -49,19 +52,24 @@ export const Route = createFileRoute("/api/public/telegram/setup")({
 
         const shopSecret = deriveSecret(shopToken);
         const adminSecret = deriveSecret(adminToken);
+        const warehouseSecret = deriveSecret(warehouseToken);
 
-        const [shopSet, adminSet, shopInfo, adminInfo] = await Promise.all([
+        const [shopSet, adminSet, warehouseSet, shopInfo, adminInfo, warehouseInfo] = await Promise.all([
           setWebhook("shop", shopUrl, shopSecret),
           setWebhook("admin", adminUrl, adminSecret),
+          setWebhook("warehouse", warehouseUrl, warehouseSecret),
           getWebhookInfo("shop"),
           getWebhookInfo("admin"),
+          getWebhookInfo("warehouse"),
         ]);
 
         return Response.json({
-          ok: shopSet.ok && adminSet.ok,
+          ok: shopSet.ok && adminSet.ok && warehouseSet.ok,
           shop: { url: shopUrl, set: shopSet, info: shopInfo },
           admin: { url: adminUrl, set: adminSet, info: adminInfo },
+          warehouse: { url: warehouseUrl, set: warehouseSet, info: warehouseInfo },
           admin_chat_id: adminChatId,
+          warehouse_chat_id: warehouseChatId,
         });
       },
     },
