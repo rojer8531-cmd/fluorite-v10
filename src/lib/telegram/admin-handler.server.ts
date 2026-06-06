@@ -66,6 +66,22 @@ interface TgCallback {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Admin actualmente activo (para tracking de mensajes a limpiar)
+let _currentAdminId: number | null = null;
+
+async function sendMessage(
+  bot: "shop" | "admin",
+  chat_id: number | string,
+  text: string,
+  extra: Record<string, unknown> = {},
+) {
+  const r = await _rawSendMessage(bot, chat_id, text, extra);
+  if (bot === "admin" && r.ok && r.result && _currentAdminId) {
+    trashPush(_currentAdminId, r.result.message_id).catch(() => {});
+  }
+  return r;
+}
+
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
