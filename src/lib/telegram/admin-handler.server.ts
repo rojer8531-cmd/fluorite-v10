@@ -1418,15 +1418,18 @@ async function handleCallback(cb: TgCallback) {
       pending,
     });
 
-    if (cb.message) {
-      await markReceiptStatus(
-        cb.message.chat.id,
-        cb.message.message_id,
-        `✅ APROBADO`,
-        `$${amount.toFixed(2)}`,
-      );
+    // Marcar el comprobante real (si existe) y, si no, el mensaje del callback
+    const { data: rcpt } = await sb
+      .from("receipts")
+      .select("admin_message_id")
+      .eq("order_id", target)
+      .maybeSingle();
+    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
+    if (photoMid && cb.message) {
+      await markReceiptStatus(cb.message.chat.id, photoMid, `✅ APROBADO`, `$${amount.toFixed(2)}`);
     }
     await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
+    if (cb.message) await adminPendientes(cb.message.chat.id);
     return;
   }
 
