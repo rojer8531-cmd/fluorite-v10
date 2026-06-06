@@ -498,7 +498,7 @@ async function adminPendientes(chat_id: number) {
     .map((o) => {
       const label =
         o.order_type === "recharge"
-          ? "💰 Recarga"
+          ? "Recarga"
           : (o as { products: { name: string } | null }).products?.name ?? "—";
       return `<code>${o.id.slice(0, 8)}</code>  ·  <code>${o.telegram_id}</code>  ·  $${Number(
         o.total_usd,
@@ -509,7 +509,7 @@ async function adminPendientes(chat_id: number) {
     chat_id,
     adminId(),
     "pendientes",
-    `📨 <b>Pendientes (${orders.length})</b>\n\n${lines}\n\n<i>Usá los botones en cada comprobante.</i>`,
+    `<b>Pendientes (${orders.length})</b>\n\n${lines}\n\n<i>Usá los botones en cada comprobante.</i>`,
   );
 }
 
