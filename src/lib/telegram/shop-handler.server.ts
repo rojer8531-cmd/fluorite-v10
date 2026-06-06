@@ -23,7 +23,26 @@ import {
   setActiveMessage,
   sb,
 } from "./db.server";
-import { renderScreen, silentDelete } from "./ui.server";
+import { silentDelete } from "./ui.server";
+
+/**
+ * Pantalla "no destructiva": SIEMPRE envía un nuevo mensaje al chat.
+ * No edita ni borra los anteriores — el usuario conserva todo el historial.
+ */
+async function screen(
+  telegram_id: number,
+  chat_id: number,
+  text: string,
+  keyboard?: Array<Array<{ text: string; callback_data?: string; copy_text?: { text: string }; switch_inline_query?: string }>>,
+) {
+  const reply_markup = keyboard ? { inline_keyboard: keyboard } : undefined;
+  const sent = await sendMessage("shop", chat_id, text, { reply_markup });
+  if (sent.ok && sent.result) {
+    await setActiveMessage(telegram_id, chat_id, sent.result.message_id);
+    return sent.result.message_id;
+  }
+  return null;
+}
 import { getVisibleCatalog, invalidateCatalogCache } from "./catalog.server";
 import { ocrReceipt, formatOcrSummary } from "./ocr.server";
 
