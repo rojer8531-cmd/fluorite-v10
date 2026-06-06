@@ -1250,91 +1250,8 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
 
-  // ===== acciones sobre comprobantes =====
+  // ===== bloquear desde detalle de usuario =====
   const [, action, target] = data.split(":");
-
-  if (action === "approve") {
-    const { data: order } = await sb
-      .from("orders")
-      .select("*, bot_users(id, telegram_id, chat_id, balance, total_recharged)")
-      .eq("id", target)
-      .single();
-    if (!order || order.status !== "pending_approval") {
-      await answerCallbackQuery("warehouse", cb.id, "Ya procesada.", true);
-      return;
-    }
-    if (order.order_type === "recharge" && Number(order.total_usd) <= 0) {
-      await answerCallbackQuery("warehouse", cb.id, "Monto inválido en la orden.", true);
-      return;
-    }
-    const u = (order as { bot_users: { id: string; telegram_id: number; chat_id: number; balance: number; total_recharged: number } }).bot_users;
-    const amount = Number(order.total_usd);
-    const newBalance = Number(u.balance) + amount;
-    const newRecharged = Number(u.total_recharged) + amount;
-    let rank: "normal" | "pro" | "leyenda" = "normal";
-    if (newRecharged >= 200) rank = "leyenda";
-    else if (newRecharged >= 50) rank = "pro";
-
-    await Promise.all([
-      sb
-        .from("bot_users")
-        .update({ balance: newBalance, total_recharged: newRecharged, rank })
-        .eq("id", u.id),
-      sb.from("orders").update({ status: "approved" }).eq("id", target),
-      sb.from("receipts").update({ status: "approved" }).eq("order_id", target),
-      sb.from("admin_logs").insert({
-        admin_telegram_id: cb.from.id,
-        action: "approve_order",
-        target_type: "order",
-        target_id: target,
-        details: { amount_usd: amount } as never,
-      }),
-    ]);
-
-    const pending = tpId(order.created_at);
-    await notifyUserApproved({
-      telegram_id: u.telegram_id,
-      chat_id: u.chat_id,
-      amount_usd: amount,
-      new_balance: newBalance,
-      pending,
-    });
-
-    // Marcar el comprobante real (si existe) y, si no, el mensaje del callback
-    const { data: rcpt } = await sb
-      .from("receipts")
-      .select("admin_message_id")
-      .eq("order_id", target)
-      .maybeSingle();
-    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
-    if (photoMid && cb.message) {
-      await markReceiptStatus(cb.message.chat.id, photoMid, `✅ APROBADO`, `$${amount.toFixed(2)}`);
-    }
-    await answerCallbackQuery("warehouse", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
-    return;
-  }
-
-  if (action === "reject") {
-    if (!chat_id) return;
-    // Preferir el msg_id real del comprobante (si lo conocemos) sobre el del panel.
-    const { data: rcpt } = await sb
-      .from("receipts")
-      .select("admin_message_id")
-      .eq("order_id", target)
-      .maybeSingle();
-    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
-    const sent = await sendMessage(
-      "warehouse",
-      chat_id,
-      `<b>REJECT:${target}:${photoMid}</b>\n\nRespondé a este mensaje con el motivo del rechazo.`,
-      { reply_markup: { force_reply: true, selective: true } },
-    );
-    if (sent.ok && sent.result) {
-      await sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", target);
-    }
-    await answerCallbackQuery("warehouse", cb.id, "Esperando motivo…");
-    return;
-  }
 
   if (action === "block") {
     const tgId = parseInt(target, 10);
@@ -1345,47 +1262,8 @@ async function handleCallback(cb: TgCallback) {
       target_type: "telegram_id",
       target_id: target,
     });
-    if (cb.message) {
-      await markReceiptStatus(cb.message.chat.id, cb.message.message_id, `BLOQUEADO`, String(tgId));
-    }
     await answerCallbackQuery("warehouse", cb.id, "Usuario bloqueado.", true);
-    return;
-  }
-
-
-
-
-  if (action === "sendkey") {
-    if (!chat_id) return;
-    const order_id = target;
-    const { data: ord } = await sb
-      .from("orders")
-      .select("id, telegram_id, products(name), product_prices(duration_label)")
-      .eq("id", order_id)
-      .maybeSingle();
-    if (!ord) {
-      await sendMessage("warehouse", chat_id, `Orden no encontrada.`);
-      return;
-    }
-    const name = (ord as { products: { name: string } | null }).products?.name ?? "—";
-    const dur = (ord as { product_prices: { duration_label: string } | null }).product_prices?.duration_label ?? "—";
-    const sent = await sendMessage(
-      "warehouse",
-      chat_id,
-      `<b>Enviar key</b>\n\n` +
-        `Producto  ${name}\n` +
-        `Duración  ${dur}\n` +
-        `Usuario   <code>${ord.telegram_id}</code>\n` +
-        `Orden     <code>${order_id.slice(0, 8)}</code>\n\n` +
-        `Respondé a este mensaje pegando la key. Se enviará solo a este usuario.`,
-      { reply_markup: { force_reply: true, selective: true } },
-    );
-    if (sent.ok && sent.result) {
-      await sb
-        .from("orders")
-        .update({ admin_message_id: sent.result.message_id })
-        .eq("id", order_id);
-    }
+    if (chat_id) await adminUserDetail(chat_id, tgId);
     return;
   }
 }
