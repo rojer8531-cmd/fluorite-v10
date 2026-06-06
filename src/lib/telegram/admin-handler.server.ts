@@ -983,7 +983,6 @@ async function handleMessage(msg: TgMessage) {
       } else {
         await sendMessage("admin", msg.chat.id, `❌ Rechazado · ${escapeHtml(note)}`);
       }
-      await adminPendientes(msg.chat.id);
       return;
     }
 
