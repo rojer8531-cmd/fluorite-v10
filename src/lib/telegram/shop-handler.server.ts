@@ -171,7 +171,7 @@ async function deliverBottomKeyboard(chat_id: number, text: string) {
 async function showShareBot(telegram_id: number, chat_id: number) {
   const username = await getShopBotUsername();
   if (!username) {
-    await renderScreen("shop", telegram_id, chat_id, `No se pudo generar el link. Intentá más tarde.`, [BACK_BUTTON]);
+    await screen(telegram_id, chat_id, `No se pudo generar el link. Intentá más tarde.`, [BACK_BUTTON]);
     return;
   }
   const { data: u } = await sb
@@ -191,7 +191,7 @@ async function showShareBot(telegram_id: number, chat_id: number) {
     `Tu link personal:\n<code>${link}</code>\n\n` +
     `Invitados: <b>${shares}</b> / ${REFERRAL_GOAL}\n` +
     `${status}`;
-  await renderScreen("shop", telegram_id, chat_id, text, [
+  await screen(telegram_id, chat_id, text, [
     [{ text: "Copiar link", copy_text: { text: link } } as any, { text: "Compartir ahora", switch_inline_query: `Probá este bot ${link}` } as any],
     [{ text: "Mostrar link", callback_data: `shlink:${telegram_id}` }],
     BACK_BUTTON,
@@ -236,13 +236,13 @@ async function showProfile(telegram_id: number, chat_id: number) {
     `Recargado $${Number(u.total_recharged).toFixed(2)} USD\n` +
     `Rango    ${RANK_LABEL[u.rank] ?? u.rank}\n` +
     `Registro ${new Date(u.registered_at).toLocaleDateString("es")}`;
-  await renderScreen("shop", telegram_id, chat_id, text, [BACK_BUTTON]);
+  await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
 }
 
 async function showProducts(telegram_id: number, chat_id: number) {
   const { grouped } = await getVisibleCatalog();
   if (grouped.length === 0) {
-    await renderScreen("shop", telegram_id, chat_id, `No hay productos disponibles.`, [BACK_BUTTON]);
+    await screen(telegram_id, chat_id, `No hay productos disponibles.`, [BACK_BUTTON]);
     return;
   }
   await setState(telegram_id, "choose_category", {});
@@ -290,14 +290,14 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   const balance = Number(u?.balance ?? 0);
   const product = catalog.grouped.flatMap((s) => s.products).find((p) => p.id === product_id);
   if (!product) {
-    await renderScreen("shop", telegram_id, chat_id, `Producto no disponible.`, [
+    await screen(telegram_id, chat_id, `Producto no disponible.`, [
       [{ text: "Volver", callback_data: "menu:products" }],
     ]);
     return;
   }
   const prices = product.prices ?? [];
   if (prices.length === 0) {
-    await renderScreen("shop", telegram_id, chat_id, `Sin duraciones disponibles.`, [
+    await screen(telegram_id, chat_id, `Sin duraciones disponibles.`, [
       [{ text: "Volver", callback_data: "menu:products" }],
     ]);
     return;
@@ -488,7 +488,7 @@ async function showPaymentInstructions(
     `${manualNote}\n` +
     `\nEnviá la foto del comprobante a este chat.\n` +
     `<i>Solo fotos. Imágenes duplicadas serán rechazadas.</i>`;
-  await renderScreen("shop", telegram_id, chat_id, text, [
+  await screen(telegram_id, chat_id, text, [
     [{ text: "Cancelar", callback_data: "menu:main" }],
   ]);
 }
@@ -510,7 +510,7 @@ async function startRecharge(telegram_id: number, chat_id: number) {
     }
   }
   if (countries.length === 0) {
-    await renderScreen("shop", telegram_id, chat_id, `No hay métodos de pago disponibles.`, [BACK_BUTTON]);
+    await screen(telegram_id, chat_id, `No hay métodos de pago disponibles.`, [BACK_BUTTON]);
     return;
   }
   const kb: Array<Array<{ text: string; callback_data: string }>> = [];
@@ -538,7 +538,7 @@ async function askRechargeAmount(telegram_id: number, chat_id: number, country_c
     .limit(1)
     .maybeSingle();
   if (!pmRow) {
-    await renderScreen("shop", telegram_id, chat_id, `País no disponible.`, [BACK_BUTTON]);
+    await screen(telegram_id, chat_id, `País no disponible.`, [BACK_BUTTON]);
     return;
   }
   await setState(telegram_id, "recharge_amount", { country_code });
@@ -568,7 +568,7 @@ async function showRechargeMethods(
     .eq("active", true)
     .order("sort_order");
   if (!methods || methods.length === 0) {
-    await renderScreen("shop", telegram_id, chat_id, `No hay métodos disponibles para este país.`, [BACK_BUTTON]);
+    await screen(telegram_id, chat_id, `No hay métodos disponibles para este país.`, [BACK_BUTTON]);
     return;
   }
   const { data: user } = await sb.from("bot_users").select("id").eq("telegram_id", telegram_id).single();
@@ -620,7 +620,7 @@ async function showRechargeMethods(
     lines.push(``);
   }
 
-  await renderScreen("shop", telegram_id, chat_id, lines.join("\n"), [
+  await screen(telegram_id, chat_id, lines.join("\n"), [
     [{ text: "Ya Pagué", callback_data: `rcpay:${order.id}` }],
     [{ text: "Menú Principal", callback_data: "menu:main" }],
   ]);
@@ -699,7 +699,7 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     .eq("telegram_id", telegram_id)
     .single();
   if (!user || Number(user.balance) < total_usd) {
-    await renderScreen("shop", telegram_id, chat_id, `Saldo insuficiente.`, [BACK_BUTTON]);
+    await screen(telegram_id, chat_id, `Saldo insuficiente.`, [BACK_BUTTON]);
     return;
   }
 
@@ -1321,7 +1321,7 @@ async function handleMessage(msg: TgMessage) {
 
   if (st?.state === "login_name") {
     if (text.length < 2 || text.length > 40) {
-      await renderScreen("shop", telegram_id, chat_id, `Nombre inválido. Ingresá entre 2 y 40 caracteres.`);
+      await screen(telegram_id, chat_id, `Nombre inválido. Ingresá entre 2 y 40 caracteres.`);
       return;
     }
     await askPassword(telegram_id, chat_id, text);
@@ -1329,7 +1329,7 @@ async function handleMessage(msg: TgMessage) {
   }
   if (st?.state === "login_password") {
     if (text !== ACCESS_PASSWORD) {
-      await renderScreen("shop", telegram_id, chat_id, `Contraseña incorrecta. Intentá de nuevo:`);
+      await screen(telegram_id, chat_id, `Contraseña incorrecta. Intentá de nuevo:`);
       return;
     }
     const name = (st.context?.display_name as string) ?? "Usuario";
@@ -1349,7 +1349,7 @@ async function handleMessage(msg: TgMessage) {
   if (st?.state === "recharge_amount") {
     const n = Number(text.replace(",", "."));
     if (!Number.isFinite(n) || n <= 0) {
-      await renderScreen("shop", telegram_id, chat_id, `Monto inválido. Escribí solo números, ej: <code>10</code>.`, [
+      await screen(telegram_id, chat_id, `Monto inválido. Escribí solo números, ej: <code>10</code>.`, [
         [{ text: "Volver", callback_data: "menu:recharge" }],
       ]);
       return;
@@ -1426,7 +1426,7 @@ async function showOrderStatus(telegram_id: number, chat_id: number) {
     .order("created_at", { ascending: false })
     .limit(10);
   if (!orders || orders.length === 0) {
-    return renderScreen("shop", telegram_id, chat_id, `No tenés órdenes.`, [BACK_BUTTON]);
+    return screen(telegram_id, chat_id, `No tenés órdenes.`, [BACK_BUTTON]);
   }
   const statusLabel: Record<string, string> = {
     delivered: "Entregado",
@@ -1445,7 +1445,7 @@ async function showOrderStatus(telegram_id: number, chat_id: number) {
     const st = statusLabel[o.status] ?? o.status;
     return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n${st}\n$${Number(o.total_usd).toFixed(2)}\n${date}`;
   });
-  return renderScreen("shop", telegram_id, chat_id, `<b>Mis órdenes</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
+  return screen(telegram_id, chat_id, `<b>Mis órdenes</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
 }
 
 async function showMyKeys(telegram_id: number, chat_id: number) {
@@ -1458,7 +1458,7 @@ async function showMyKeys(telegram_id: number, chat_id: number) {
     .order("delivered_at", { ascending: false })
     .limit(30);
   if (!keys || keys.length === 0) {
-    return renderScreen("shop", telegram_id, chat_id, `Aún no tenés keys.`, [BACK_BUTTON]);
+    return screen(telegram_id, chat_id, `Aún no tenés keys.`, [BACK_BUTTON]);
   }
   const blocks = keys.map((k) => {
     const ord = (k as { orders: { products: { name: string } | null; product_prices: { duration_label: string } | null } | null }).orders;
@@ -1466,7 +1466,7 @@ async function showMyKeys(telegram_id: number, chat_id: number) {
     const dur = ord?.product_prices?.duration_label ? ` ${ord.product_prices.duration_label}` : "";
     return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n<code>${escapeHtml(k.key_value)}</code>`;
   });
-  return renderScreen("shop", telegram_id, chat_id, `<b>Mis keys</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
+  return screen(telegram_id, chat_id, `<b>Mis keys</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
 }
 
 async function showAnnouncements(telegram_id: number, chat_id: number) {
@@ -1477,7 +1477,7 @@ async function showAnnouncements(telegram_id: number, chat_id: number) {
     .order("created_at", { ascending: false })
     .limit(20);
   if (!deliveries || deliveries.length === 0) {
-    return renderScreen("shop", telegram_id, chat_id, `No hay anuncios.`, [BACK_BUTTON]);
+    return screen(telegram_id, chat_id, `No hay anuncios.`, [BACK_BUTTON]);
   }
   const blocks = deliveries.map((d, i) => {
     const a = (d as { announcements: { preview: string; created_at: string } | null }).announcements;
@@ -1493,7 +1493,7 @@ async function showAnnouncements(telegram_id: number, chat_id: number) {
     kb.push(row);
   }
   kb.push([{ text: "Volver", callback_data: "menu:main" }]);
-  return renderScreen("shop", telegram_id, chat_id, `<b>Anuncios</b>\n\n${blocks.join("\n\n")}`, kb);
+  return screen(telegram_id, chat_id, `<b>Anuncios</b>\n\n${blocks.join("\n\n")}`, kb);
 }
 
 function escapeHtml(s: string) {
