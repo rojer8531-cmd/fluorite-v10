@@ -823,6 +823,7 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
       `Cantidad  ${qty}\n\n` +
       `Sin stock automático. El admin entregará la key en breve.`,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    { final: true },
   );
 }
 
