@@ -1184,6 +1184,7 @@ async function handleReceiptDocument(msg: TgMessage) {
       `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
       `Se Paciente Y Espera.`,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    { final: true },
   );
 }
 
