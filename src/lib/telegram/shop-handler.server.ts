@@ -811,7 +811,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
   const telegram_id = msg.from!.id;
   const chat_id = msg.chat.id;
 
-  silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+  // Conservamos la foto del usuario en el chat.
 
   if (!msg.photo || msg.photo.length === 0) return;
 
