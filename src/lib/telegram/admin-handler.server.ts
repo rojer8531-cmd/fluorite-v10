@@ -402,10 +402,9 @@ async function handleMessage(msg: TgMessage) {
       deleteMessage("admin", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
       deleteMessage("admin", msg.chat.id, msg.message_id).catch(() => {});
       if (photoMid > 0) {
-        await markReceiptStatus(msg.chat.id, photoMid, `❌ RECHAZADO`, note.slice(0, 60));
-      } else {
-        await sendMessage(msg.chat.id, `❌ Rechazado · ${escapeHtml(note)}`);
+        await deleteMessage("admin", msg.chat.id, photoMid).catch(() => {});
       }
+      await sendMessage(msg.chat.id, `❌ Rechazado · ${escapeHtml(note).slice(0, 80)}`);
       return;
     }
 
