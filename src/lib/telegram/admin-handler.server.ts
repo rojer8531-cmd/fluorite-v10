@@ -1,6 +1,6 @@
 // Admin Bot — handler (UI limpia, barra inferior persistente)
 import {
-  sendMessage,
+  sendMessage as _rawSendMessage,
   editMessageReplyMarkup,
   deleteMessage,
   answerCallbackQuery,
