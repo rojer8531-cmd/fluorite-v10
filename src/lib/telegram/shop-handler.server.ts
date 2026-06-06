@@ -1278,7 +1278,11 @@ async function handleMessage(msg: TgMessage) {
   }
 
   const st = await getState(telegram_id);
-  silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+  // Solo borramos el mensaje del usuario si está ingresando la contraseña,
+  // para no dejar credenciales visibles en el chat.
+  if (st?.state === "login_password") {
+    silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+  }
 
   if (st?.state === "login_name") {
     if (text.length < 2 || text.length > 40) {
@@ -1298,11 +1302,7 @@ async function handleMessage(msg: TgMessage) {
       is_authenticated: true,
       display_name: name,
     });
-    const active = await getActiveMessage(telegram_id);
-    if (active && active.chat_id === chat_id) {
-      silentDelete("shop", chat_id, active.message_id).catch(() => {});
-    }
-    await deliverBottomKeyboard(chat_id, `Listo, <b>${name}</b>.`);
+    await deliverBottomKeyboard(chat_id, `✨ Listo, <b>${name}</b>.`);
     await showMainMenu(telegram_id, chat_id);
     return;
   }
