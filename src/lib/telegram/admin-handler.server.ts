@@ -519,12 +519,60 @@ async function handleCallback(cb: TgCallback) {
       target_id: String(tgId),
     });
     await answerCallbackQuery("admin", cb.id, `Desbloqueado ${tgId}.`, true);
-    if (chat_id) await adminBloqueos(chat_id);
+    // Borrar el mensaje de la lista para que no se vayan amontonando.
+    if (chat_id && cb.message) {
+      deleteMessage("admin", chat_id, cb.message.message_id).catch(() => {});
+    }
+    return;
+  }
+
+  if (data.startsWith("usr:")) {
+    const [, action, idStr] = data.split(":");
+    const tgId = parseInt(idStr, 10);
+    if (!Number.isFinite(tgId)) {
+      await answerCallbackQuery("admin", cb.id, "ID inválido", true);
+      return;
+    }
+    if (action === "msg") {
+      await setState(cb.from.id, "admin_dm", { target_tg: tgId });
+      if (chat_id) {
+        await sendMessage(
+          chat_id,
+          `✍️ Escribí el mensaje que querés enviar a <code>${tgId}</code>.\nSe enviará a través del bot de compras.`,
+        );
+      }
+      return;
+    }
+    if (action === "block") {
+      await blockUserPermanent(tgId, "admin_block");
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: cb.from.id,
+        action: "block_user",
+        target_type: "telegram_id",
+        target_id: String(tgId),
+      });
+      await answerCallbackQuery("admin", cb.id, `Usuario bloqueado.`, true);
+      if (chat_id) await showUserCard(chat_id, tgId);
+      return;
+    }
+    if (action === "unblock") {
+      await sb.from("blocked_users").delete().eq("telegram_id", tgId);
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: cb.from.id,
+        action: "unblock_user",
+        target_type: "telegram_id",
+        target_id: String(tgId),
+      });
+      await answerCallbackQuery("admin", cb.id, `Desbloqueado ${tgId}.`, true);
+      if (chat_id) await showUserCard(chat_id, tgId);
+      return;
+    }
     return;
   }
 
   // Acciones sobre comprobantes
   const [, action, target] = data.split(":");
+
 
   if (action === "approve") {
     const { data: order } = await sb
