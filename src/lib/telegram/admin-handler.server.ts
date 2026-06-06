@@ -491,7 +491,7 @@ async function adminPendientes(chat_id: number) {
     .order("created_at", { ascending: false })
     .limit(20);
   if (!orders || orders.length === 0) {
-    await replaceAdminList(chat_id, adminId(), "pendientes", `📨 <b>Pendientes</b>\n\nNo hay órdenes pendientes.`);
+    await replaceAdminList(chat_id, adminId(), "pendientes", `<b>Pendientes</b>\n\nNo hay órdenes pendientes.`);
     return;
   }
   const lines = orders
