@@ -1537,10 +1537,7 @@ async function openAnnouncement(telegram_id: number, chat_id: number, deliveryId
     const { copyMessage } = await import("./api.server");
     await copyMessage("shop", chat_id, a.source_chat_id, a.source_message_id);
   }
-  // Borrar el mensaje original que llegó en el broadcast (si existe)
-  if (del.message_id) {
-    deleteMessage("shop", chat_id, del.message_id).catch(() => {});
-  }
+  // Conservamos el aviso original del broadcast — no se borra.
   // Marcar leído
   if (!del.read_at) {
     await sb
