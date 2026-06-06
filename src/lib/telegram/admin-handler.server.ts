@@ -1403,9 +1403,9 @@ async function handleCallback(cb: TgCallback) {
       target_id: target,
     });
     if (cb.message) {
-      await markReceiptStatus(cb.message.chat.id, cb.message.message_id, `🚫 BLOQUEADO`, String(tgId));
+      await markReceiptStatus(cb.message.chat.id, cb.message.message_id, `BLOQUEADO`, String(tgId));
     }
-    await answerCallbackQuery("admin", cb.id, "🚫 Usuario bloqueado.", true);
+    await answerCallbackQuery("admin", cb.id, "Usuario bloqueado.", true);
     return;
   }
 
