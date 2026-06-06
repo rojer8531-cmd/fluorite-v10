@@ -1174,10 +1174,40 @@ async function askPassword(telegram_id: number, chat_id: number, name: string) {
 // ===== Handler principal =====
 export async function handleShopUpdate(update: Update): Promise<void> {
   if (update.message) {
+    const tid = update.message.from?.id;
+    const cid = update.message.chat.id;
+    if (tid) purgePendingAnnouncements(tid, cid).catch(() => {});
     await handleMessage(update.message);
   } else if (update.callback_query) {
+    const tid = update.callback_query.from.id;
+    const cid = update.callback_query.message?.chat.id ?? tid;
+    purgePendingAnnouncements(tid, cid).catch(() => {});
     await handleCallback(update.callback_query);
   }
+}
+
+/**
+ * Borra del chat los mensajes de anuncios (broadcasts) aún no leídos para
+ * que no se acumulen cuando el usuario elige otra opción del menú.
+ */
+async function purgePendingAnnouncements(telegram_id: number, chat_id: number) {
+  const { data } = await sb
+    .from("announcement_deliveries")
+    .select("id, message_id")
+    .eq("telegram_id", telegram_id)
+    .is("read_at", null)
+    .not("message_id", "is", null)
+    .limit(50);
+  if (!data || data.length === 0) return;
+  await Promise.all(
+    data.map((d) =>
+      deleteMessage("shop", chat_id, d.message_id as number).catch(() => {}),
+    ),
+  );
+  await sb
+    .from("announcement_deliveries")
+    .update({ message_id: null })
+    .in("id", data.map((d) => d.id));
 }
 
 async function handleMessage(msg: TgMessage) {
