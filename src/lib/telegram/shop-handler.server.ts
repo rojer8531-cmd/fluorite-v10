@@ -107,7 +107,6 @@ function recipientMatches(recipient: string, holder: string, account: string | n
   return false;
 }
 
-const ACCESS_PASSWORD = "117";
 
 interface Update {
   update_id: number;
@@ -189,15 +188,14 @@ const REFERRAL_DISCOUNT_USD = 1;
 
 async function showMainMenu(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "menu", {});
-  // Limpiamos el "mensaje activo" para que el próximo flujo abra un mensaje
-  // nuevo (en lugar de editar uno antiguo de otra sección).
+  // El próximo flujo debe abrir un mensaje NUEVO (no editar uno viejo).
   await setActiveMessage(telegram_id, chat_id, 0);
-  // Reenviamos la barra inferior (ReplyKeyboard persistente) en cada vuelta
-  // al menú, sin borrarla, así nunca desaparece para el usuario.
+  // Reenviamos la barra inferior (ReplyKeyboard persistente). Es la única
+  // forma de garantizar que el teclado esté visible tras el /start.
   await sendMessage(
     "shop",
     chat_id,
-    `🏠 <b>Inicio</b>\n\nElegí una opción desde la barra inferior.`,
+    `🏠 <b>Inicio</b>`,
     { reply_markup: bottomKeyboard() },
   );
 }
@@ -205,6 +203,7 @@ async function showMainMenu(telegram_id: number, chat_id: number) {
 async function deliverBottomKeyboard(chat_id: number, text: string) {
   await sendMessage("shop", chat_id, text, { reply_markup: bottomKeyboard() });
 }
+
 
 async function showShareBot(telegram_id: number, chat_id: number) {
   const username = await getShopBotUsername();
@@ -683,12 +682,12 @@ async function routeBottomMenu(
   };
   const action = map[text];
   if (!action) return false;
-  // No borramos nada: cada acción envía una nueva pantalla y se conserva
-  // el historial. Solo silenciamos el "tap" del menú del usuario? NO —
-  // tampoco se borra, para que quede todo en el chat.
+  // Forzar mensaje NUEVO debajo del tap del usuario (no editar arriba).
+  await setActiveMessage(telegram_id, chat_id, 0);
   await action(telegram_id, chat_id);
   return true;
 }
+
 
 // ===== Pago con saldo (entrega automática si hay stock) =====
 async function payWithBalance(telegram_id: number, chat_id: number) {
@@ -1198,14 +1197,8 @@ async function askName(telegram_id: number, chat_id: number) {
   );
 }
 
-async function askPassword(telegram_id: number, chat_id: number, name: string) {
-  await setState(telegram_id, "login_password", { display_name: name });
-  await screen(
-    telegram_id,
-    chat_id,
-    `Hola <b>${name}</b>.\n\nIngresá la contraseña de acceso:`,
-  );
-}
+
+
 
 // ===== Handler principal =====
 export async function handleShopUpdate(update: Update): Promise<void> {
@@ -1301,34 +1294,20 @@ async function handleMessage(msg: TgMessage) {
   }
 
   const st = await getState(telegram_id);
-  // Solo borramos el mensaje del usuario si está ingresando la contraseña,
-  // para no dejar credenciales visibles en el chat.
-  if (st?.state === "login_password") {
-    silentDelete("shop", chat_id, msg.message_id).catch(() => {});
-  }
 
   if (st?.state === "login_name") {
     if (text.length < 2 || text.length > 40) {
       await screen(telegram_id, chat_id, `Nombre inválido. Ingresá entre 2 y 40 caracteres.`);
       return;
     }
-    await askPassword(telegram_id, chat_id, text);
-    return;
-  }
-  if (st?.state === "login_password") {
-    if (text !== ACCESS_PASSWORD) {
-      await screen(telegram_id, chat_id, `Contraseña incorrecta. Intentá de nuevo:`);
-      return;
-    }
-    const name = (st.context?.display_name as string) ?? "Usuario";
     await updateUser(telegram_id, {
       is_authenticated: true,
-      display_name: name,
+      display_name: text,
     });
-    await deliverBottomKeyboard(chat_id, `✨ Listo, <b>${name}</b>.`);
     await showMainMenu(telegram_id, chat_id);
     return;
   }
+
 
   if (st?.state === "recharge_amount") {
     const n = Number(text.replace(",", "."));
