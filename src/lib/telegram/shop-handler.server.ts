@@ -1197,14 +1197,8 @@ async function askName(telegram_id: number, chat_id: number) {
   );
 }
 
-async function askPassword(telegram_id: number, chat_id: number, name: string) {
-  await setState(telegram_id, "login_password", { display_name: name });
-  await screen(
-    telegram_id,
-    chat_id,
-    `Hola <b>${name}</b>.\n\nIngresá la contraseña de acceso:`,
-  );
-}
+
+
 
 // ===== Handler principal =====
 export async function handleShopUpdate(update: Update): Promise<void> {
