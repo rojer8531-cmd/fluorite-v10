@@ -85,7 +85,7 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
 
 /** Devuelve un resumen ya formateado para insertar en el caption del admin. */
 export function formatOcrSummary(ocr: OcrResult | null, expectedUsd: number, expectedLocal?: number | null): string {
-  if (!ocr) return `\n\n<b>OCR</b>  ·  no se pudo leer`;
+  if (!ocr) return `\n<i>OCR: sin lectura</i>`;
   const a = ocr.amount;
   let badge = "❓";
   if (ocr.is_payment === false) badge = "⛔";
@@ -96,12 +96,9 @@ export function formatOcrSummary(ocr: OcrResult | null, expectedUsd: number, exp
     else if (expectedLocal && Math.abs(a - expectedLocal) <= tolLocal) badge = "✅";
     else badge = "⚠️";
   }
-  return (
-    `\n\n<b>OCR</b>  ${badge}\n` +
-    `Pago     ${ocr.is_payment === false ? "NO parece pago" : ocr.is_payment === true ? "sí" : "—"}\n` +
-    `Monto    ${a ?? "—"}\n` +
-    `Ref      ${ocr.reference ?? "—"}\n` +
-    `Destino  ${ocr.recipient ?? "—"}\n` +
-    `Fecha    ${ocr.date ?? "—"}`
-  );
+  const parts = [`${badge} OCR`];
+  if (a !== null) parts.push(`${a}`);
+  if (ocr.reference) parts.push(`ref ${ocr.reference}`);
+  return `\n<i>${parts.join(" · ")}</i>`;
 }
+
