@@ -961,7 +961,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
   let caption: string;
   if (isRecharge) {
     caption =
-      `💰 <b>Comprobante De Recarga</b>\n\n` +
+      `<b>Comprobante De Recarga</b>\n\n` +
       `Pending: <code>${pid}</code>\n` +
       `Usuario: @${user.username ?? "—"}\n` +
       `ID: <code>${telegram_id}</code>\n` +
