@@ -627,7 +627,7 @@ async function handleCallback(cb: TgCallback) {
       .maybeSingle();
     const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
     if (photoMid && cb.message) {
-      await markReceiptStatus(cb.message.chat.id, photoMid, `✅ APROBADO`, `$${amount.toFixed(2)}`);
+      await deleteMessage("admin", cb.message.chat.id, photoMid).catch(() => {});
     }
     await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
     return;
