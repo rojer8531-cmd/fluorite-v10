@@ -1128,15 +1128,10 @@ async function handleReceiptDocument(msg: TgMessage) {
   const o = order as { id: string; created_at: string; total_usd: number; payment_methods: { country_name: string; method_name: string } | null };
   const pid = tpId(o.created_at);
 
+  const userTag2 = user.username ? `@${user.username}` : (user.display_name ?? "—");
   const caption = isRecharge
-    ? `🧾 <b>Comprobante De Recarga</b>\n\n` +
-      `Pending: <code>${pid}</code>\n` +
-      `Usuario: @${user.username ?? "—"}\n` +
-      `ID: <code>${telegram_id}</code>\n` +
-      `Monto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
-      `País: ${o.payment_methods?.country_name ?? "—"}\n` +
-      `Total: <b>${Number(o.total_usd).toFixed(2)} USD</b>`
-    : `🧾 <b>Comprobante</b>\n\nOrden <code>${o.id}</code>`;
+    ? `💰 <b>Recarga · $${Number(o.total_usd).toFixed(2)}</b>\n${userTag2} · <code>${telegram_id}</code>\n<i>(documento)</i>`
+    : `🛒 <b>Comprobante</b>\n${userTag2} · <code>${telegram_id}</code>\n<i>(documento)</i>`;
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) return;
