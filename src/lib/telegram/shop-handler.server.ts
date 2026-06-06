@@ -682,12 +682,12 @@ async function routeBottomMenu(
   };
   const action = map[text];
   if (!action) return false;
-  // No borramos nada: cada acción envía una nueva pantalla y se conserva
-  // el historial. Solo silenciamos el "tap" del menú del usuario? NO —
-  // tampoco se borra, para que quede todo en el chat.
+  // Forzar mensaje NUEVO debajo del tap del usuario (no editar arriba).
+  await setActiveMessage(telegram_id, chat_id, 0);
   await action(telegram_id, chat_id);
   return true;
 }
+
 
 // ===== Pago con saldo (entrega automática si hay stock) =====
 async function payWithBalance(telegram_id: number, chat_id: number) {
