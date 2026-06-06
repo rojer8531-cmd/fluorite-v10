@@ -62,7 +62,7 @@ async function screen(
 import { getVisibleCatalog, invalidateCatalogCache } from "./catalog.server";
 import { ocrReceipt, formatOcrSummary } from "./ocr.server";
 
-const MIN_RECHARGE_USD = 5;
+const MIN_RECHARGE_USD = 6;
 function tpId(createdAt: string | Date) {
   const t = typeof createdAt === "string" ? new Date(createdAt).getTime() : createdAt.getTime();
   return `TP${t}`;
