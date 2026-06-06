@@ -6,7 +6,6 @@ import {
   downloadFile,
   answerCallbackQuery,
   getAdminChatId,
-  deleteMessage,
   tg,
 } from "./api.server";
 import {
