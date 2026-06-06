@@ -18,7 +18,6 @@ import {
   checkRateLimit,
   isBlocked,
   autoBlock,
-  getActiveMessage,
   setActiveMessage,
   sb,
 } from "./db.server";
