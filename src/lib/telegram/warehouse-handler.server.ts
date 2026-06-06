@@ -188,27 +188,8 @@ async function touchAdminSeen(admin_id: number) {
   await patchContext(admin_id, { last_seen_ms: Date.now() });
 }
 
-async function purgeReviewedReceipts(chat_id: number) {
-  // Borrar comprobantes ya revisados (no pendientes) del chat del admin.
-  const { data } = await sb
-    .from("receipts")
-    .select("admin_message_id, status")
-    .neq("status", "pending")
-    .not("admin_message_id", "is", null)
-    .limit(200);
-  if (!data || data.length === 0) return;
-  await Promise.all(
-    data.map((r) =>
-      deleteMessage("warehouse", chat_id, r.admin_message_id as number).catch(() => {}),
-    ),
-  );
-  // Limpiar referencias para no volver a intentar borrarlos.
-  await sb
-    .from("receipts")
-    .update({ admin_message_id: null })
-    .neq("status", "pending")
-    .not("admin_message_id", "is", null);
-}
+
+
 
 // ===== Panel admin (inline) =====
 async function showAdminPanel(chat_id: number) {
