@@ -978,7 +978,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   // IA: si la imagen no parece un pago, avisar al usuario y NO enviar al admin
   if (ocr?.is_payment === false) {
-    await notifyUser(chat_id, `⚠️ Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.`);
+    await notifyUser(chat_id, `⚠️ Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.\n\nSi creés que es un problema, contactá a soporte: @smallffx7`);
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
     return;
@@ -990,7 +990,8 @@ async function handleReceiptPhoto(msg: TgMessage) {
       await notifyUser(chat_id, `⚠️ <b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
         `Por favor, envía el dinero a los datos correctos:\n\n` +
         `🪪 Titular: <code>${o.payment_methods.holder_name}</code>\n` +
-        `📋 Cuenta: <code>${o.payment_methods.account_info ?? "—"}</code>`);
+        `📋 Cuenta: <code>${o.payment_methods.account_info ?? "—"}</code>\n\n` +
+        `Si creés que es un problema, contactá a soporte: @smallffx7`);
       await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
       await sb.from("receipts").delete().eq("id", receipt!.id);
       return;
