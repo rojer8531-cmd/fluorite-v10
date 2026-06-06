@@ -1221,36 +1221,29 @@ async function handleMessage(msg: TgMessage) {
 
   if (text === "/start" || text.startsWith("/start ")) {
     if (!(await tryAcquireStartLock(telegram_id))) return;
-    const param = text.startsWith("/start ") ? text.slice(7).trim() : "";
-    if (param.startsWith("ref")) {
-      const refId = Number(param.slice(3));
+    const rawParam = text.startsWith("/start ") ? text.slice(7).trim() : "";
+    const refMatch = rawParam.match(/ref(\d+)/i);
+    if (refMatch) {
+      const refId = Number(refMatch[1]);
       if (Number.isFinite(refId) && refId > 0 && refId !== telegram_id) {
-        const { data: meRow } = await sb
-          .from("bot_users")
-          .select("referred_by_telegram_id")
-          .eq("telegram_id", telegram_id)
-          .single();
-        if (meRow && meRow.referred_by_telegram_id == null) {
-          const { data: refUser } = await sb
-            .from("bot_users")
-            .select("telegram_id, shares_count")
-            .eq("telegram_id", refId)
-            .maybeSingle();
-          if (refUser) {
-            const prev = Number(refUser.shares_count ?? 0);
-            const next = prev + 1;
-            await sb
-              .from("bot_users")
-              .update({ referred_by_telegram_id: refId })
-              .eq("telegram_id", telegram_id);
-            await sb
-              .from("bot_users")
-              .update({ shares_count: next })
-              .eq("telegram_id", refId);
+        try {
+          const { data: rpcRes, error: rpcErr } = await sb.rpc("apply_referral", {
+            _new_user: telegram_id,
+            _referrer: refId,
+          });
+          if (rpcErr) {
+            console.error("[referral] rpc error", rpcErr);
+          } else if (rpcRes && (rpcRes as any).ok) {
+            const prev = Number((rpcRes as any).prev ?? 0);
+            const next = Number((rpcRes as any).next ?? 0);
             if (prev < REFERRAL_GOAL && next >= REFERRAL_GOAL) {
               sendMessage("shop", refId, `🎉 <b>Felicidades, descuento aplicado</b>\n\nDesde ahora cada key te cuesta $${REFERRAL_DISCOUNT_USD.toFixed(2)} USD menos.`).catch(() => {});
             }
+          } else {
+            console.log("[referral] skipped", { telegram_id, refId, reason: (rpcRes as any)?.reason });
           }
+        } catch (e) {
+          console.error("[referral] exception", e);
         }
       }
     }
