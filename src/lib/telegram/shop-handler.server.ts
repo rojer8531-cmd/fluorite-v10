@@ -1343,9 +1343,16 @@ async function handleCallback(cb: TgCallback) {
     await answerCallbackQuery("shop", cb.id);
     return;
   }
+  const data = cb.data ?? "";
+
+  if (data.startsWith("shlink:")) {
+    const uname = await getShopBotUsername();
+    const link = uname ? `https://t.me/${uname}?start=ref${telegram_id}` : "";
+    answerCallbackQuery("shop", cb.id, link || "No disponible", true).catch(() => {});
+    return;
+  }
   // No esperamos al ACK del callback para responder más rápido
   answerCallbackQuery("shop", cb.id).catch(() => {});
-  const data = cb.data ?? "";
 
   if (data === "menu:main") return showMainMenu(telegram_id, chat_id);
   if (data === "noop") return;
