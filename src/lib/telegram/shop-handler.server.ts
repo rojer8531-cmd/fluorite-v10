@@ -999,11 +999,10 @@ async function handleReceiptPhoto(msg: TgMessage) {
   // IA: verificar destinatario contra titular/cuenta del método de pago
   if (ocr?.recipient && o.payment_methods?.holder_name) {
     if (!recipientMatches(ocr.recipient, o.payment_methods.holder_name, o.payment_methods.account_info)) {
-      await notifyUser(chat_id, `⚠️ <b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
-        `Por favor, envía el dinero a los datos correctos:\n\n` +
-        `🪪 Titular: <code>${o.payment_methods.holder_name}</code>\n` +
-        `📋 Cuenta: <code>${o.payment_methods.account_info ?? "—"}</code>\n\n` +
-        `Si creés que es un problema, contactá a soporte: @smallffx7`);
+      await notifyUserInvalidReceipt(
+        chat_id,
+        `Envía el dinero a:\n🪪 <code>${o.payment_methods.holder_name}</code>\n📋 <code>${o.payment_methods.account_info ?? "—"}</code>`,
+      );
       await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
       await sb.from("receipts").delete().eq("id", receipt!.id);
       return;
