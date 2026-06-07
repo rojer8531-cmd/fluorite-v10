@@ -164,13 +164,19 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
         .insert({ chat_id: Number(chat_id), message_id: update.message.message_id })
         .then(() => {}, () => {});
     }
-    const idleMs = await getIdleMs(admin_id);
-    if (idleMs >= ADMIN_IDLE_PURGE_MS) {
-      await purgeAdminTrash(chat_id, admin_id).catch(() => {});
-    }
-    await touchAdminSeen(admin_id).catch(() => {});
-    if (!isStartLike) {
-      await ensureAdminBar(chat_id, admin_id).catch(() => {});
+    // Solo limpieza/barra en mensajes de texto. En callbacks NO bloqueamos
+    // la respuesta: el botón debe sentirse instantáneo.
+    if (update.message) {
+      const idleMs = await getIdleMs(admin_id);
+      if (idleMs >= ADMIN_IDLE_PURGE_MS) {
+        purgeAdminTrash(chat_id, admin_id).catch(() => {});
+      }
+      touchAdminSeen(admin_id).catch(() => {});
+      if (!isStartLike) {
+        ensureAdminBar(chat_id, admin_id).catch(() => {});
+      }
+    } else {
+      touchAdminSeen(admin_id).catch(() => {});
     }
   }
 
@@ -212,6 +218,7 @@ async function showAdminPanel(chat_id: number) {
         [{ text: "Buscar Usuario", callback_data: "akp:finduser" }],
         [{ text: "Métodos de Pago", callback_data: "akp:pm" }],
         [{ text: "Anuncio", callback_data: "akp:anuncio" }],
+        [{ text: "🏠 Inicio", callback_data: "akp:inicio" }],
       ],
     },
   });
@@ -744,6 +751,8 @@ async function adminPromptNewPrice(chat_id: number, price_id: string) {
 }
 
 // ===== Descuento personal por usuario =====
+const INICIO_ROW = [{ text: "🏠 Inicio", callback_data: "akp:inicio" }];
+
 async function adminUserDiscountProducts(chat_id: number, telegram_id: number) {
   const { data: products } = await sb
     .from("products")
@@ -758,11 +767,13 @@ async function adminUserDiscountProducts(chat_id: number, telegram_id: number) {
     { text: `${p.name}  ·  ${p.category}`, callback_data: `udprod:${telegram_id}:${p.id}` },
   ]);
   kb.push([{ text: "Volver", callback_data: `akusr:${telegram_id}` }]);
-  await sendMessage(
-    "warehouse",
+  kb.push(INICIO_ROW);
+  await replaceAdminList(
     chat_id,
+    _currentAdminId ?? chat_id,
+    "udisc",
     `<b>Descuento personal</b>\nUsuario <code>${telegram_id}</code>\n\nElegí el producto:`,
-    { reply_markup: { inline_keyboard: kb } },
+    kb,
   );
 }
 
@@ -797,11 +808,13 @@ async function adminUserDiscountDurations(chat_id: number, telegram_id: number, 
     ];
   });
   kb.push([{ text: "Volver", callback_data: `akusrdisc:${telegram_id}` }]);
-  await sendMessage(
-    "warehouse",
+  kb.push(INICIO_ROW);
+  await replaceAdminList(
     chat_id,
+    _currentAdminId ?? chat_id,
+    "udisc",
     `<b>${name}</b>\nUsuario <code>${telegram_id}</code>\n\nElegí la duración:`,
-    { reply_markup: { inline_keyboard: kb } },
+    kb,
   );
 }
 
@@ -1389,6 +1402,21 @@ async function handleCallback(cb: TgCallback) {
   const data = cb.data ?? "";
   const chat_id = cb.message?.chat.id;
 
+  if (data === "akp:inicio") {
+    if (chat_id) {
+      await patchContext(cb.from.id, { bar_shown: false });
+      const sent = await sendMessage(
+        "warehouse",
+        chat_id,
+        `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
+        { reply_markup: adminBottomKeyboard() },
+      );
+      if (sent.ok && sent.result) {
+        await patchContext(cb.from.id, { bar_shown: true });
+      }
+    }
+    return;
+  }
   if (data === "akp:add") {
     if (chat_id) await adminListProducts(chat_id);
     return;
