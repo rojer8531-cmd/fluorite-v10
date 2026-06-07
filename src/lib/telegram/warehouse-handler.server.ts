@@ -803,7 +803,8 @@ async function handleBroadcast(msg: TgMessage) {
 
   let ok = 0;
   let fail = 0;
-  for (const u of targets) {
+  const CONCURRENCY = 25;
+  async function sendOne(u: { telegram_id: number; chat_id: number }) {
     let sent: { ok: boolean; result?: { message_id: number } } = { ok: false };
     if (photoBytes) {
       sent = await sendPhotoMultipart("shop", u.chat_id, photoBytes, photoName, caption);
@@ -819,12 +820,16 @@ async function handleBroadcast(msg: TgMessage) {
         telegram_id: u.telegram_id,
         chat_id: u.chat_id,
         message_id: sent.result.message_id,
-      });
+      }).catch(() => {});
     } else {
       fail++;
     }
-    await sleep(35);
   }
+  for (let i = 0; i < targets.length; i += CONCURRENCY) {
+    const batch = targets.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map((u) => sendOne(u)));
+  }
+
 
   await sb
     .from("announcements")
