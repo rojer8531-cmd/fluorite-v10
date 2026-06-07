@@ -25,6 +25,18 @@ import {
 } from "./db.server";
 import { silentDelete } from "./ui.server";
 
+const forceNewScreenFor = new Set<number>();
+const activeMessageHints = new Map<number, { chat_id: number; message_id: number }>();
+const blockCache = new Map<number, { value: boolean; expiresAt: number }>();
+
+async function isBlockedFast(telegram_id: number): Promise<boolean> {
+  const cached = blockCache.get(telegram_id);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const value = await isBlocked(telegram_id);
+  blockCache.set(telegram_id, { value, expiresAt: Date.now() + 15_000 });
+  return value;
+}
+
 /**
  * Pantalla de navegación: edita el mensaje activo del usuario si existe
  * (evita amontonar mensajes mientras navega dentro de un mismo flujo).
@@ -41,19 +53,27 @@ async function screen(
   opts?: { final?: boolean },
 ) {
   const reply_markup = keyboard ? { inline_keyboard: keyboard } : undefined;
-  const active = await getActiveMessage(telegram_id);
+  const hinted = activeMessageHints.get(telegram_id) ?? null;
+  const active = forceNewScreenFor.has(telegram_id)
+    ? null
+    : hinted ?? (await getActiveMessage(telegram_id));
   if (active && active.chat_id === chat_id && active.message_id > 0 && !opts?.final) {
     const edited = await editMessageText("shop", chat_id, active.message_id, text, { reply_markup });
-    if (edited.ok) return active.message_id;
+    if (edited.ok) {
+      setActiveMessage(telegram_id, chat_id, active.message_id).catch(() => {});
+      return active.message_id;
+    }
   }
   const sent = await sendMessage("shop", chat_id, text, { reply_markup });
   if (sent.ok && sent.result) {
     if (opts?.final) {
       // Limpiamos el mensaje activo para que el próximo flujo abra uno nuevo
       // y este quede preservado en el historial del chat.
-      await setActiveMessage(telegram_id, chat_id, 0);
+      activeMessageHints.set(telegram_id, { chat_id, message_id: 0 });
+      setActiveMessage(telegram_id, chat_id, 0).catch(() => {});
     } else {
-      await setActiveMessage(telegram_id, chat_id, sent.result.message_id);
+      activeMessageHints.set(telegram_id, { chat_id, message_id: sent.result.message_id });
+      setActiveMessage(telegram_id, chat_id, sent.result.message_id).catch(() => {});
     }
     return sent.result.message_id;
   }
@@ -171,6 +191,10 @@ const BOTTOM_MENU = {
   share: "Compartir Bot",
   support: "💬 Soporte",
 };
+
+function isBottomMenuText(text: string) {
+  return Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
+}
 
 function bottomKeyboard() {
   return {
@@ -771,8 +795,12 @@ async function routeBottomMenu(
   const action = map[text];
   if (!action) return false;
   // Forzar mensaje NUEVO debajo del tap del usuario (no editar arriba).
-  await setActiveMessage(telegram_id, chat_id, 0);
-  await action(telegram_id, chat_id);
+  forceNewScreenFor.add(telegram_id);
+  try {
+    await action(telegram_id, chat_id);
+  } finally {
+    forceNewScreenFor.delete(telegram_id);
+  }
   return true;
 }
 
@@ -1269,9 +1297,29 @@ async function handleMessage(msg: TgMessage) {
   if (!msg.from) return;
   const telegram_id = msg.from.id;
   const chat_id = msg.chat.id;
+  const text = (msg.text ?? "").trim();
+
+  // La barra inferior debe sentirse instantánea: evitamos writes/checks lentos
+  // antes de enviar la nueva pantalla. El anti-spam corre en segundo plano.
+  if (isBottomMenuText(text)) {
+    const cachedBlock = blockCache.get(telegram_id);
+    if (cachedBlock?.value && cachedBlock.expiresAt > Date.now()) {
+      silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+      return;
+    }
+    getOrCreateUser({ telegram_id, chat_id, username: msg.from.username }).catch(() => {});
+    isBlockedFast(telegram_id).then((blocked) => {
+      if (blocked) silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+    }).catch(() => {});
+    checkRateLimit(telegram_id, "msg", 20, 10).then((ok) => {
+      if (!ok) autoBlock(telegram_id, "spam_msg").catch(() => {});
+    }).catch(() => {});
+    await routeBottomMenu(text, telegram_id, chat_id, msg.message_id);
+    return;
+  }
 
   // Bloqueo total — borrar cualquier mensaje entrante para que no se acumule
-  if (await isBlocked(telegram_id)) {
+  if (await isBlockedFast(telegram_id)) {
     silentDelete("shop", chat_id, msg.message_id).catch(() => {});
     return;
   }
@@ -1301,8 +1349,6 @@ async function handleMessage(msg: TgMessage) {
     }
     return;
   }
-
-  const text = (msg.text ?? "").trim();
 
   // Atajo: si el usuario ya está autenticado y tocó la barra inferior,
   // enrutar primero para responder al primer toque sin queries extra.
@@ -1400,23 +1446,21 @@ async function handleCallback(cb: TgCallback) {
   // ACK INMEDIATO — primero de todo, para apagar el spinner "actualizando"
   // de Telegram al instante. No esperamos ni a checks de bloqueo/rate-limit.
   if (data.startsWith("shlink:")) {
-    const uname = await getShopBotUsername();
+    const uname = _shopBotUsername ?? process.env.TELEGRAM_SHOP_BOT_USERNAME?.replace(/^@/, "") ?? null;
+    if (!uname) getShopBotUsername().catch(() => null);
     const link = uname ? `https://t.me/${uname}?start=ref${telegram_id}` : "";
     answerCallbackQuery("shop", cb.id, link || "No disponible", true).catch(() => {});
     return;
   }
   answerCallbackQuery("shop", cb.id).catch(() => {});
 
-  // Checks en paralelo después del ACK
-  const [blocked, withinLimit] = await Promise.all([
-    isBlocked(telegram_id),
-    checkRateLimit(telegram_id, "cb", 30, 10),
-  ]);
-  if (blocked) return;
-  if (!withinLimit) {
-    autoBlock(telegram_id, "spam_cb").catch(() => {});
-    return;
-  }
+  // No bloqueamos la navegación con queries de seguridad; corren en segundo plano.
+  const cachedBlock = blockCache.get(telegram_id);
+  if (cachedBlock?.value && cachedBlock.expiresAt > Date.now()) return;
+  isBlockedFast(telegram_id).catch(() => false);
+  checkRateLimit(telegram_id, "cb", 30, 10).then((ok) => {
+    if (!ok) autoBlock(telegram_id, "spam_cb").catch(() => {});
+  }).catch(() => {});
 
 
   if (data === "menu:main") return showMainMenu(telegram_id, chat_id);
