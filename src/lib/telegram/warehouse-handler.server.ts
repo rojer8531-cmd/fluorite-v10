@@ -101,6 +101,7 @@ function tpId(createdAt: string) {
 
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
+  inicio: "🏠 Inicio",
   stock: "Stock",
   usuarios: "Usuarios",
   addkeys: "Agregar Keys",
@@ -113,6 +114,7 @@ const ADMIN_BOTTOM = {
 function adminBottomKeyboard() {
   return {
     keyboard: [
+      [{ text: ADMIN_BOTTOM.inicio }],
       [{ text: ADMIN_BOTTOM.stock }, { text: ADMIN_BOTTOM.usuarios }],
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.precios }],
       [{ text: ADMIN_BOTTOM.anuncio }, { text: ADMIN_BOTTOM.metodos }],
