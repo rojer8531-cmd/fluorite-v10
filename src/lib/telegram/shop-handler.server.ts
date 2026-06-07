@@ -107,6 +107,29 @@ function recipientMatches(recipient: string, holder: string, account: string | n
   return false;
 }
 
+// ===== Precios personalizados por usuario =====
+async function getUserPriceOverrides(telegram_id: number): Promise<Map<string, number>> {
+  const { data } = await sb
+    .from("user_price_overrides")
+    .select("price_id, price_usd")
+    .eq("telegram_id", telegram_id);
+  const m = new Map<string, number>();
+  for (const r of data ?? []) m.set(r.price_id as string, Number(r.price_usd));
+  return m;
+}
+
+async function getUserPriceForId(telegram_id: number, price_id: string, fallback: number): Promise<number> {
+  const { data } = await sb
+    .from("user_price_overrides")
+    .select("price_usd")
+    .eq("telegram_id", telegram_id)
+    .eq("price_id", price_id)
+    .maybeSingle();
+  return data ? Number(data.price_usd) : fallback;
+}
+
+
+
 
 interface Update {
   update_id: number;
