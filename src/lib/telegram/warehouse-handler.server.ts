@@ -769,7 +769,7 @@ async function adminUserDiscountProducts(chat_id: number, telegram_id: number) {
   kb.push(INICIO_ROW);
   await replaceAdminList(
     chat_id,
-    telegram_id /* not used as key, just any number */ && _currentAdminId || chat_id,
+    _currentAdminId ?? chat_id,
     "udisc",
     `<b>Descuento personal</b>\nUsuario <code>${telegram_id}</code>\n\nElegí el producto:`,
     kb,
