@@ -657,6 +657,10 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
   buttons.push([
     { text: "Enviar mensaje directo", callback_data: `akusrmsg:${u.telegram_id}` },
   ]);
+  buttons.push([
+    { text: "💵 Descuento personal", callback_data: `akusrdisc:${u.telegram_id}` },
+  ]);
+
   buttons.push(
     blocked
       ? [{ text: "Desbloquear", callback_data: `akusrunblock:${u.telegram_id}` }]
