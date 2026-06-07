@@ -681,6 +681,41 @@ export type Database = {
         }
         Relationships: []
       }
+      user_price_overrides: {
+        Row: {
+          created_at: string
+          id: string
+          price_id: string
+          price_usd: number
+          telegram_id: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          price_id: string
+          price_usd: number
+          telegram_id: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          price_id?: string
+          price_usd?: number
+          telegram_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_price_overrides_price_id_fkey"
+            columns: ["price_id"]
+            isOneToOne: false
+            referencedRelation: "product_prices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_state: {
         Row: {
           context: Json

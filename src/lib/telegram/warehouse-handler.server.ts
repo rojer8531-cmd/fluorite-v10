@@ -18,11 +18,10 @@ import {
   patchContext,
 } from "./db.server";
 import {
-  getHideOutOfStockSetting,
   getStockByPriceId,
-  getVisibleCatalog,
   invalidateCatalogCache,
 } from "./catalog.server";
+
 import {
   notifyUserApproved,
   notifyUserRejected,
@@ -92,12 +91,9 @@ function isAdmin(telegram_id: number) {
   return String(telegram_id) === String(getWarehouseChatId());
 }
 
-function shortId(id: string) {
-  return id.slice(0, 8);
-}
-function tpId(createdAt: string) {
-  return `TP${new Date(createdAt).getTime()}`;
-}
+
+
+
 
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
@@ -151,6 +147,15 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
   const chat_id =
     update.message?.chat.id ?? update.callback_query?.message?.chat.id ?? null;
 
+  // Comandos que muestran la barra por su cuenta. Saltamos ensureAdminBar
+  // para evitar el flicker del mensaje invisible al tocar /start o "Inicio".
+  const msgText = (update.message?.text ?? "").trim();
+  const isStartLike =
+    msgText === "/start" ||
+    msgText === "/help" ||
+    msgText === "/panel" ||
+    msgText === ADMIN_BOTTOM.inicio;
+
   if (admin_id && chat_id) {
     _currentAdminId = admin_id;
     // Trackear los mensajes que el admin envía para poder borrarlos también
@@ -159,15 +164,14 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
         .insert({ chat_id: Number(chat_id), message_id: update.message.message_id })
         .then(() => {}, () => {});
     }
-    // Si el admin "se salió" del chat (sin actividad por un rato), borramos
-    // todo lo anterior antes de continuar. Si todavía está activo no tocamos
-    // nada para no romper su navegación.
     const idleMs = await getIdleMs(admin_id);
     if (idleMs >= ADMIN_IDLE_PURGE_MS) {
       await purgeAdminTrash(chat_id, admin_id).catch(() => {});
     }
     await touchAdminSeen(admin_id).catch(() => {});
-    await ensureAdminBar(chat_id, admin_id).catch(() => {});
+    if (!isStartLike) {
+      await ensureAdminBar(chat_id, admin_id).catch(() => {});
+    }
   }
 
   try {
@@ -177,6 +181,7 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
     _currentAdminId = null;
   }
 }
+
 
 async function getIdleMs(admin_id: number): Promise<number> {
   const st = await getState(admin_id);
@@ -648,6 +653,10 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
   buttons.push([
     { text: "Enviar mensaje directo", callback_data: `akusrmsg:${u.telegram_id}` },
   ]);
+  buttons.push([
+    { text: "💵 Descuento personal", callback_data: `akusrdisc:${u.telegram_id}` },
+  ]);
+
   buttons.push(
     blocked
       ? [{ text: "Desbloquear", callback_data: `akusrunblock:${u.telegram_id}` }]
@@ -674,25 +683,156 @@ async function adminPromptAnuncio(chat_id: number) {
 }
 
 async function adminListaPrecios(chat_id: number) {
-  const hideOutOfStock = await getHideOutOfStockSetting();
-  const { grouped } = await getVisibleCatalog();
-  const lines = grouped
-    .flatMap((section) => [
-      `${section.category}`,
-      ...section.products.flatMap((product) =>
-        product.prices.map(
-          (price) =>
-            `   ${product.name} / ${price.duration_label}  ·  $${Number(price.price_usd).toFixed(2)}  ·  stock ${price.available_stock}  ·  <code>${shortId(price.id)}</code>`,
-        ),
-      ),
-    ])
-    .join("\n");
+  const { data: products } = await sb
+    .from("products")
+    .select("id, name, category")
+    .eq("active", true)
+    .order("sort_order");
+  if (!products || products.length === 0) {
+    await sendMessage("warehouse", chat_id, `No hay productos cargados.`);
+    return;
+  }
+  const kb = products.map((p) => [
+    { text: `${p.name}  ·  ${p.category}`, callback_data: `prprod:${p.id}` },
+  ]);
+  await sendMessage("warehouse", chat_id, `<b>Editar Precios</b>\n\nElegí el producto:`, {
+    reply_markup: { inline_keyboard: kb },
+  });
+}
+
+async function adminPriceDurations(chat_id: number, product_id: string) {
+  const { data: prices } = await sb
+    .from("product_prices")
+    .select("id, duration_label, price_usd, products(name)")
+    .eq("product_id", product_id)
+    .eq("active", true)
+    .order("sort_order");
+  if (!prices || prices.length === 0) {
+    await sendMessage("warehouse", chat_id, `Ese producto no tiene duraciones cargadas.`);
+    return;
+  }
+  const name = (prices[0] as { products: { name: string } }).products.name;
+  const kb = prices.map((p) => [
+    {
+      text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}`,
+      callback_data: `pred:${p.id}`,
+    },
+  ]);
+  kb.push([{ text: "Volver", callback_data: "akp:prlist" }]);
+  await sendMessage("warehouse", chat_id, `<b>${name}</b>\n\nElegí la duración a editar:`, {
+    reply_markup: { inline_keyboard: kb },
+  });
+}
+
+async function adminPromptNewPrice(chat_id: number, price_id: string) {
+  const { data: p } = await sb
+    .from("product_prices")
+    .select("duration_label, price_usd, products(name)")
+    .eq("id", price_id)
+    .maybeSingle();
+  if (!p) {
+    await sendMessage("warehouse", chat_id, `Variante no encontrada.`);
+    return;
+  }
+  const name = (p as { products: { name: string } }).products.name;
   await sendMessage(
     "warehouse",
     chat_id,
-    `<b>Catálogo</b>\nOcultar sin stock  <b>${hideOutOfStock ? "ON" : "OFF"}</b>\n\n${lines || "Sin variantes cargadas."}`,
+    `<b>PRICEEDIT:${price_id}</b>\n${name} · ${p.duration_label}\nPrecio actual: <b>$${Number(p.price_usd).toFixed(2)}</b>\n\nRespondé a este mensaje con el nuevo precio en USD (ej: <code>4.50</code>).`,
+    { reply_markup: { force_reply: true, selective: true } },
   );
 }
+
+// ===== Descuento personal por usuario =====
+async function adminUserDiscountProducts(chat_id: number, telegram_id: number) {
+  const { data: products } = await sb
+    .from("products")
+    .select("id, name, category")
+    .eq("active", true)
+    .order("sort_order");
+  if (!products || products.length === 0) {
+    await sendMessage("warehouse", chat_id, `No hay productos cargados.`);
+    return;
+  }
+  const kb = products.map((p) => [
+    { text: `${p.name}  ·  ${p.category}`, callback_data: `udprod:${telegram_id}:${p.id}` },
+  ]);
+  kb.push([{ text: "Volver", callback_data: `akusr:${telegram_id}` }]);
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>Descuento personal</b>\nUsuario <code>${telegram_id}</code>\n\nElegí el producto:`,
+    { reply_markup: { inline_keyboard: kb } },
+  );
+}
+
+async function adminUserDiscountDurations(chat_id: number, telegram_id: number, product_id: string) {
+  const [{ data: prices }, { data: overrides }] = await Promise.all([
+    sb
+      .from("product_prices")
+      .select("id, duration_label, price_usd, products(name)")
+      .eq("product_id", product_id)
+      .eq("active", true)
+      .order("sort_order"),
+    sb
+      .from("user_price_overrides")
+      .select("price_id, price_usd")
+      .eq("telegram_id", telegram_id),
+  ]);
+  if (!prices || prices.length === 0) {
+    await sendMessage("warehouse", chat_id, `Ese producto no tiene duraciones cargadas.`);
+    return;
+  }
+  const ovMap = new Map<string, number>();
+  for (const o of overrides ?? []) ovMap.set(o.price_id as string, Number(o.price_usd));
+  const name = (prices[0] as { products: { name: string } }).products.name;
+  const kb = prices.map((p) => {
+    const ov = ovMap.get(p.id);
+    const tag = ov != null ? `  🎁 $${ov.toFixed(2)}` : "";
+    return [
+      {
+        text: `${p.duration_label}  ·  base $${Number(p.price_usd).toFixed(2)}${tag}`,
+        callback_data: `upred:${telegram_id}:${p.id}`,
+      },
+    ];
+  });
+  kb.push([{ text: "Volver", callback_data: `akusrdisc:${telegram_id}` }]);
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>${name}</b>\nUsuario <code>${telegram_id}</code>\n\nElegí la duración:`,
+    { reply_markup: { inline_keyboard: kb } },
+  );
+}
+
+async function adminPromptUserPrice(chat_id: number, telegram_id: number, price_id: string) {
+  const [{ data: p }, { data: ov }] = await Promise.all([
+    sb
+      .from("product_prices")
+      .select("duration_label, price_usd, products(name)")
+      .eq("id", price_id)
+      .maybeSingle(),
+    sb
+      .from("user_price_overrides")
+      .select("price_usd")
+      .eq("telegram_id", telegram_id)
+      .eq("price_id", price_id)
+      .maybeSingle(),
+  ]);
+  if (!p) {
+    await sendMessage("warehouse", chat_id, `Variante no encontrada.`);
+    return;
+  }
+  const name = (p as { products: { name: string } }).products.name;
+  const current = ov ? `$${Number(ov.price_usd).toFixed(2)} (personal)` : `$${Number(p.price_usd).toFixed(2)} (base)`;
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>UPRICEEDIT:${telegram_id}:${price_id}</b>\n${name} · ${p.duration_label}\nPrecio actual para este usuario: <b>${current}</b>\n\nRespondé con el nuevo precio en USD solo para este usuario.\nUsá <code>reset</code> para quitar el descuento personal.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
 
 // ===== Acreditar recarga =====
 async function creditRecharge(
@@ -943,6 +1083,76 @@ async function handleMessage(msg: TgMessage) {
       await adminUserDetail(msg.chat.id, id);
       return;
     }
+
+    // ===== Editar precio base =====
+    const priceEditMatch = replySource.match(/PRICEEDIT:([a-f0-9-]{36})/);
+    if (priceEditMatch) {
+      const priceId = priceEditMatch[1];
+      const n = Number(text.replace(",", "."));
+      if (!Number.isFinite(n) || n <= 0) {
+        await sendMessage("warehouse", msg.chat.id, `Precio inválido. Ejemplo: <code>4.50</code>`);
+        return;
+      }
+      const { data: updated } = await sb
+        .from("product_prices")
+        .update({ price_usd: n })
+        .eq("id", priceId)
+        .select("duration_label, products(name)")
+        .maybeSingle();
+      if (!updated) {
+        await sendMessage("warehouse", msg.chat.id, `Variante no encontrada.`);
+        return;
+      }
+      invalidateCatalogCache();
+      const name = (updated as { products: { name: string } }).products.name;
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ <b>Precio actualizado</b>\n${name} · ${updated.duration_label} → <b>$${n.toFixed(2)}</b>`,
+      );
+      return;
+    }
+
+    // ===== Editar precio personal por usuario =====
+    const uPriceMatch = replySource.match(/UPRICEEDIT:(\d+):([a-f0-9-]{36})/);
+    if (uPriceMatch) {
+      const tgId = parseInt(uPriceMatch[1], 10);
+      const priceId = uPriceMatch[2];
+      if (/^reset$/i.test(text.trim())) {
+        await sb.from("user_price_overrides").delete()
+          .eq("telegram_id", tgId).eq("price_id", priceId);
+        await sendMessage("warehouse", msg.chat.id, `🧹 Descuento personal eliminado para <code>${tgId}</code>.`);
+        await adminUserDiscountProducts(msg.chat.id, tgId);
+        return;
+      }
+      const n = Number(text.replace(",", "."));
+      if (!Number.isFinite(n) || n < 0) {
+        await sendMessage("warehouse", msg.chat.id, `Precio inválido. Ejemplo: <code>3.00</code> o <code>reset</code>.`);
+        return;
+      }
+      const { error } = await sb.from("user_price_overrides").upsert(
+        { telegram_id: tgId, price_id: priceId, price_usd: n },
+        { onConflict: "telegram_id,price_id" },
+      );
+      if (error) {
+        await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`);
+        return;
+      }
+      const { data: p } = await sb
+        .from("product_prices")
+        .select("duration_label, products(name)")
+        .eq("id", priceId)
+        .maybeSingle();
+      const name = (p as { products: { name: string } } | null)?.products.name ?? "—";
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `🎁 <b>Descuento personal aplicado</b>\nUsuario <code>${tgId}</code>\n${name} · ${p?.duration_label ?? "—"} → <b>$${n.toFixed(2)}</b>`,
+      );
+      return;
+    }
+
+
 
 
 
@@ -1256,6 +1466,35 @@ async function handleCallback(cb: TgCallback) {
     }
     return;
   }
+  if (data.startsWith("akusrdisc:")) {
+    if (chat_id) await adminUserDiscountProducts(chat_id, parseInt(data.slice(10), 10));
+    return;
+  }
+  if (data.startsWith("udprod:")) {
+    const [, tg, pid] = data.split(":");
+    if (chat_id) await adminUserDiscountDurations(chat_id, parseInt(tg, 10), pid);
+    return;
+  }
+  if (data.startsWith("upred:")) {
+    const [, tg, prid] = data.split(":");
+    if (chat_id) await adminPromptUserPrice(chat_id, parseInt(tg, 10), prid);
+    return;
+  }
+  if (data === "akp:prlist") {
+    if (chat_id) await adminListaPrecios(chat_id);
+    return;
+  }
+  if (data.startsWith("prprod:")) {
+    if (chat_id) await adminPriceDurations(chat_id, data.slice(7));
+    return;
+  }
+  if (data.startsWith("pred:")) {
+    if (chat_id) await adminPromptNewPrice(chat_id, data.slice(5));
+    return;
+  }
+
+
+
   if (data.startsWith("akusrunblock:")) {
     const tgId = parseInt(data.slice(13), 10);
     await sb.from("blocked_users").delete().eq("telegram_id", tgId);

@@ -107,6 +107,29 @@ function recipientMatches(recipient: string, holder: string, account: string | n
   return false;
 }
 
+// ===== Precios personalizados por usuario =====
+async function getUserPriceOverrides(telegram_id: number): Promise<Map<string, number>> {
+  const { data } = await sb
+    .from("user_price_overrides")
+    .select("price_id, price_usd")
+    .eq("telegram_id", telegram_id);
+  const m = new Map<string, number>();
+  for (const r of data ?? []) m.set(r.price_id as string, Number(r.price_usd));
+  return m;
+}
+
+async function getUserPriceForId(telegram_id: number, price_id: string, fallback: number): Promise<number> {
+  const { data } = await sb
+    .from("user_price_overrides")
+    .select("price_usd")
+    .eq("telegram_id", telegram_id)
+    .eq("price_id", price_id)
+    .maybeSingle();
+  return data ? Number(data.price_usd) : fallback;
+}
+
+
+
 
 interface Update {
   update_id: number;
@@ -214,12 +237,23 @@ async function notifyUser(chat_id: number, text: string) {
   });
 }
 
-async function notifyUserInvalidReceipt(chat_id: number, extra?: string) {
-  const text =
-    `⚠️ <b>Tu comprobante no ha sido válido.</b>\n` +
-    `Si crees que es un error, contacta al soporte.` +
-    (extra ? `\n\n${extra}` : "");
-  await sendMessage("shop", chat_id, text, {
+async function notifyUserInvalidReceipt(
+  chat_id: number,
+  opts?: { reason?: string; holder?: string | null; account?: string | null },
+) {
+  const parts: string[] = [`⚠️ <b>Tu comprobante no ha sido válido.</b>`];
+  if (opts?.reason) parts.push(`Motivo: ${opts.reason}`);
+  if (opts?.holder || opts?.account) {
+    parts.push(
+      `\n📌 <b>Vuelve a enviar el comprobante</b> asegurándote de mandar el dinero a:\n` +
+        `🪪 <code>${opts.holder ?? "—"}</code>\n` +
+        `📋 <code>${opts.account ?? "—"}</code>`,
+    );
+  } else {
+    parts.push(`\n📌 Vuelve a enviar el comprobante correcto.`);
+  }
+  parts.push(`\nSi crees que es un error, contacta al soporte.`);
+  await sendMessage("shop", chat_id, parts.join("\n"), {
     reply_markup: {
       inline_keyboard: [
         [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
@@ -228,6 +262,7 @@ async function notifyUserInvalidReceipt(chat_id: number, extra?: string) {
     },
   });
 }
+
 
 
 async function showShareBot(telegram_id: number, chat_id: number) {
@@ -353,13 +388,20 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     ]);
     return;
   }
-  const prices = product.prices ?? [];
-  if (prices.length === 0) {
+  const rawPrices = product.prices ?? [];
+  if (rawPrices.length === 0) {
     await screen(telegram_id, chat_id, `Sin duraciones disponibles.`, [
       [{ text: "Volver", callback_data: "menu:products" }],
     ]);
     return;
   }
+  // Aplicar precios personalizados por usuario (si existen)
+  const overrides = await getUserPriceOverrides(telegram_id);
+  const prices = rawPrices.map((p) => ({
+    ...p,
+    price_usd: overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd),
+    has_override: overrides.has(p.id),
+  }));
   if (balance <= 0) {
     await screen(
     telegram_id,
@@ -382,13 +424,15 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   await patchContext(telegram_id, { product_id });
   const rows = prices.map((p) => {
     const affordable = balance >= Number(p.price_usd);
+    const tag = p.has_override ? "  🎁" : "";
     return [
       {
-        text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${affordable ? "" : "  ·  sin saldo"}`,
+        text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}${affordable ? "" : "  ·  sin saldo"}`,
         callback_data: affordable ? `dur:${p.id}` : "noop",
       },
     ];
   });
+
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
   await screen(
     telegram_id,
@@ -435,7 +479,9 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
         .order("sort_order"),
     ]);
   if (!price) return;
-  const total_usd = Number(price.price_usd) * qty;
+  const unit_usd = await getUserPriceForId(telegram_id, ctx.price_id as string, Number(price.price_usd));
+  const total_usd = unit_usd * qty;
+
   const stockNote =
     (availableCount ?? 0) < qty
       ? `\n<i>Stock automático ${availableCount ?? 0}. Tu compra quedará en entrega manual por el admin.</i>`
@@ -470,7 +516,9 @@ async function showPaymentInstructions(
   ]);
   if (!pm || !price) return;
   const qty = Number(ctx.qty ?? 1);
-  const total_usd = Number(price.price_usd) * qty;
+  const unit_usd = await getUserPriceForId(telegram_id, ctx.price_id as string, Number(price.price_usd));
+  const total_usd = unit_usd * qty;
+
   const total_local = total_usd * Number(pm.usd_rate);
   const { count: availableCount } = await sb
     .from("product_stock_keys")
@@ -745,10 +793,12 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     .eq("telegram_id", telegram_id)
     .single();
   const hasReferralDiscount = Number(shareU?.shares_count ?? 0) >= REFERRAL_GOAL;
+  const basePrice = await getUserPriceForId(telegram_id, ctx.price_id as string, Number(price.price_usd));
   const unit_price = Math.max(
     0,
-    Number(price.price_usd) - (hasReferralDiscount ? REFERRAL_DISCOUNT_USD : 0),
+    basePrice - (hasReferralDiscount ? REFERRAL_DISCOUNT_USD : 0),
   );
+
   const total_usd = unit_price * qty;
 
   const { data: user } = await sb
@@ -990,7 +1040,11 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   // IA: si la imagen no parece un pago, avisar al usuario y NO enviar al admin
   if (ocr?.is_payment === false) {
-    await notifyUserInvalidReceipt(chat_id);
+    await notifyUserInvalidReceipt(chat_id, {
+      reason: "la imagen no parece un comprobante de pago válido.",
+      holder: o.payment_methods?.holder_name ?? null,
+      account: o.payment_methods?.account_info ?? null,
+    });
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
     return;
@@ -999,15 +1053,17 @@ async function handleReceiptPhoto(msg: TgMessage) {
   // IA: verificar destinatario contra titular/cuenta del método de pago
   if (ocr?.recipient && o.payment_methods?.holder_name) {
     if (!recipientMatches(ocr.recipient, o.payment_methods.holder_name, o.payment_methods.account_info)) {
-      await notifyUserInvalidReceipt(
-        chat_id,
-        `Envía el dinero a:\n🪪 <code>${o.payment_methods.holder_name}</code>\n📋 <code>${o.payment_methods.account_info ?? "—"}</code>`,
-      );
+      await notifyUserInvalidReceipt(chat_id, {
+        reason: "el destinatario del pago no coincide con nuestra cuenta.",
+        holder: o.payment_methods.holder_name,
+        account: o.payment_methods.account_info,
+      });
       await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
       await sb.from("receipts").delete().eq("id", receipt!.id);
       return;
     }
   }
+
 
 
 
