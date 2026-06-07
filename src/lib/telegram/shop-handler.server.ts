@@ -1319,6 +1319,23 @@ async function handleMessage(msg: TgMessage) {
     return;
   }
 
+  // Atajo SUPER rápido: si el usuario está en flujo de recarga (monto) y
+  // mandó solo dígitos, procesar al instante sin awaits previos.
+  if (/^\d+([.,]\d+)?$/.test(text)) {
+    const st0 = await getState(telegram_id);
+    if (st0?.state === "recharge_amount") {
+      const n = Number(text.replace(",", "."));
+      if (Number.isFinite(n) && n >= MIN_RECHARGE_USD) {
+        const cc = (st0.context?.country_code as string) ?? "";
+        silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+        // Anti-spam en background — no bloquea la UX.
+        checkRateLimit(telegram_id, "msg", 20, 10).catch(() => {});
+        await showRechargeMethods(telegram_id, chat_id, cc, Math.round(n * 100) / 100);
+        return;
+      }
+    }
+  }
+
   // Bloqueo total — borrar cualquier mensaje entrante para que no se acumule
   if (await isBlockedFast(telegram_id)) {
     silentDelete("shop", chat_id, msg.message_id).catch(() => {});
@@ -1329,6 +1346,7 @@ async function handleMessage(msg: TgMessage) {
     await autoBlock(telegram_id, "spam_msg");
     return;
   }
+
 
   const botUser = await getOrCreateUser({
     telegram_id,
