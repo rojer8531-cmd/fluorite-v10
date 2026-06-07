@@ -750,6 +750,8 @@ async function adminPromptNewPrice(chat_id: number, price_id: string) {
 }
 
 // ===== Descuento personal por usuario =====
+const INICIO_ROW = [{ text: "🏠 Inicio", callback_data: "akp:inicio" }];
+
 async function adminUserDiscountProducts(chat_id: number, telegram_id: number) {
   const { data: products } = await sb
     .from("products")
@@ -764,11 +766,13 @@ async function adminUserDiscountProducts(chat_id: number, telegram_id: number) {
     { text: `${p.name}  ·  ${p.category}`, callback_data: `udprod:${telegram_id}:${p.id}` },
   ]);
   kb.push([{ text: "Volver", callback_data: `akusr:${telegram_id}` }]);
-  await sendMessage(
-    "warehouse",
+  kb.push(INICIO_ROW);
+  await replaceAdminList(
     chat_id,
+    telegram_id /* not used as key, just any number */ && _currentAdminId || chat_id,
+    "udisc",
     `<b>Descuento personal</b>\nUsuario <code>${telegram_id}</code>\n\nElegí el producto:`,
-    { reply_markup: { inline_keyboard: kb } },
+    kb,
   );
 }
 
@@ -803,11 +807,13 @@ async function adminUserDiscountDurations(chat_id: number, telegram_id: number, 
     ];
   });
   kb.push([{ text: "Volver", callback_data: `akusrdisc:${telegram_id}` }]);
-  await sendMessage(
-    "warehouse",
+  kb.push(INICIO_ROW);
+  await replaceAdminList(
     chat_id,
+    _currentAdminId ?? chat_id,
+    "udisc",
     `<b>${name}</b>\nUsuario <code>${telegram_id}</code>\n\nElegí la duración:`,
-    { reply_markup: { inline_keyboard: kb } },
+    kb,
   );
 }
 
