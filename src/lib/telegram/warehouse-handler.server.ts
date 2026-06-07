@@ -91,9 +91,8 @@ function isAdmin(telegram_id: number) {
   return String(telegram_id) === String(getWarehouseChatId());
 }
 
-function tpId(createdAt: string) {
-  return `TP${new Date(createdAt).getTime()}`;
-}
+
+
 
 
 // ===== Barra inferior persistente del almacén =====
