@@ -801,6 +801,7 @@ async function handleBroadcast(msg: TgMessage) {
     }
   }
 
+  const annId = ann.id;
   let ok = 0;
   let fail = 0;
   const CONCURRENCY = 25;
