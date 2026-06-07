@@ -25,6 +25,17 @@ import {
 } from "./db.server";
 import { silentDelete } from "./ui.server";
 
+const forceNewScreenFor = new Set<number>();
+const blockCache = new Map<number, { value: boolean; expiresAt: number }>();
+
+async function isBlockedFast(telegram_id: number): Promise<boolean> {
+  const cached = blockCache.get(telegram_id);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const value = await isBlocked(telegram_id);
+  blockCache.set(telegram_id, { value, expiresAt: Date.now() + 15_000 });
+  return value;
+}
+
 /**
  * Pantalla de navegación: edita el mensaje activo del usuario si existe
  * (evita amontonar mensajes mientras navega dentro de un mismo flujo).
@@ -41,7 +52,7 @@ async function screen(
   opts?: { final?: boolean },
 ) {
   const reply_markup = keyboard ? { inline_keyboard: keyboard } : undefined;
-  const active = await getActiveMessage(telegram_id);
+  const active = forceNewScreenFor.has(telegram_id) ? null : await getActiveMessage(telegram_id);
   if (active && active.chat_id === chat_id && active.message_id > 0 && !opts?.final) {
     const edited = await editMessageText("shop", chat_id, active.message_id, text, { reply_markup });
     if (edited.ok) return active.message_id;
