@@ -1288,9 +1288,35 @@ async function handleMessage(msg: TgMessage) {
   if (!msg.from) return;
   const telegram_id = msg.from.id;
   const chat_id = msg.chat.id;
+  const text = (msg.text ?? "").trim();
+
+  // La barra inferior debe sentirse instantánea: evitamos writes/checks lentos
+  // antes de enviar la nueva pantalla. El anti-spam corre en segundo plano.
+  if (isBottomMenuText(text)) {
+    const cachedBlock = blockCache.get(telegram_id);
+    if (cachedBlock?.value && cachedBlock.expiresAt > Date.now()) {
+      silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+      return;
+    }
+    const { data: quickUser } = await sb
+      .from("bot_users")
+      .select("is_authenticated")
+      .eq("telegram_id", telegram_id)
+      .maybeSingle();
+    if (quickUser?.is_authenticated) {
+      isBlockedFast(telegram_id).then((blocked) => {
+        if (blocked) silentDelete("shop", chat_id, msg.message_id).catch(() => {});
+      }).catch(() => {});
+      checkRateLimit(telegram_id, "msg", 20, 10).then((ok) => {
+        if (!ok) autoBlock(telegram_id, "spam_msg").catch(() => {});
+      }).catch(() => {});
+      await routeBottomMenu(text, telegram_id, chat_id, msg.message_id);
+      return;
+    }
+  }
 
   // Bloqueo total — borrar cualquier mensaje entrante para que no se acumule
-  if (await isBlocked(telegram_id)) {
+  if (await isBlockedFast(telegram_id)) {
     silentDelete("shop", chat_id, msg.message_id).catch(() => {});
     return;
   }
@@ -1320,8 +1346,6 @@ async function handleMessage(msg: TgMessage) {
     }
     return;
   }
-
-  const text = (msg.text ?? "").trim();
 
   // Atajo: si el usuario ya está autenticado y tocó la barra inferior,
   // enrutar primero para responder al primer toque sin queries extra.
