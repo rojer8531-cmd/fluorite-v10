@@ -92,8 +92,10 @@ export async function handleAdminUpdate(update: Update): Promise<void> {
   const chat_id =
     update.message?.chat.id ?? update.callback_query?.message?.chat.id ?? null;
 
-  if (admin_id && chat_id) {
-    await ensureAdminBar(chat_id, admin_id).catch(() => {});
+  if (admin_id && chat_id && update.message) {
+    // Solo en mensajes de texto adjuntamos la barra. En callbacks NUNCA
+    // bloqueamos: el botón debe responder al instante.
+    ensureAdminBar(chat_id, admin_id).catch(() => {});
   }
 
   if (update.message) await handleMessage(update.message);
