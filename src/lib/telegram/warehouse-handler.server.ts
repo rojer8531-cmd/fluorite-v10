@@ -91,12 +91,10 @@ function isAdmin(telegram_id: number) {
   return String(telegram_id) === String(getWarehouseChatId());
 }
 
-function shortId(id: string) {
-  return id.slice(0, 8);
-}
 function tpId(createdAt: string) {
   return `TP${new Date(createdAt).getTime()}`;
 }
+
 
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
