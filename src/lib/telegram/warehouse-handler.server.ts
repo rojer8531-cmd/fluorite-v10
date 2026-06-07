@@ -101,6 +101,7 @@ function tpId(createdAt: string) {
 
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
+  inicio: "🏠 Inicio",
   stock: "Stock",
   usuarios: "Usuarios",
   addkeys: "Agregar Keys",
@@ -113,6 +114,7 @@ const ADMIN_BOTTOM = {
 function adminBottomKeyboard() {
   return {
     keyboard: [
+      [{ text: ADMIN_BOTTOM.inicio }],
       [{ text: ADMIN_BOTTOM.stock }, { text: ADMIN_BOTTOM.usuarios }],
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.precios }],
       [{ text: ADMIN_BOTTOM.anuncio }, { text: ADMIN_BOTTOM.metodos }],
@@ -799,9 +801,11 @@ async function handleBroadcast(msg: TgMessage) {
     }
   }
 
+  const annId = ann.id;
   let ok = 0;
   let fail = 0;
-  for (const u of targets) {
+  const CONCURRENCY = 25;
+  async function sendOne(u: { telegram_id: number; chat_id: number }) {
     let sent: { ok: boolean; result?: { message_id: number } } = { ok: false };
     if (photoBytes) {
       sent = await sendPhotoMultipart("shop", u.chat_id, photoBytes, photoName, caption);
@@ -813,16 +817,20 @@ async function handleBroadcast(msg: TgMessage) {
     if (sent.ok && sent.result) {
       ok++;
       await recordAnnouncementDelivery({
-        announcement_id: ann.id,
+        announcement_id: annId,
         telegram_id: u.telegram_id,
         chat_id: u.chat_id,
         message_id: sent.result.message_id,
-      });
+      }).catch(() => {});
     } else {
       fail++;
     }
-    await sleep(35);
   }
+  for (let i = 0; i < targets.length; i += CONCURRENCY) {
+    const batch = targets.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map((u) => sendOne(u)));
+  }
+
 
   await sb
     .from("announcements")
@@ -1049,6 +1057,16 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== barra inferior persistente =====
   switch (text) {
+    case ADMIN_BOTTOM.inicio:
+      await patchContext(msg.from.id, { bar_shown: false });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
+        { reply_markup: adminBottomKeyboard() },
+      );
+      await patchContext(msg.from.id, { bar_shown: true });
+      return;
     case ADMIN_BOTTOM.stock:
       await adminStockView(msg.chat.id);
       return;

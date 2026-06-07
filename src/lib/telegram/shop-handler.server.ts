@@ -214,6 +214,21 @@ async function notifyUser(chat_id: number, text: string) {
   });
 }
 
+async function notifyUserInvalidReceipt(chat_id: number, extra?: string) {
+  const text =
+    `⚠️ <b>Tu comprobante no ha sido válido.</b>\n` +
+    `Si crees que es un error, contacta al soporte.` +
+    (extra ? `\n\n${extra}` : "");
+  await sendMessage("shop", chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
+        [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+      ],
+    },
+  });
+}
+
 
 async function showShareBot(telegram_id: number, chat_id: number) {
   const username = await getShopBotUsername();
@@ -975,7 +990,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   // IA: si la imagen no parece un pago, avisar al usuario y NO enviar al admin
   if (ocr?.is_payment === false) {
-    await notifyUser(chat_id, `⚠️ Lo que enviaste no parece un comprobante de pago. Reenviá la imagen del comprobante completo y que vaya al destinatario correcto.\n\nSi creés que es un problema, contactá a soporte: @smallffx7`);
+    await notifyUserInvalidReceipt(chat_id);
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
     return;
@@ -984,11 +999,10 @@ async function handleReceiptPhoto(msg: TgMessage) {
   // IA: verificar destinatario contra titular/cuenta del método de pago
   if (ocr?.recipient && o.payment_methods?.holder_name) {
     if (!recipientMatches(ocr.recipient, o.payment_methods.holder_name, o.payment_methods.account_info)) {
-      await notifyUser(chat_id, `⚠️ <b>Tu comprobante no es compatible con el método de pago.</b>\n\n` +
-        `Por favor, envía el dinero a los datos correctos:\n\n` +
-        `🪪 Titular: <code>${o.payment_methods.holder_name}</code>\n` +
-        `📋 Cuenta: <code>${o.payment_methods.account_info ?? "—"}</code>\n\n` +
-        `Si creés que es un problema, contactá a soporte: @smallffx7`);
+      await notifyUserInvalidReceipt(
+        chat_id,
+        `Envía el dinero a:\n🪪 <code>${o.payment_methods.holder_name}</code>\n📋 <code>${o.payment_methods.account_info ?? "—"}</code>`,
+      );
       await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
       await sb.from("receipts").delete().eq("id", receipt!.id);
       return;
