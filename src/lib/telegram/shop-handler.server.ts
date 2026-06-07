@@ -214,6 +214,21 @@ async function notifyUser(chat_id: number, text: string) {
   });
 }
 
+async function notifyUserInvalidReceipt(chat_id: number, extra?: string) {
+  const text =
+    `⚠️ <b>Tu comprobante no ha sido válido.</b>\n` +
+    `Si crees que es un error, contacta al soporte.` +
+    (extra ? `\n\n${extra}` : "");
+  await sendMessage("shop", chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
+        [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+      ],
+    },
+  });
+}
+
 
 async function showShareBot(telegram_id: number, chat_id: number) {
   const username = await getShopBotUsername();
