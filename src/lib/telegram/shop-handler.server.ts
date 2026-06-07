@@ -1395,25 +1395,29 @@ async function handleMessage(msg: TgMessage) {
 async function handleCallback(cb: TgCallback) {
   const telegram_id = cb.from.id;
   const chat_id = cb.message?.chat.id ?? telegram_id;
-  if (await isBlocked(telegram_id)) {
-    await answerCallbackQuery("shop", cb.id, "Bloqueado", true);
-    return;
-  }
-  if (!(await checkRateLimit(telegram_id, "cb", 30, 10))) {
-    await autoBlock(telegram_id, "spam_cb");
-    await answerCallbackQuery("shop", cb.id);
-    return;
-  }
   const data = cb.data ?? "";
 
+  // ACK INMEDIATO — primero de todo, para apagar el spinner "actualizando"
+  // de Telegram al instante. No esperamos ni a checks de bloqueo/rate-limit.
   if (data.startsWith("shlink:")) {
     const uname = await getShopBotUsername();
     const link = uname ? `https://t.me/${uname}?start=ref${telegram_id}` : "";
     answerCallbackQuery("shop", cb.id, link || "No disponible", true).catch(() => {});
     return;
   }
-  // No esperamos al ACK del callback para responder más rápido
   answerCallbackQuery("shop", cb.id).catch(() => {});
+
+  // Checks en paralelo después del ACK
+  const [blocked, withinLimit] = await Promise.all([
+    isBlocked(telegram_id),
+    checkRateLimit(telegram_id, "cb", 30, 10),
+  ]);
+  if (blocked) return;
+  if (!withinLimit) {
+    autoBlock(telegram_id, "spam_cb").catch(() => {});
+    return;
+  }
+
 
   if (data === "menu:main") return showMainMenu(telegram_id, chat_id);
   if (data === "noop") return;
