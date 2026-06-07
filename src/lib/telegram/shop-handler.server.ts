@@ -516,7 +516,9 @@ async function showPaymentInstructions(
   ]);
   if (!pm || !price) return;
   const qty = Number(ctx.qty ?? 1);
-  const total_usd = Number(price.price_usd) * qty;
+  const unit_usd = await getUserPriceForId(telegram_id, ctx.price_id as string, Number(price.price_usd));
+  const total_usd = unit_usd * qty;
+
   const total_local = total_usd * Number(pm.usd_rate);
   const { count: availableCount } = await sb
     .from("product_stock_keys")
