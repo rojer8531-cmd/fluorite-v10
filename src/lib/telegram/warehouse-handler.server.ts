@@ -1400,6 +1400,32 @@ async function handleCallback(cb: TgCallback) {
     }
     return;
   }
+  if (data.startsWith("akusrdisc:")) {
+    if (chat_id) await adminUserDiscountProducts(chat_id, parseInt(data.slice(10), 10));
+    return;
+  }
+  if (data.startsWith("udprod:")) {
+    const [, tg, pid] = data.split(":");
+    if (chat_id) await adminUserDiscountDurations(chat_id, parseInt(tg, 10), pid);
+    return;
+  }
+  if (data.startsWith("upred:")) {
+    const [, tg, prid] = data.split(":");
+    if (chat_id) await adminPromptUserPrice(chat_id, parseInt(tg, 10), prid);
+    return;
+  }
+  if (data === "akp:prlist") {
+    if (chat_id) await adminListaPrecios(chat_id);
+    return;
+  }
+  if (data.startsWith("prprod:")) {
+    if (chat_id) await adminPriceDurations(chat_id, data.slice(7));
+    return;
+  }
+  if (data.startsWith("pred:")) {
+    if (chat_id) await adminPromptNewPrice(chat_id, data.slice(5));
+    return;
+
   if (data.startsWith("akusrunblock:")) {
     const tgId = parseInt(data.slice(13), 10);
     await sb.from("blocked_users").delete().eq("telegram_id", tgId);
