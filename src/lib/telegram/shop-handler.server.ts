@@ -1025,7 +1025,11 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   // IA: si la imagen no parece un pago, avisar al usuario y NO enviar al admin
   if (ocr?.is_payment === false) {
-    await notifyUserInvalidReceipt(chat_id);
+    await notifyUserInvalidReceipt(chat_id, {
+      reason: "la imagen no parece un comprobante de pago válido.",
+      holder: o.payment_methods?.holder_name ?? null,
+      account: o.payment_methods?.account_info ?? null,
+    });
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
     return;
@@ -1034,15 +1038,17 @@ async function handleReceiptPhoto(msg: TgMessage) {
   // IA: verificar destinatario contra titular/cuenta del método de pago
   if (ocr?.recipient && o.payment_methods?.holder_name) {
     if (!recipientMatches(ocr.recipient, o.payment_methods.holder_name, o.payment_methods.account_info)) {
-      await notifyUserInvalidReceipt(
-        chat_id,
-        `Envía el dinero a:\n🪪 <code>${o.payment_methods.holder_name}</code>\n📋 <code>${o.payment_methods.account_info ?? "—"}</code>`,
-      );
+      await notifyUserInvalidReceipt(chat_id, {
+        reason: "el destinatario del pago no coincide con nuestra cuenta.",
+        holder: o.payment_methods.holder_name,
+        account: o.payment_methods.account_info,
+      });
       await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
       await sb.from("receipts").delete().eq("id", receipt!.id);
       return;
     }
   }
+
 
 
 
