@@ -183,6 +183,10 @@ const BOTTOM_MENU = {
   support: "💬 Soporte",
 };
 
+function isBottomMenuText(text: string) {
+  return Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
+}
+
 function bottomKeyboard() {
   return {
     keyboard: [
@@ -782,8 +786,12 @@ async function routeBottomMenu(
   const action = map[text];
   if (!action) return false;
   // Forzar mensaje NUEVO debajo del tap del usuario (no editar arriba).
-  await setActiveMessage(telegram_id, chat_id, 0);
-  await action(telegram_id, chat_id);
+  forceNewScreenFor.add(telegram_id);
+  try {
+    await action(telegram_id, chat_id);
+  } finally {
+    forceNewScreenFor.delete(telegram_id);
+  }
   return true;
 }
 
