@@ -388,13 +388,20 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     ]);
     return;
   }
-  const prices = product.prices ?? [];
-  if (prices.length === 0) {
+  const rawPrices = product.prices ?? [];
+  if (rawPrices.length === 0) {
     await screen(telegram_id, chat_id, `Sin duraciones disponibles.`, [
       [{ text: "Volver", callback_data: "menu:products" }],
     ]);
     return;
   }
+  // Aplicar precios personalizados por usuario (si existen)
+  const overrides = await getUserPriceOverrides(telegram_id);
+  const prices = rawPrices.map((p) => ({
+    ...p,
+    price_usd: overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd),
+    has_override: overrides.has(p.id),
+  }));
   if (balance <= 0) {
     await screen(
     telegram_id,
@@ -417,13 +424,15 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   await patchContext(telegram_id, { product_id });
   const rows = prices.map((p) => {
     const affordable = balance >= Number(p.price_usd);
+    const tag = p.has_override ? "  🎁" : "";
     return [
       {
-        text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${affordable ? "" : "  ·  sin saldo"}`,
+        text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}${affordable ? "" : "  ·  sin saldo"}`,
         callback_data: affordable ? `dur:${p.id}` : "noop",
       },
     ];
   });
+
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
   await screen(
     telegram_id,
