@@ -335,6 +335,28 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== flujo de búsqueda / mensaje directo a usuario =====
   const adminState = await getState(msg.from.id);
+
+  // Confirmación de limpieza total
+  if (adminState?.state === "admin_confirm_wipe" && text && !text.startsWith("/")) {
+    await setState(msg.from.id, "menu", {});
+    if (text.trim() !== "1010") {
+      await sendMessage(msg.chat.id, `❌ Contraseña incorrecta. Operación cancelada.`);
+      return;
+    }
+    await sendMessage(msg.chat.id, `⏳ Limpiando datos de usuarios...`);
+    try {
+      await wipeAllUserData();
+      await sendMessage(
+        msg.chat.id,
+        `✅ <b>Limpieza completada</b>\n\nSe borraron todos los datos de usuarios.\nEl sistema sigue funcionando — /start abrirá un bot limpio para cualquier usuario.`,
+      );
+    } catch (e) {
+      console.error("[wipe] error", e);
+      await sendMessage(msg.chat.id, `❌ Error durante la limpieza: ${String((e as Error).message ?? e)}`);
+    }
+    return;
+  }
+
   if (adminState?.state === "admin_lookup" && text && !text.startsWith("/")) {
     const tgId = parseInt(text.replace(/\D+/g, ""), 10);
     await setState(msg.from.id, "menu", {});
@@ -345,6 +367,7 @@ async function handleMessage(msg: TgMessage) {
     await showUserCard(msg.chat.id, tgId);
     return;
   }
+
   if (adminState?.state === "admin_dm" && text && !text.startsWith("/")) {
     const ctx = (adminState.context ?? {}) as { target_tg?: number };
     const targetTg = Number(ctx.target_tg);
@@ -499,7 +522,51 @@ async function handleMessage(msg: TgMessage) {
 
   if (text === "/pendientes") return adminPendientes(msg.chat.id);
   if (text === "/bloqueos") return adminBloqueos(msg.chat.id);
+
+  if (text === "/limpiar") {
+    await setState(msg.from.id, "admin_confirm_wipe", {});
+    await sendMessage(
+      msg.chat.id,
+      `⚠️ <b>Limpieza total de datos de usuarios</b>\n\nEsto borrará: usuarios, estados, órdenes, comprobantes, keys entregadas, bloqueos, mensajes activos, anuncios entregados y descuentos personalizados.\n\n<b>NO</b> se tocará: productos, precios, métodos de pago, stock ni configuración del sistema.\n\nEscribí la contraseña para confirmar.`,
+    );
+    return;
+  }
 }
+
+async function wipeAllUserData() {
+  // Borrar en orden seguro (hijos antes que padres por FKs).
+  // Tablas con PK uuid → usar neq id != UUID nulo (siempre verdadero).
+  const uuidPkTables = [
+    "order_keys",
+    "receipts",
+    "receipt_fingerprints",
+    "announcement_deliveries",
+    "user_price_overrides",
+    "admin_trash",
+    "admin_logs",
+    "orders",
+    "bot_users",
+  ];
+  // Tablas con PK basada en telegram_id → usar gte 0.
+  const bigintTgTables = ["active_messages", "user_state", "rate_limits", "blocked_users"];
+
+  for (const t of uuidPkTables) {
+    const { error } = await sb
+      .from(t as never)
+      .delete()
+      .neq("id" as never, "00000000-0000-0000-0000-000000000000");
+    if (error) throw new Error(`No se pudo limpiar ${t}: ${error.message}`);
+  }
+  for (const t of bigintTgTables) {
+    const { error } = await sb
+      .from(t as never)
+      .delete()
+      .gte("telegram_id" as never, 0);
+    if (error) throw new Error(`No se pudo limpiar ${t}: ${error.message}`);
+  }
+}
+
+
 
 // ===== Callbacks =====
 async function handleCallback(cb: TgCallback) {
