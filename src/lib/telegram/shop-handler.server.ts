@@ -26,6 +26,7 @@ import {
 import { silentDelete } from "./ui.server";
 
 const forceNewScreenFor = new Set<number>();
+const activeMessageHints = new Map<number, { chat_id: number; message_id: number }>();
 const blockCache = new Map<number, { value: boolean; expiresAt: number }>();
 
 async function isBlockedFast(telegram_id: number): Promise<boolean> {
@@ -52,10 +53,16 @@ async function screen(
   opts?: { final?: boolean },
 ) {
   const reply_markup = keyboard ? { inline_keyboard: keyboard } : undefined;
-  const active = forceNewScreenFor.has(telegram_id) ? null : await getActiveMessage(telegram_id);
+  const hinted = activeMessageHints.get(telegram_id) ?? null;
+  const active = forceNewScreenFor.has(telegram_id)
+    ? null
+    : hinted ?? (await getActiveMessage(telegram_id));
   if (active && active.chat_id === chat_id && active.message_id > 0 && !opts?.final) {
     const edited = await editMessageText("shop", chat_id, active.message_id, text, { reply_markup });
-    if (edited.ok) return active.message_id;
+    if (edited.ok) {
+      setActiveMessage(telegram_id, chat_id, active.message_id).catch(() => {});
+      return active.message_id;
+    }
   }
   const sent = await sendMessage("shop", chat_id, text, { reply_markup });
   if (sent.ok && sent.result) {
