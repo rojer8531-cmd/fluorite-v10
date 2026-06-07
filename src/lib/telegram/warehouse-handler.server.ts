@@ -1401,6 +1401,21 @@ async function handleCallback(cb: TgCallback) {
   const data = cb.data ?? "";
   const chat_id = cb.message?.chat.id;
 
+  if (data === "akp:inicio") {
+    if (chat_id) {
+      await patchContext(cb.from.id, { bar_shown: false });
+      const sent = await sendMessage(
+        "warehouse",
+        chat_id,
+        `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
+        { reply_markup: adminBottomKeyboard() },
+      );
+      if (sent.ok && sent.result) {
+        await patchContext(cb.from.id, { bar_shown: true });
+      }
+    }
+    return;
+  }
   if (data === "akp:add") {
     if (chat_id) await adminListProducts(chat_id);
     return;
