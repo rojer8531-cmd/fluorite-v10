@@ -151,6 +151,15 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
   const chat_id =
     update.message?.chat.id ?? update.callback_query?.message?.chat.id ?? null;
 
+  // Comandos que muestran la barra por su cuenta. Saltamos ensureAdminBar
+  // para evitar el flicker del mensaje invisible al tocar /start o "Inicio".
+  const msgText = (update.message?.text ?? "").trim();
+  const isStartLike =
+    msgText === "/start" ||
+    msgText === "/help" ||
+    msgText === "/panel" ||
+    msgText === ADMIN_BOTTOM.inicio;
+
   if (admin_id && chat_id) {
     _currentAdminId = admin_id;
     // Trackear los mensajes que el admin envía para poder borrarlos también
@@ -159,15 +168,14 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
         .insert({ chat_id: Number(chat_id), message_id: update.message.message_id })
         .then(() => {}, () => {});
     }
-    // Si el admin "se salió" del chat (sin actividad por un rato), borramos
-    // todo lo anterior antes de continuar. Si todavía está activo no tocamos
-    // nada para no romper su navegación.
     const idleMs = await getIdleMs(admin_id);
     if (idleMs >= ADMIN_IDLE_PURGE_MS) {
       await purgeAdminTrash(chat_id, admin_id).catch(() => {});
     }
     await touchAdminSeen(admin_id).catch(() => {});
-    await ensureAdminBar(chat_id, admin_id).catch(() => {});
+    if (!isStartLike) {
+      await ensureAdminBar(chat_id, admin_id).catch(() => {});
+    }
   }
 
   try {
@@ -177,6 +185,7 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
     _currentAdminId = null;
   }
 }
+
 
 async function getIdleMs(admin_id: number): Promise<number> {
   const st = await getState(admin_id);
