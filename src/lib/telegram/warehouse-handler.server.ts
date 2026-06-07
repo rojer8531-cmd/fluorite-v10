@@ -218,6 +218,7 @@ async function showAdminPanel(chat_id: number) {
         [{ text: "Buscar Usuario", callback_data: "akp:finduser" }],
         [{ text: "Métodos de Pago", callback_data: "akp:pm" }],
         [{ text: "Anuncio", callback_data: "akp:anuncio" }],
+        [{ text: "🏠 Inicio", callback_data: "akp:inicio" }],
       ],
     },
   });
