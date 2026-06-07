@@ -164,13 +164,19 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
         .insert({ chat_id: Number(chat_id), message_id: update.message.message_id })
         .then(() => {}, () => {});
     }
-    const idleMs = await getIdleMs(admin_id);
-    if (idleMs >= ADMIN_IDLE_PURGE_MS) {
-      await purgeAdminTrash(chat_id, admin_id).catch(() => {});
-    }
-    await touchAdminSeen(admin_id).catch(() => {});
-    if (!isStartLike) {
-      await ensureAdminBar(chat_id, admin_id).catch(() => {});
+    // Solo limpieza/barra en mensajes de texto. En callbacks NO bloqueamos
+    // la respuesta: el botón debe sentirse instantáneo.
+    if (update.message) {
+      const idleMs = await getIdleMs(admin_id);
+      if (idleMs >= ADMIN_IDLE_PURGE_MS) {
+        purgeAdminTrash(chat_id, admin_id).catch(() => {});
+      }
+      touchAdminSeen(admin_id).catch(() => {});
+      if (!isStartLike) {
+        ensureAdminBar(chat_id, admin_id).catch(() => {});
+      }
+    } else {
+      touchAdminSeen(admin_id).catch(() => {});
     }
   }
 
