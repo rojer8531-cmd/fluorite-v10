@@ -534,35 +534,38 @@ async function handleMessage(msg: TgMessage) {
 }
 
 async function wipeAllUserData() {
-  // Borrar en orden seguro (hijos antes que padres cuando hay FKs).
-  const tables = [
+  // Borrar en orden seguro (hijos antes que padres por FKs).
+  // Tablas con PK uuid → usar neq id != UUID nulo (siempre verdadero).
+  const uuidPkTables = [
     "order_keys",
     "receipts",
     "receipt_fingerprints",
     "announcement_deliveries",
     "user_price_overrides",
-    "active_messages",
-    "user_state",
-    "rate_limits",
-    "blocked_users",
     "admin_trash",
     "admin_logs",
     "orders",
     "bot_users",
   ];
-  for (const t of tables) {
-    const { error } = await sb.from(t as never).delete().not("created_at", "is", null);
-    if (error) {
-      // Fallback: algunas tablas no tienen created_at; usar un filtro siempre verdadero por id.
-      const { error: e2 } = await sb.from(t as never).delete().gte("telegram_id" as never, -9_999_999_999);
-      if (e2) {
-        // Último recurso: borrar por id usando un UUID inválido como NOT EQUAL.
-        const { error: e3 } = await sb.from(t as never).delete().neq("id" as never, "00000000-0000-0000-0000-000000000000");
-        if (e3) throw new Error(`No se pudo limpiar ${t}: ${e3.message}`);
-      }
-    }
+  // Tablas con PK basada en telegram_id → usar gte 0.
+  const bigintTgTables = ["active_messages", "user_state", "rate_limits", "blocked_users"];
+
+  for (const t of uuidPkTables) {
+    const { error } = await sb
+      .from(t as never)
+      .delete()
+      .neq("id" as never, "00000000-0000-0000-0000-000000000000");
+    if (error) throw new Error(`No se pudo limpiar ${t}: ${error.message}`);
+  }
+  for (const t of bigintTgTables) {
+    const { error } = await sb
+      .from(t as never)
+      .delete()
+      .gte("telegram_id" as never, 0);
+    if (error) throw new Error(`No se pudo limpiar ${t}: ${error.message}`);
   }
 }
+
 
 
 // ===== Callbacks =====
