@@ -335,6 +335,28 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== flujo de búsqueda / mensaje directo a usuario =====
   const adminState = await getState(msg.from.id);
+
+  // Confirmación de limpieza total
+  if (adminState?.state === "admin_confirm_wipe" && text && !text.startsWith("/")) {
+    await setState(msg.from.id, "menu", {});
+    if (text.trim() !== "1010") {
+      await sendMessage(msg.chat.id, `❌ Contraseña incorrecta. Operación cancelada.`);
+      return;
+    }
+    await sendMessage(msg.chat.id, `⏳ Limpiando datos de usuarios...`);
+    try {
+      await wipeAllUserData();
+      await sendMessage(
+        msg.chat.id,
+        `✅ <b>Limpieza completada</b>\n\nSe borraron todos los datos de usuarios.\nEl sistema sigue funcionando — /start abrirá un bot limpio para cualquier usuario.`,
+      );
+    } catch (e) {
+      console.error("[wipe] error", e);
+      await sendMessage(msg.chat.id, `❌ Error durante la limpieza: ${String((e as Error).message ?? e)}`);
+    }
+    return;
+  }
+
   if (adminState?.state === "admin_lookup" && text && !text.startsWith("/")) {
     const tgId = parseInt(text.replace(/\D+/g, ""), 10);
     await setState(msg.from.id, "menu", {});
@@ -345,6 +367,7 @@ async function handleMessage(msg: TgMessage) {
     await showUserCard(msg.chat.id, tgId);
     return;
   }
+
   if (adminState?.state === "admin_dm" && text && !text.startsWith("/")) {
     const ctx = (adminState.context ?? {}) as { target_tg?: number };
     const targetTg = Number(ctx.target_tg);
