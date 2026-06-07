@@ -479,7 +479,9 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
         .order("sort_order"),
     ]);
   if (!price) return;
-  const total_usd = Number(price.price_usd) * qty;
+  const unit_usd = await getUserPriceForId(telegram_id, ctx.price_id as string, Number(price.price_usd));
+  const total_usd = unit_usd * qty;
+
   const stockNote =
     (availableCount ?? 0) < qty
       ? `\n<i>Stock automático ${availableCount ?? 0}. Tu compra quedará en entrega manual por el admin.</i>`
