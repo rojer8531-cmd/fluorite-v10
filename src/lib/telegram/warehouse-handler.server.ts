@@ -1425,6 +1425,9 @@ async function handleCallback(cb: TgCallback) {
   if (data.startsWith("pred:")) {
     if (chat_id) await adminPromptNewPrice(chat_id, data.slice(5));
     return;
+  }
+
+
 
   if (data.startsWith("akusrunblock:")) {
     const tgId = parseInt(data.slice(13), 10);
