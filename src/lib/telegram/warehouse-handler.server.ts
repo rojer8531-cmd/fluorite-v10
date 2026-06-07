@@ -18,11 +18,10 @@ import {
   patchContext,
 } from "./db.server";
 import {
-  getHideOutOfStockSetting,
   getStockByPriceId,
-  getVisibleCatalog,
   invalidateCatalogCache,
 } from "./catalog.server";
+
 import {
   notifyUserApproved,
   notifyUserRejected,
