@@ -522,7 +522,48 @@ async function handleMessage(msg: TgMessage) {
 
   if (text === "/pendientes") return adminPendientes(msg.chat.id);
   if (text === "/bloqueos") return adminBloqueos(msg.chat.id);
+
+  if (text === "/limpiar") {
+    await setState(msg.from.id, "admin_confirm_wipe", {});
+    await sendMessage(
+      msg.chat.id,
+      `⚠️ <b>Limpieza total de datos de usuarios</b>\n\nEsto borrará: usuarios, estados, órdenes, comprobantes, keys entregadas, bloqueos, mensajes activos, anuncios entregados y descuentos personalizados.\n\n<b>NO</b> se tocará: productos, precios, métodos de pago, stock ni configuración del sistema.\n\nEscribí la contraseña para confirmar.`,
+    );
+    return;
+  }
 }
+
+async function wipeAllUserData() {
+  // Borrar en orden seguro (hijos antes que padres cuando hay FKs).
+  const tables = [
+    "order_keys",
+    "receipts",
+    "receipt_fingerprints",
+    "announcement_deliveries",
+    "user_price_overrides",
+    "active_messages",
+    "user_state",
+    "rate_limits",
+    "blocked_users",
+    "admin_trash",
+    "admin_logs",
+    "orders",
+    "bot_users",
+  ];
+  for (const t of tables) {
+    const { error } = await sb.from(t as never).delete().not("created_at", "is", null);
+    if (error) {
+      // Fallback: algunas tablas no tienen created_at; usar un filtro siempre verdadero por id.
+      const { error: e2 } = await sb.from(t as never).delete().gte("telegram_id" as never, -9_999_999_999);
+      if (e2) {
+        // Último recurso: borrar por id usando un UUID inválido como NOT EQUAL.
+        const { error: e3 } = await sb.from(t as never).delete().neq("id" as never, "00000000-0000-0000-0000-000000000000");
+        if (e3) throw new Error(`No se pudo limpiar ${t}: ${e3.message}`);
+      }
+    }
+  }
+}
+
 
 // ===== Callbacks =====
 async function handleCallback(cb: TgCallback) {
