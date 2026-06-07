@@ -652,23 +652,23 @@ async function startRecharge(telegram_id: number, chat_id: number) {
   );
 }
 
+const COUNTRY_NAMES: Record<string, string> = {
+  NI: "Nicaragua", HN: "Honduras", SV: "El Salvador", GT: "Guatemala",
+  CR: "Costa Rica", PA: "Panamá", MX: "México", CO: "Colombia",
+  VE: "Venezuela", PE: "Perú", AR: "Argentina", CL: "Chile",
+  EC: "Ecuador", BO: "Bolivia", PY: "Paraguay", UY: "Uruguay",
+  DO: "República Dominicana", CU: "Cuba", US: "Estados Unidos", ES: "España",
+};
+
 async function askRechargeAmount(telegram_id: number, chat_id: number, country_code: string) {
-  const { data: pmRow } = await sb
-    .from("payment_methods")
-    .select("country_name")
-    .eq("country_code", country_code)
-    .eq("active", true)
-    .limit(1)
-    .maybeSingle();
-  if (!pmRow) {
-    await screen(telegram_id, chat_id, `País no disponible.`, [BACK_BUTTON]);
-    return;
-  }
-  await setState(telegram_id, "recharge_amount", { country_code });
+  // Set state y pantalla EN PARALELO; no esperamos al DB para resolver el nombre.
+  const cc = country_code.toUpperCase();
+  const countryName = COUNTRY_NAMES[cc] ?? cc;
+  setState(telegram_id, "recharge_amount", { country_code: cc }).catch(() => {});
   await screen(
     telegram_id,
     chat_id,
-    `💰 <b>Recargar Saldo Desde ${pmRow.country_name}</b>\n\n` +
+    `💰 <b>Recargar Saldo Desde ${countryName}</b>\n\n` +
       `Recarga Mínima: <b>${MIN_RECHARGE_USD.toFixed(2)} USD</b>\n\n` +
       `¿Cuánto deseas recargar?\n\n` +
       `Ejemplo:\n<code>10</code>\n\n` +
@@ -676,6 +676,7 @@ async function askRechargeAmount(telegram_id: number, chat_id: number, country_c
     [[{ text: "Volver", callback_data: "menu:recharge" }]],
   );
 }
+
 
 async function showRechargeMethods(
   telegram_id: number,
