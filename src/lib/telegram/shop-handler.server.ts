@@ -69,9 +69,11 @@ async function screen(
     if (opts?.final) {
       // Limpiamos el mensaje activo para que el próximo flujo abra uno nuevo
       // y este quede preservado en el historial del chat.
-      await setActiveMessage(telegram_id, chat_id, 0);
+      activeMessageHints.set(telegram_id, { chat_id, message_id: 0 });
+      setActiveMessage(telegram_id, chat_id, 0).catch(() => {});
     } else {
-      await setActiveMessage(telegram_id, chat_id, sent.result.message_id);
+      activeMessageHints.set(telegram_id, { chat_id, message_id: sent.result.message_id });
+      setActiveMessage(telegram_id, chat_id, sent.result.message_id).catch(() => {});
     }
     return sent.result.message_id;
   }
