@@ -237,12 +237,23 @@ async function notifyUser(chat_id: number, text: string) {
   });
 }
 
-async function notifyUserInvalidReceipt(chat_id: number, extra?: string) {
-  const text =
-    `⚠️ <b>Tu comprobante no ha sido válido.</b>\n` +
-    `Si crees que es un error, contacta al soporte.` +
-    (extra ? `\n\n${extra}` : "");
-  await sendMessage("shop", chat_id, text, {
+async function notifyUserInvalidReceipt(
+  chat_id: number,
+  opts?: { reason?: string; holder?: string | null; account?: string | null },
+) {
+  const parts: string[] = [`⚠️ <b>Tu comprobante no ha sido válido.</b>`];
+  if (opts?.reason) parts.push(`Motivo: ${opts.reason}`);
+  if (opts?.holder || opts?.account) {
+    parts.push(
+      `\n📌 <b>Vuelve a enviar el comprobante</b> asegurándote de mandar el dinero a:\n` +
+        `🪪 <code>${opts.holder ?? "—"}</code>\n` +
+        `📋 <code>${opts.account ?? "—"}</code>`,
+    );
+  } else {
+    parts.push(`\n📌 Vuelve a enviar el comprobante correcto.`);
+  }
+  parts.push(`\nSi crees que es un error, contacta al soporte.`);
+  await sendMessage("shop", chat_id, parts.join("\n"), {
     reply_markup: {
       inline_keyboard: [
         [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
@@ -251,6 +262,7 @@ async function notifyUserInvalidReceipt(chat_id: number, extra?: string) {
     },
   });
 }
+
 
 
 async function showShareBot(telegram_id: number, chat_id: number) {
