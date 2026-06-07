@@ -817,7 +817,7 @@ async function handleBroadcast(msg: TgMessage) {
     if (sent.ok && sent.result) {
       ok++;
       await recordAnnouncementDelivery({
-        announcement_id: ann.id,
+        announcement_id: annId,
         telegram_id: u.telegram_id,
         chat_id: u.chat_id,
         message_id: sent.result.message_id,
