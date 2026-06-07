@@ -1088,6 +1088,76 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Editar precio base =====
+    const priceEditMatch = replySource.match(/PRICEEDIT:([a-f0-9-]{36})/);
+    if (priceEditMatch) {
+      const priceId = priceEditMatch[1];
+      const n = Number(text.replace(",", "."));
+      if (!Number.isFinite(n) || n <= 0) {
+        await sendMessage("warehouse", msg.chat.id, `Precio inválido. Ejemplo: <code>4.50</code>`);
+        return;
+      }
+      const { data: updated } = await sb
+        .from("product_prices")
+        .update({ price_usd: n })
+        .eq("id", priceId)
+        .select("duration_label, products(name)")
+        .maybeSingle();
+      if (!updated) {
+        await sendMessage("warehouse", msg.chat.id, `Variante no encontrada.`);
+        return;
+      }
+      invalidateCatalogCache();
+      const name = (updated as { products: { name: string } }).products.name;
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ <b>Precio actualizado</b>\n${name} · ${updated.duration_label} → <b>$${n.toFixed(2)}</b>`,
+      );
+      return;
+    }
+
+    // ===== Editar precio personal por usuario =====
+    const uPriceMatch = replySource.match(/UPRICEEDIT:(\d+):([a-f0-9-]{36})/);
+    if (uPriceMatch) {
+      const tgId = parseInt(uPriceMatch[1], 10);
+      const priceId = uPriceMatch[2];
+      if (/^reset$/i.test(text.trim())) {
+        await sb.from("user_price_overrides").delete()
+          .eq("telegram_id", tgId).eq("price_id", priceId);
+        await sendMessage("warehouse", msg.chat.id, `🧹 Descuento personal eliminado para <code>${tgId}</code>.`);
+        await adminUserDiscountProducts(msg.chat.id, tgId);
+        return;
+      }
+      const n = Number(text.replace(",", "."));
+      if (!Number.isFinite(n) || n < 0) {
+        await sendMessage("warehouse", msg.chat.id, `Precio inválido. Ejemplo: <code>3.00</code> o <code>reset</code>.`);
+        return;
+      }
+      const { error } = await sb.from("user_price_overrides").upsert(
+        { telegram_id: tgId, price_id: priceId, price_usd: n },
+        { onConflict: "telegram_id,price_id" },
+      );
+      if (error) {
+        await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`);
+        return;
+      }
+      const { data: p } = await sb
+        .from("product_prices")
+        .select("duration_label, products(name)")
+        .eq("id", priceId)
+        .maybeSingle();
+      const name = (p as { products: { name: string } } | null)?.products.name ?? "—";
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `🎁 <b>Descuento personal aplicado</b>\nUsuario <code>${tgId}</code>\n${name} · ${p?.duration_label ?? "—"} → <b>$${n.toFixed(2)}</b>`,
+      );
+      return;
+    }
+
+
+
 
 
 
