@@ -1051,6 +1051,16 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== barra inferior persistente =====
   switch (text) {
+    case ADMIN_BOTTOM.inicio:
+      await patchContext(msg.from.id, { bar_shown: false });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
+        { reply_markup: adminBottomKeyboard() },
+      );
+      await patchContext(msg.from.id, { bar_shown: true });
+      return;
     case ADMIN_BOTTOM.stock:
       await adminStockView(msg.chat.id);
       return;
