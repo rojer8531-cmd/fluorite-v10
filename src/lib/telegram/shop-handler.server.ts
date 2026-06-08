@@ -426,25 +426,11 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     price_usd: overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd),
     has_override: overrides.has(p.id),
   }));
-  if (balance <= 0) {
-    await screen(
-    telegram_id,
-      chat_id,
-      `💸 <b>Saldo insuficiente</b>\n\nNo tenés saldo para comprar.\nSaldo actual: <b>$0.00 USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
-      [[{ text: "💰 Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
-    );
-    return;
-  }
+  // Mostramos SIEMPRE los precios. Si el saldo no alcanza, el botón queda
+  // deshabilitado pero el usuario ya ve cuánto cuesta cada key.
   const minPrice = Math.min(...prices.map((p) => Number(p.price_usd)));
-  if (balance < minPrice) {
-    await screen(
-    telegram_id,
-      chat_id,
-      `💸 <b>Saldo insuficiente</b>\n\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
-      [[{ text: "💰 Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
-    );
-    return;
-  }
+  const lowBalance = balance < minPrice;
+
   await patchContext(telegram_id, { product_id });
   const rows = prices.map((p) => {
     const affordable = balance >= Number(p.price_usd);
@@ -452,18 +438,21 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     return [
       {
         text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}${affordable ? "" : "  ·  sin saldo"}`,
-        callback_data: affordable ? `dur:${p.id}` : "noop",
+        callback_data: affordable ? `dur:${p.id}` : `nob:${p.id}`,
       },
     ];
   });
 
+  if (lowBalance) {
+    rows.push([{ text: "💰 Recargar", callback_data: "menu:recharge" }]);
+  }
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
-  await screen(
-    telegram_id,
-    chat_id,
-    `<b>${product.name}</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`,
-    rows,
-  );
+
+  const header = lowBalance
+    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nPodés ver los precios. Recargá saldo para comprar:`
+    : `<b>${product.name}</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`;
+
+  await screen(telegram_id, chat_id, header, rows);
 }
 
 async function showQty(telegram_id: number, chat_id: number, price_id: string) {
