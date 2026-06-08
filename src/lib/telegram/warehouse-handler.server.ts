@@ -74,6 +74,19 @@ async function sendMessage(
   text: string,
   extra: Record<string, unknown> = {},
 ) {
+  // Para mensajes del almacén con teclado inline, anexamos el botón
+  // "🏠 Inicio" para que el admin siempre tenga forma de volver a la barra.
+  if (bot === "warehouse") {
+    const rm = extra.reply_markup as { inline_keyboard?: Array<Array<{ text: string; callback_data?: string }>> } | undefined;
+    if (rm && Array.isArray(rm.inline_keyboard)) {
+      const last = rm.inline_keyboard[rm.inline_keyboard.length - 1];
+      const alreadyHasInicio = Array.isArray(last) && last.some((b) => b?.callback_data === "akp:inicio");
+      if (!alreadyHasInicio) {
+        rm.inline_keyboard = [...rm.inline_keyboard, [{ text: "🏠 Inicio", callback_data: "akp:inicio" }]];
+        extra = { ...extra, reply_markup: rm };
+      }
+    }
+  }
   const r = await _rawSendMessage(bot, chat_id, text, extra);
   if (bot === "warehouse" && r.ok && r.result) {
     sb.from("admin_trash")
@@ -306,6 +319,38 @@ async function pmMenu(chat_id: number) {
 }
 
 async function pmListAll(chat_id: number, mode: "edit" | "del") {
+  if (mode === "edit") {
+    // Para editar mostramos por PAÍS (no por método). Cambiar un país
+    // reemplaza toda su info anterior con la nueva.
+    const { data: methods } = await sb
+      .from("payment_methods")
+      .select("country_code, country_name")
+      .order("country_name");
+    if (!methods || methods.length === 0) {
+      await sendMessage("warehouse", chat_id, `No hay métodos cargados.`);
+      return;
+    }
+    const seen = new Set<string>();
+    const countries: Array<{ code: string; name: string }> = [];
+    for (const m of methods) {
+      if (seen.has(m.country_code)) continue;
+      seen.add(m.country_code);
+      countries.push({ code: m.country_code, name: m.country_name });
+    }
+    const kb: Array<Array<{ text: string; callback_data: string }>> = [];
+    for (let i = 0; i < countries.length; i += 2) {
+      const row = [{ text: countries[i].name, callback_data: `pmec:${countries[i].code}` }];
+      if (countries[i + 1]) row.push({ text: countries[i + 1].name, callback_data: `pmec:${countries[i + 1].code}` });
+      kb.push(row);
+    }
+    await sendMessage(
+      "warehouse",
+      chat_id,
+      `<b>Editar Método</b>\n\nElegí el país. Al actualizar se elimina la info anterior y se reemplaza por la nueva.`,
+      { reply_markup: { inline_keyboard: kb } },
+    );
+    return;
+  }
   const { data: methods } = await sb
     .from("payment_methods")
     .select("id, country_code, country_name, method_name, active")
@@ -317,14 +362,35 @@ async function pmListAll(chat_id: number, mode: "edit" | "del") {
   const kb = methods.map((m) => [
     {
       text: `${m.country_name} · ${m.method_name}${m.active ? "" : " (off)"}`,
-      callback_data: `pm:${mode === "edit" ? "edit" : "del"}:${m.id}`,
+      callback_data: `pm:del:${m.id}`,
     },
   ]);
   await sendMessage(
     "warehouse",
     chat_id,
-    `<b>${mode === "edit" ? "Editar" : "Eliminar"} Método</b>\n\nElegí uno:`,
+    `<b>Eliminar Método</b>\n\nElegí uno:`,
     { reply_markup: { inline_keyboard: kb } },
+  );
+}
+
+async function pmPromptCountryReplace(chat_id: number, country_code: string) {
+  const { data: existing } = await sb
+    .from("payment_methods")
+    .select("country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate")
+    .eq("country_code", country_code)
+    .limit(1)
+    .maybeSingle();
+  const cn = existing?.country_name ?? country_code;
+  const sample = existing
+    ? `<code>${country_code}\n${existing.country_name}\n${existing.method_name}\n${existing.holder_name ?? ""}\n${existing.account_info ?? ""}\n${existing.extra_info ?? ""}\n${existing.currency ?? "USD"}\n${existing.usd_rate ?? 1}</code>`
+    : `<code>${country_code}\nNombre país\nMétodo (ej Nequi)\nTitular\nNúmero de cuenta\nNota (opcional)\nMoneda (ej COP)\nTasa USD (ej 4000)</code>`;
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PMSETCC:${country_code}</b>\n\nRespondé a este mensaje con TODOS los datos del nuevo método para <b>${cn}</b>, una línea por campo en este orden:\n\n` +
+      `1️⃣ country_code\n2️⃣ country_name\n3️⃣ method_name\n4️⃣ holder_name\n5️⃣ account_info\n6️⃣ extra_info (opcional)\n7️⃣ currency (default USD)\n8️⃣ usd_rate (default 1)\n\n` +
+      `Ejemplo:\n${sample}\n\n<i>⚠️ Esto borra la info anterior del país y la reemplaza.</i>`,
+    { reply_markup: { force_reply: true, selective: true } },
   );
 }
 
@@ -1086,6 +1152,59 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Reemplazar TODO el método de un país en un solo mensaje =====
+    const pmSetCcMatch = replySource.match(/PMSETCC:([A-Za-z0-9_-]+)/);
+    if (pmSetCcMatch) {
+      const oldCc = pmSetCcMatch[1].toUpperCase();
+      const lines = text.split(/\r?\n/).map((l) => l.trim());
+      if (lines.length < 5) {
+        await sendMessage(
+          "warehouse",
+          msg.chat.id,
+          `Faltan campos. Mínimo 5 líneas (country_code, country_name, method_name, holder_name, account_info).`,
+        );
+        return;
+      }
+      const [country_code, country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate] = lines;
+      const rate = Number((usd_rate ?? "1").replace(",", "."));
+      // Borrar info anterior del país (tanto el cc antiguo como el nuevo)
+      const ccNew = country_code.toUpperCase();
+      await sb.from("payment_methods").delete().eq("country_code", oldCc);
+      if (ccNew !== oldCc) {
+        await sb.from("payment_methods").delete().eq("country_code", ccNew);
+      }
+      const { data, error } = await sb.from("payment_methods").insert({
+        country_code: ccNew,
+        country_name,
+        method_name,
+        holder_name,
+        account_info,
+        extra_info: extra_info || null,
+        currency: currency || "USD",
+        usd_rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+        active: true,
+      }).select().single();
+      if (error || !data) {
+        await sendMessage("warehouse", msg.chat.id, `Error: ${error?.message ?? "desconocido"}`);
+        return;
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "pm_replace_country",
+        target_type: "payment_method",
+        target_id: data.id,
+        details: { old_country_code: oldCc, new_country_code: ccNew } as never,
+      });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ <b>Método actualizado para ${country_name}</b>\n\n` +
+          `🏦 ${method_name}\n🪪 ${holder_name}\n📋 <code>${account_info}</code>\n💱 ${currency || "USD"} · rate ${Number.isFinite(rate) && rate > 0 ? rate : 1}\n\n` +
+          `La información anterior fue eliminada.`,
+      );
+      return;
+    }
+
     // ===== Buscar usuario por ID =====
     if (replySource.includes("FINDUSER")) {
       const id = parseInt(text.replace(/\D/g, ""), 10);
@@ -1442,6 +1561,7 @@ async function handleCallback(cb: TgCallback) {
   if (data === "pm:editlist") { if (chat_id) await pmListAll(chat_id, "edit"); return; }
   if (data === "pm:dellist") { if (chat_id) await pmListAll(chat_id, "del"); return; }
   if (data === "pm:countries") { if (chat_id) await pmCountriesView(chat_id); return; }
+  if (data.startsWith("pmec:")) { if (chat_id) await pmPromptCountryReplace(chat_id, data.slice(5)); return; }
   if (data.startsWith("pm:edit:")) { if (chat_id) await pmEditMenu(chat_id, data.slice(8)); return; }
   if (data.startsWith("pm:del:")) { if (chat_id) await pmConfirmDelete(chat_id, data.slice(7)); return; }
   if (data.startsWith("pmf:")) {

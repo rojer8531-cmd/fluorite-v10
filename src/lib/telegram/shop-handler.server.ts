@@ -426,25 +426,11 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     price_usd: overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd),
     has_override: overrides.has(p.id),
   }));
-  if (balance <= 0) {
-    await screen(
-    telegram_id,
-      chat_id,
-      `💸 <b>Saldo insuficiente</b>\n\nNo tenés saldo para comprar.\nSaldo actual: <b>$0.00 USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
-      [[{ text: "💰 Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
-    );
-    return;
-  }
+  // Mostramos SIEMPRE los precios. Si el saldo no alcanza, el botón queda
+  // deshabilitado pero el usuario ya ve cuánto cuesta cada key.
   const minPrice = Math.min(...prices.map((p) => Number(p.price_usd)));
-  if (balance < minPrice) {
-    await screen(
-    telegram_id,
-      chat_id,
-      `💸 <b>Saldo insuficiente</b>\n\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nUsá <b>Recargar</b> para agregar saldo.`,
-      [[{ text: "💰 Recargar", callback_data: "menu:recharge" }], BACK_BUTTON],
-    );
-    return;
-  }
+  const lowBalance = balance < minPrice;
+
   await patchContext(telegram_id, { product_id });
   const rows = prices.map((p) => {
     const affordable = balance >= Number(p.price_usd);
@@ -452,18 +438,21 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     return [
       {
         text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}${affordable ? "" : "  ·  sin saldo"}`,
-        callback_data: affordable ? `dur:${p.id}` : "noop",
+        callback_data: affordable ? `dur:${p.id}` : `nob:${p.id}`,
       },
     ];
   });
 
+  if (lowBalance) {
+    rows.push([{ text: "💰 Recargar", callback_data: "menu:recharge" }]);
+  }
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
-  await screen(
-    telegram_id,
-    chat_id,
-    `<b>${product.name}</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`,
-    rows,
-  );
+
+  const header = lowBalance
+    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nPodés ver los precios. Recargá saldo para comprar:`
+    : `<b>${product.name}</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`;
+
+  await screen(telegram_id, chat_id, header, rows);
 }
 
 async function showQty(telegram_id: number, chat_id: number, price_id: string) {
@@ -1097,16 +1086,27 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
 
   const userTag = user.username ? `@${user.username}` : (user.display_name ?? "—");
+  const pm = o.payment_methods;
+  const pmInfo = pm
+    ? `\n💳 ${pm.country_name} · ${pm.method_name}` +
+      (pm.holder_name ? `\n🪪 ${pm.holder_name}` : "") +
+      (pm.account_info ? `\n📋 <code>${pm.account_info}</code>` : "")
+    : "";
+  const balLine = `\n💼 Saldo actual: $${Number(user.balance).toFixed(2)} USD`;
   let caption: string;
   if (isRecharge) {
     caption =
       `💰 <b>Recarga · $${Number(o.total_usd).toFixed(2)}</b>\n` +
       `${userTag} · <code>${telegram_id}</code>` +
+      pmInfo +
+      balLine +
       ocrSummary;
   } else {
     caption =
       `🛒 <b>${o.products?.name ?? "—"} · ${o.product_prices?.duration_label ?? "—"}${o.keys_qty > 1 ? ` ×${o.keys_qty}` : ""}</b>\n` +
       `$${Number(o.total_usd).toFixed(2)} · ${userTag} · <code>${telegram_id}</code>` +
+      pmInfo +
+      balLine +
       ocrSummary;
   }
 
@@ -1221,16 +1221,23 @@ async function handleReceiptDocument(msg: TgMessage) {
 
   const { data: order } = await sb
     .from("orders")
-    .select("*, payment_methods(country_name, method_name)")
+    .select("*, payment_methods(country_name, method_name, holder_name, account_info)")
     .eq("id", order_id)
     .single();
-  const o = order as { id: string; created_at: string; total_usd: number; payment_methods: { country_name: string; method_name: string } | null };
+  const o = order as { id: string; created_at: string; total_usd: number; payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null } | null };
   const pid = tpId(o.created_at);
 
   const userTag2 = user.username ? `@${user.username}` : (user.display_name ?? "—");
+  const pm2 = o.payment_methods;
+  const pmInfo2 = pm2
+    ? `\n💳 ${pm2.country_name} · ${pm2.method_name}` +
+      (pm2.holder_name ? `\n🪪 ${pm2.holder_name}` : "") +
+      (pm2.account_info ? `\n📋 <code>${pm2.account_info}</code>` : "")
+    : "";
+  const balLine2 = `\n💼 Saldo actual: $${Number(user.balance).toFixed(2)} USD`;
   const caption = isRecharge
-    ? `💰 <b>Recarga · $${Number(o.total_usd).toFixed(2)}</b>\n${userTag2} · <code>${telegram_id}</code>\n<i>(documento)</i>`
-    : `🛒 <b>Comprobante</b>\n${userTag2} · <code>${telegram_id}</code>\n<i>(documento)</i>`;
+    ? `💰 <b>Recarga · $${Number(o.total_usd).toFixed(2)}</b>\n${userTag2} · <code>${telegram_id}</code>${pmInfo2}${balLine2}\n<i>(documento)</i>`
+    : `🛒 <b>Comprobante</b>\n${userTag2} · <code>${telegram_id}</code>${pmInfo2}${balLine2}\n<i>(documento)</i>`;
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) return;
@@ -1484,6 +1491,10 @@ async function handleCallback(cb: TgCallback) {
 
   if (data === "menu:main") return showMainMenu(telegram_id, chat_id);
   if (data === "noop") return;
+  if (data.startsWith("nob:")) {
+    await notifyUser(chat_id, `💸 <b>Saldo insuficiente</b>\n\nNecesitás más saldo para comprar esta key. Usá <b>Recargar</b> para agregar saldo.`);
+    return;
+  }
   if (data === "menu:profile") return showProfile(telegram_id, chat_id);
   if (data === "menu:products") return showProducts(telegram_id, chat_id);
   if (data === "menu:status") return showOrderStatus(telegram_id, chat_id);
