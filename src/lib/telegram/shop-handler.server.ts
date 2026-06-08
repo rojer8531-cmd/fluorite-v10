@@ -1221,16 +1221,23 @@ async function handleReceiptDocument(msg: TgMessage) {
 
   const { data: order } = await sb
     .from("orders")
-    .select("*, payment_methods(country_name, method_name)")
+    .select("*, payment_methods(country_name, method_name, holder_name, account_info)")
     .eq("id", order_id)
     .single();
-  const o = order as { id: string; created_at: string; total_usd: number; payment_methods: { country_name: string; method_name: string } | null };
+  const o = order as { id: string; created_at: string; total_usd: number; payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null } | null };
   const pid = tpId(o.created_at);
 
   const userTag2 = user.username ? `@${user.username}` : (user.display_name ?? "—");
+  const pm2 = o.payment_methods;
+  const pmInfo2 = pm2
+    ? `\n💳 ${pm2.country_name} · ${pm2.method_name}` +
+      (pm2.holder_name ? `\n🪪 ${pm2.holder_name}` : "") +
+      (pm2.account_info ? `\n📋 <code>${pm2.account_info}</code>` : "")
+    : "";
+  const balLine2 = `\n💼 Saldo actual: $${Number(user.balance).toFixed(2)} USD`;
   const caption = isRecharge
-    ? `💰 <b>Recarga · $${Number(o.total_usd).toFixed(2)}</b>\n${userTag2} · <code>${telegram_id}</code>\n<i>(documento)</i>`
-    : `🛒 <b>Comprobante</b>\n${userTag2} · <code>${telegram_id}</code>\n<i>(documento)</i>`;
+    ? `💰 <b>Recarga · $${Number(o.total_usd).toFixed(2)}</b>\n${userTag2} · <code>${telegram_id}</code>${pmInfo2}${balLine2}\n<i>(documento)</i>`
+    : `🛒 <b>Comprobante</b>\n${userTag2} · <code>${telegram_id}</code>${pmInfo2}${balLine2}\n<i>(documento)</i>`;
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) return;
