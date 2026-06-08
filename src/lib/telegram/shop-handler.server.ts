@@ -1473,6 +1473,10 @@ async function handleCallback(cb: TgCallback) {
 
   if (data === "menu:main") return showMainMenu(telegram_id, chat_id);
   if (data === "noop") return;
+  if (data.startsWith("nob:")) {
+    await notifyUser(chat_id, `💸 <b>Saldo insuficiente</b>\n\nNecesitás más saldo para comprar esta key. Usá <b>Recargar</b> para agregar saldo.`);
+    return;
+  }
   if (data === "menu:profile") return showProfile(telegram_id, chat_id);
   if (data === "menu:products") return showProducts(telegram_id, chat_id);
   if (data === "menu:status") return showOrderStatus(telegram_id, chat_id);
