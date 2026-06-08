@@ -1152,6 +1152,59 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Reemplazar TODO el método de un país en un solo mensaje =====
+    const pmSetCcMatch = replySource.match(/PMSETCC:([A-Za-z0-9_-]+)/);
+    if (pmSetCcMatch) {
+      const oldCc = pmSetCcMatch[1].toUpperCase();
+      const lines = text.split(/\r?\n/).map((l) => l.trim());
+      if (lines.length < 5) {
+        await sendMessage(
+          "warehouse",
+          msg.chat.id,
+          `Faltan campos. Mínimo 5 líneas (country_code, country_name, method_name, holder_name, account_info).`,
+        );
+        return;
+      }
+      const [country_code, country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate] = lines;
+      const rate = Number((usd_rate ?? "1").replace(",", "."));
+      // Borrar info anterior del país (tanto el cc antiguo como el nuevo)
+      const ccNew = country_code.toUpperCase();
+      await sb.from("payment_methods").delete().eq("country_code", oldCc);
+      if (ccNew !== oldCc) {
+        await sb.from("payment_methods").delete().eq("country_code", ccNew);
+      }
+      const { data, error } = await sb.from("payment_methods").insert({
+        country_code: ccNew,
+        country_name,
+        method_name,
+        holder_name,
+        account_info,
+        extra_info: extra_info || null,
+        currency: currency || "USD",
+        usd_rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+        active: true,
+      }).select().single();
+      if (error || !data) {
+        await sendMessage("warehouse", msg.chat.id, `Error: ${error?.message ?? "desconocido"}`);
+        return;
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "pm_replace_country",
+        target_type: "payment_method",
+        target_id: data.id,
+        details: { old_country_code: oldCc, new_country_code: ccNew } as never,
+      });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ <b>Método actualizado para ${country_name}</b>\n\n` +
+          `🏦 ${method_name}\n🪪 ${holder_name}\n📋 <code>${account_info}</code>\n💱 ${currency || "USD"} · rate ${Number.isFinite(rate) && rate > 0 ? rate : 1}\n\n` +
+          `La información anterior fue eliminada.`,
+      );
+      return;
+    }
+
     // ===== Buscar usuario por ID =====
     if (replySource.includes("FINDUSER")) {
       const id = parseInt(text.replace(/\D/g, ""), 10);
