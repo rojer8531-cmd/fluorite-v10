@@ -1508,6 +1508,7 @@ async function handleCallback(cb: TgCallback) {
   if (data === "pm:editlist") { if (chat_id) await pmListAll(chat_id, "edit"); return; }
   if (data === "pm:dellist") { if (chat_id) await pmListAll(chat_id, "del"); return; }
   if (data === "pm:countries") { if (chat_id) await pmCountriesView(chat_id); return; }
+  if (data.startsWith("pmec:")) { if (chat_id) await pmPromptCountryReplace(chat_id, data.slice(5)); return; }
   if (data.startsWith("pm:edit:")) { if (chat_id) await pmEditMenu(chat_id, data.slice(8)); return; }
   if (data.startsWith("pm:del:")) { if (chat_id) await pmConfirmDelete(chat_id, data.slice(7)); return; }
   if (data.startsWith("pmf:")) {
