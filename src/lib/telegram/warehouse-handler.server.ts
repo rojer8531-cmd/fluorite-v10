@@ -319,6 +319,38 @@ async function pmMenu(chat_id: number) {
 }
 
 async function pmListAll(chat_id: number, mode: "edit" | "del") {
+  if (mode === "edit") {
+    // Para editar mostramos por PAÍS (no por método). Cambiar un país
+    // reemplaza toda su info anterior con la nueva.
+    const { data: methods } = await sb
+      .from("payment_methods")
+      .select("country_code, country_name")
+      .order("country_name");
+    if (!methods || methods.length === 0) {
+      await sendMessage("warehouse", chat_id, `No hay métodos cargados.`);
+      return;
+    }
+    const seen = new Set<string>();
+    const countries: Array<{ code: string; name: string }> = [];
+    for (const m of methods) {
+      if (seen.has(m.country_code)) continue;
+      seen.add(m.country_code);
+      countries.push({ code: m.country_code, name: m.country_name });
+    }
+    const kb: Array<Array<{ text: string; callback_data: string }>> = [];
+    for (let i = 0; i < countries.length; i += 2) {
+      const row = [{ text: countries[i].name, callback_data: `pmec:${countries[i].code}` }];
+      if (countries[i + 1]) row.push({ text: countries[i + 1].name, callback_data: `pmec:${countries[i + 1].code}` });
+      kb.push(row);
+    }
+    await sendMessage(
+      "warehouse",
+      chat_id,
+      `<b>Editar Método</b>\n\nElegí el país. Al actualizar se elimina la info anterior y se reemplaza por la nueva.`,
+      { reply_markup: { inline_keyboard: kb } },
+    );
+    return;
+  }
   const { data: methods } = await sb
     .from("payment_methods")
     .select("id, country_code, country_name, method_name, active")
@@ -330,14 +362,35 @@ async function pmListAll(chat_id: number, mode: "edit" | "del") {
   const kb = methods.map((m) => [
     {
       text: `${m.country_name} · ${m.method_name}${m.active ? "" : " (off)"}`,
-      callback_data: `pm:${mode === "edit" ? "edit" : "del"}:${m.id}`,
+      callback_data: `pm:del:${m.id}`,
     },
   ]);
   await sendMessage(
     "warehouse",
     chat_id,
-    `<b>${mode === "edit" ? "Editar" : "Eliminar"} Método</b>\n\nElegí uno:`,
+    `<b>Eliminar Método</b>\n\nElegí uno:`,
     { reply_markup: { inline_keyboard: kb } },
+  );
+}
+
+async function pmPromptCountryReplace(chat_id: number, country_code: string) {
+  const { data: existing } = await sb
+    .from("payment_methods")
+    .select("country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate")
+    .eq("country_code", country_code)
+    .limit(1)
+    .maybeSingle();
+  const cn = existing?.country_name ?? country_code;
+  const sample = existing
+    ? `<code>${country_code}\n${existing.country_name}\n${existing.method_name}\n${existing.holder_name ?? ""}\n${existing.account_info ?? ""}\n${existing.extra_info ?? ""}\n${existing.currency ?? "USD"}\n${existing.usd_rate ?? 1}</code>`
+    : `<code>${country_code}\nNombre país\nMétodo (ej Nequi)\nTitular\nNúmero de cuenta\nNota (opcional)\nMoneda (ej COP)\nTasa USD (ej 4000)</code>`;
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PMSETCC:${country_code}</b>\n\nRespondé a este mensaje con TODOS los datos del nuevo método para <b>${cn}</b>, una línea por campo en este orden:\n\n` +
+      `1️⃣ country_code\n2️⃣ country_name\n3️⃣ method_name\n4️⃣ holder_name\n5️⃣ account_info\n6️⃣ extra_info (opcional)\n7️⃣ currency (default USD)\n8️⃣ usd_rate (default 1)\n\n` +
+      `Ejemplo:\n${sample}\n\n<i>⚠️ Esto borra la info anterior del país y la reemplaza.</i>`,
+    { reply_markup: { force_reply: true, selective: true } },
   );
 }
 
