@@ -74,6 +74,19 @@ async function sendMessage(
   text: string,
   extra: Record<string, unknown> = {},
 ) {
+  // Para mensajes del almacén con teclado inline, anexamos el botón
+  // "🏠 Inicio" para que el admin siempre tenga forma de volver a la barra.
+  if (bot === "warehouse") {
+    const rm = extra.reply_markup as { inline_keyboard?: Array<Array<{ text: string; callback_data?: string }>> } | undefined;
+    if (rm && Array.isArray(rm.inline_keyboard)) {
+      const last = rm.inline_keyboard[rm.inline_keyboard.length - 1];
+      const alreadyHasInicio = Array.isArray(last) && last.some((b) => b?.callback_data === "akp:inicio");
+      if (!alreadyHasInicio) {
+        rm.inline_keyboard = [...rm.inline_keyboard, [{ text: "🏠 Inicio", callback_data: "akp:inicio" }]];
+        extra = { ...extra, reply_markup: rm };
+      }
+    }
+  }
   const r = await _rawSendMessage(bot, chat_id, text, extra);
   if (bot === "warehouse" && r.ok && r.result) {
     sb.from("admin_trash")
