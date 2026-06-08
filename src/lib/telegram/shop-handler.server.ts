@@ -1086,16 +1086,27 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
 
   const userTag = user.username ? `@${user.username}` : (user.display_name ?? "—");
+  const pm = o.payment_methods;
+  const pmInfo = pm
+    ? `\n💳 ${pm.country_name} · ${pm.method_name}` +
+      (pm.holder_name ? `\n🪪 ${pm.holder_name}` : "") +
+      (pm.account_info ? `\n📋 <code>${pm.account_info}</code>` : "")
+    : "";
+  const balLine = `\n💼 Saldo actual: $${Number(user.balance).toFixed(2)} USD`;
   let caption: string;
   if (isRecharge) {
     caption =
       `💰 <b>Recarga · $${Number(o.total_usd).toFixed(2)}</b>\n` +
       `${userTag} · <code>${telegram_id}</code>` +
+      pmInfo +
+      balLine +
       ocrSummary;
   } else {
     caption =
       `🛒 <b>${o.products?.name ?? "—"} · ${o.product_prices?.duration_label ?? "—"}${o.keys_qty > 1 ? ` ×${o.keys_qty}` : ""}</b>\n` +
       `$${Number(o.total_usd).toFixed(2)} · ${userTag} · <code>${telegram_id}</code>` +
+      pmInfo +
+      balLine +
       ocrSummary;
   }
 
