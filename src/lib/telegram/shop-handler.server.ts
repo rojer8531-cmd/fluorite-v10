@@ -224,7 +224,7 @@ function bottomKeyboard() {
       [{ text: BOTTOM_MENU.status }, { text: BOTTOM_MENU.profile }],
       [{ text: BOTTOM_MENU.keys }, { text: BOTTOM_MENU.recharge }],
       [{ text: BOTTOM_MENU.announcements }, { text: BOTTOM_MENU.share }],
-      [{ text: BOTTOM_MENU.support }],
+      [{ text: BOTTOM_MENU.support }, { text: BOTTOM_MENU.download_panel }],
     ],
     resize_keyboard: true,
     is_persistent: true,
