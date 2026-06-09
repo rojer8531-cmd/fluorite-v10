@@ -1532,6 +1532,12 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_BOTTOM.precios:
       await adminListaPrecios(msg.chat.id);
       return;
+    case ADMIN_BOTTOM.productos:
+      await adminProductsList(msg.chat.id);
+      return;
+    case ADMIN_BOTTOM.minrecharge:
+      await adminPromptMinRecharge(msg.chat.id);
+      return;
     case ADMIN_BOTTOM.anuncio:
       await adminPromptAnuncio(msg.chat.id);
       return;
