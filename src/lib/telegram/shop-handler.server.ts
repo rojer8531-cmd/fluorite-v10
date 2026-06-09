@@ -786,6 +786,28 @@ async function startRechargeReceipt(telegram_id: number, chat_id: number, order_
 }
 
 
+async function showDownloadPanel(telegram_id: number, chat_id: number) {
+  forceNewScreenFor.add(telegram_id);
+  try {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `📥 <b>Descargar Panel</b>\n\nAccedé al panel desde el siguiente enlace:\n${DOWNLOAD_PANEL_URL}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📥 Abrir Panel", url: DOWNLOAD_PANEL_URL }],
+            [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+          ],
+        },
+        disable_web_page_preview: false,
+      },
+    );
+  } finally {
+    forceNewScreenFor.delete(telegram_id);
+  }
+}
+
 // Enrutado del menú inferior fijo. Devuelve true si manejó el texto.
 async function routeBottomMenu(
   text: string,
