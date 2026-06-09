@@ -803,6 +803,7 @@ async function routeBottomMenu(
     [BOTTOM_MENU.announcements]: showAnnouncements,
     [BOTTOM_MENU.share]: showShareBot,
     [BOTTOM_MENU.support]: showSupport,
+    [BOTTOM_MENU.download_panel]: showDownloadPanel,
   };
   const action = map[text];
   if (!action) return false;
