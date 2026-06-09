@@ -1316,6 +1316,63 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Renombrar producto =====
+    const prodRenameMatch = replySource.match(/PRODRENAME:([a-f0-9-]{36})/);
+    if (prodRenameMatch) {
+      const productId = prodRenameMatch[1];
+      const newName = text.trim();
+      if (newName.length < 2 || newName.length > 60) {
+        await sendMessage("warehouse", msg.chat.id, `Nombre inválido (2-60 caracteres).`);
+        return;
+      }
+      const { error } = await sb.from("products").update({ name: newName }).eq("id", productId);
+      if (error) {
+        await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`);
+        return;
+      }
+      invalidateCatalogCache();
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "product_rename",
+        target_type: "product",
+        target_id: productId,
+        details: { name: newName } as never,
+      });
+      await sendMessage("warehouse", msg.chat.id, `✅ Producto renombrado a <b>${escapeHtml(newName)}</b>.`);
+      await adminProductMenu(msg.chat.id, productId);
+      return;
+    }
+
+    // ===== Cambiar recarga mínima =====
+    if (replySource.includes("MINRECHARGE")) {
+      const n = Number(text.replace(",", "."));
+      if (!Number.isFinite(n) || n <= 0 || n > 10000) {
+        await sendMessage("warehouse", msg.chat.id, `Monto inválido. Ejemplo: <code>4</code>`);
+        return;
+      }
+      const { error } = await sb
+        .from("telegram_bot_settings")
+        .upsert({ singleton: true, min_recharge_usd: n });
+      if (error) {
+        await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`);
+        return;
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "min_recharge_set",
+        target_type: "settings",
+        target_id: "singleton",
+        details: { min_recharge_usd: n } as never,
+      });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ Recarga mínima actualizada a <b>$${n.toFixed(2)} USD</b>.`,
+      );
+      return;
+    }
+
+
     // ===== Buscar usuario por ID =====
     if (replySource.includes("FINDUSER")) {
       const id = parseInt(text.replace(/\D/g, ""), 10);
