@@ -819,6 +819,114 @@ async function adminPromptNewPrice(chat_id: number, price_id: string) {
   );
 }
 
+// ===== Gestión de productos (renombrar / borrar) =====
+async function adminProductsList(chat_id: number) {
+  const { data: products } = await sb
+    .from("products")
+    .select("id, name, category, active")
+    .order("category")
+    .order("sort_order");
+  if (!products || products.length === 0) {
+    await sendMessage("warehouse", chat_id, `No hay productos cargados.`);
+    return;
+  }
+  const kb = products.map((p) => [
+    {
+      text: `${p.active ? "" : "⏸ "}${p.name}  ·  ${p.category}`,
+      callback_data: `prodm:${p.id}`,
+    },
+  ]);
+  await sendMessage("warehouse", chat_id, `<b>📦 Productos (iOS / Android)</b>\n\nElegí un producto para editar o borrar:`, {
+    reply_markup: { inline_keyboard: kb },
+  });
+}
+
+async function adminProductMenu(chat_id: number, product_id: string) {
+  const { data: p } = await sb
+    .from("products")
+    .select("id, name, category, active")
+    .eq("id", product_id)
+    .maybeSingle();
+  if (!p) {
+    await sendMessage("warehouse", chat_id, `Producto no encontrado.`);
+    return;
+  }
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>${escapeHtml(p.name)}</b>  ·  ${p.category}\n${p.active ? "✅ Activo" : "⏸ Inactivo"}\n\n¿Qué querés hacer?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "✏️ Renombrar", callback_data: `prodren:${p.id}` }],
+          [{ text: p.active ? "⏸ Desactivar" : "▶️ Activar", callback_data: `prodtog:${p.id}` }],
+          [{ text: "🗑 Borrar (definitivo)", callback_data: `proddel:${p.id}` }],
+          [{ text: "Volver", callback_data: "akp:prodlist" }],
+        ],
+      },
+    },
+  );
+}
+
+async function adminPromptProductRename(chat_id: number, product_id: string) {
+  const { data: p } = await sb
+    .from("products")
+    .select("name")
+    .eq("id", product_id)
+    .maybeSingle();
+  if (!p) {
+    await sendMessage("warehouse", chat_id, `Producto no encontrado.`);
+    return;
+  }
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PRODRENAME:${product_id}</b>\nNombre actual: <b>${escapeHtml(p.name)}</b>\n\nRespondé a este mensaje con el nuevo nombre.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function adminConfirmProductDelete(chat_id: number, product_id: string) {
+  const { data: p } = await sb
+    .from("products")
+    .select("name")
+    .eq("id", product_id)
+    .maybeSingle();
+  if (!p) return;
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `⚠️ <b>Borrar producto</b>\n\n<b>${escapeHtml(p.name)}</b>\n\nEsta acción elimina el producto, sus precios y sus keys disponibles. ¿Confirmás?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "Confirmar borrado", callback_data: `proddelok:${product_id}` },
+            { text: "Cancelar", callback_data: `prodm:${product_id}` },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+// ===== Edición de recarga mínima =====
+async function adminPromptMinRecharge(chat_id: number) {
+  const { data } = await sb
+    .from("telegram_bot_settings")
+    .select("min_recharge_usd")
+    .eq("singleton", true)
+    .maybeSingle();
+  const cur = Number((data as { min_recharge_usd?: number } | null)?.min_recharge_usd ?? 4);
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>MINRECHARGE</b>\nRecarga mínima actual: <b>$${cur.toFixed(2)} USD</b>\n\nRespondé a este mensaje con el nuevo monto mínimo en USD (ej: <code>4</code>).`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+
 // ===== Descuento personal por usuario =====
 const INICIO_ROW = [{ text: "🏠 Inicio", callback_data: "akp:inicio" }];
 
