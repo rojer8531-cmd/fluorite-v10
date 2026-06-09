@@ -1815,6 +1815,65 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
 
+  // ===== Productos: gestión =====
+  if (data === "akp:prodlist") {
+    if (chat_id) await adminProductsList(chat_id);
+    return;
+  }
+  if (data.startsWith("prodm:")) {
+    if (chat_id) await adminProductMenu(chat_id, data.slice(6));
+    return;
+  }
+  if (data.startsWith("prodren:")) {
+    if (chat_id) await adminPromptProductRename(chat_id, data.slice(8));
+    return;
+  }
+  if (data.startsWith("prodtog:")) {
+    const pid = data.slice(8);
+    const { data: p } = await sb.from("products").select("active").eq("id", pid).maybeSingle();
+    if (p) {
+      await sb.from("products").update({ active: !p.active }).eq("id", pid);
+      invalidateCatalogCache();
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: cb.from.id,
+        action: "product_toggle",
+        target_type: "product",
+        target_id: pid,
+        details: { active: !p.active } as never,
+      });
+    }
+    if (chat_id) await adminProductMenu(chat_id, pid);
+    return;
+  }
+  if (data.startsWith("proddel:")) {
+    if (chat_id) await adminConfirmProductDelete(chat_id, data.slice(8));
+    return;
+  }
+  if (data.startsWith("proddelok:")) {
+    const pid = data.slice(10);
+    // Borrar en cascada: keys, precios y producto
+    await sb.from("product_stock_keys").delete().eq("product_id", pid);
+    await sb.from("product_prices").delete().eq("product_id", pid);
+    const { error } = await sb.from("products").delete().eq("id", pid);
+    if (error) {
+      if (chat_id) await sendMessage("warehouse", chat_id, `Error: ${error.message}`);
+      return;
+    }
+    invalidateCatalogCache();
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: cb.from.id,
+      action: "product_delete",
+      target_type: "product",
+      target_id: pid,
+    });
+    if (chat_id) {
+      await sendMessage("warehouse", chat_id, `🗑 Producto eliminado.`);
+      await adminProductsList(chat_id);
+    }
+    return;
+  }
+
+
 
 
   if (data.startsWith("akusrunblock:")) {
