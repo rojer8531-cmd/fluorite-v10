@@ -82,7 +82,25 @@ async function screen(
 import { getVisibleCatalog, invalidateCatalogCache } from "./catalog.server";
 import { ocrReceipt, formatOcrSummary } from "./ocr.server";
 
-const MIN_RECHARGE_USD = 6;
+// Mínimo de recarga: se lee desde telegram_bot_settings.min_recharge_usd con
+// caché de 30s para no consultar la DB en cada interacción.
+let _minRechargeCache: { value: number; at: number } | null = null;
+async function getMinRecharge(): Promise<number> {
+  const now = Date.now();
+  if (_minRechargeCache && now - _minRechargeCache.at < 30_000) return _minRechargeCache.value;
+  const { data } = await sb
+    .from("telegram_bot_settings")
+    .select("min_recharge_usd")
+    .eq("singleton", true)
+    .maybeSingle();
+  const n = Number((data as { min_recharge_usd?: number } | null)?.min_recharge_usd ?? 4);
+  const value = Number.isFinite(n) && n > 0 ? n : 4;
+  _minRechargeCache = { value, at: now };
+  return value;
+}
+export function invalidateMinRechargeCache() {
+  _minRechargeCache = null;
+}
 function tpId(createdAt: string | Date) {
   const t = typeof createdAt === "string" ? new Date(createdAt).getTime() : createdAt.getTime();
   return `TP${t}`;
