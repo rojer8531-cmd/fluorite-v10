@@ -208,7 +208,10 @@ const BOTTOM_MENU = {
   announcements: "Anuncios",
   share: "Compartir Bot",
   support: "💬 Soporte",
+  download_panel: "📥 Descargar Panel",
 };
+
+const DOWNLOAD_PANEL_URL = "https://keymarkethnx7.vercel.app/";
 
 function isBottomMenuText(text: string) {
   return Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
