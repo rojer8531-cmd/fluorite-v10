@@ -82,7 +82,25 @@ async function screen(
 import { getVisibleCatalog, invalidateCatalogCache } from "./catalog.server";
 import { ocrReceipt, formatOcrSummary } from "./ocr.server";
 
-const MIN_RECHARGE_USD = 6;
+// Mínimo de recarga: se lee desde telegram_bot_settings.min_recharge_usd con
+// caché de 30s para no consultar la DB en cada interacción.
+let _minRechargeCache: { value: number; at: number } | null = null;
+async function getMinRecharge(): Promise<number> {
+  const now = Date.now();
+  if (_minRechargeCache && now - _minRechargeCache.at < 30_000) return _minRechargeCache.value;
+  const { data } = await sb
+    .from("telegram_bot_settings")
+    .select("min_recharge_usd")
+    .eq("singleton", true)
+    .maybeSingle();
+  const n = Number((data as { min_recharge_usd?: number } | null)?.min_recharge_usd ?? 4);
+  const value = Number.isFinite(n) && n > 0 ? n : 4;
+  _minRechargeCache = { value, at: now };
+  return value;
+}
+export function invalidateMinRechargeCache() {
+  _minRechargeCache = null;
+}
 function tpId(createdAt: string | Date) {
   const t = typeof createdAt === "string" ? new Date(createdAt).getTime() : createdAt.getTime();
   return `TP${t}`;
@@ -190,7 +208,10 @@ const BOTTOM_MENU = {
   announcements: "Anuncios",
   share: "Compartir Bot",
   support: "💬 Soporte",
+  download_panel: "📥 Descargar Panel",
 };
+
+const DOWNLOAD_PANEL_URL = "https://keymarkethnx7.vercel.app/";
 
 function isBottomMenuText(text: string) {
   return Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
@@ -203,7 +224,7 @@ function bottomKeyboard() {
       [{ text: BOTTOM_MENU.status }, { text: BOTTOM_MENU.profile }],
       [{ text: BOTTOM_MENU.keys }, { text: BOTTOM_MENU.recharge }],
       [{ text: BOTTOM_MENU.announcements }, { text: BOTTOM_MENU.share }],
-      [{ text: BOTTOM_MENU.support }],
+      [{ text: BOTTOM_MENU.support }, { text: BOTTOM_MENU.download_panel }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -654,11 +675,12 @@ async function askRechargeAmount(telegram_id: number, chat_id: number, country_c
   const cc = country_code.toUpperCase();
   const countryName = COUNTRY_NAMES[cc] ?? cc;
   setState(telegram_id, "recharge_amount", { country_code: cc }).catch(() => {});
+  const min = await getMinRecharge();
   await screen(
     telegram_id,
     chat_id,
     `💰 <b>Recargar Saldo Desde ${countryName}</b>\n\n` +
-      `Recarga Mínima: <b>${MIN_RECHARGE_USD.toFixed(2)} USD</b>\n\n` +
+      `Recarga Mínima: <b>${min.toFixed(2)} USD</b>\n\n` +
       `¿Cuánto deseas recargar?\n\n` +
       `Ejemplo:\n<code>10</code>\n\n` +
       `Escribí el monto en USD.`,
@@ -764,6 +786,28 @@ async function startRechargeReceipt(telegram_id: number, chat_id: number, order_
 }
 
 
+async function showDownloadPanel(telegram_id: number, chat_id: number) {
+  forceNewScreenFor.add(telegram_id);
+  try {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `📥 <b>Descargar Panel</b>\n\nAccedé al panel desde el siguiente enlace:\n${DOWNLOAD_PANEL_URL}`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📥 Abrir Panel", url: DOWNLOAD_PANEL_URL }],
+            [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+          ],
+        },
+        disable_web_page_preview: false,
+      },
+    );
+  } finally {
+    forceNewScreenFor.delete(telegram_id);
+  }
+}
+
 // Enrutado del menú inferior fijo. Devuelve true si manejó el texto.
 async function routeBottomMenu(
   text: string,
@@ -781,6 +825,7 @@ async function routeBottomMenu(
     [BOTTOM_MENU.announcements]: showAnnouncements,
     [BOTTOM_MENU.share]: showShareBot,
     [BOTTOM_MENU.support]: showSupport,
+    [BOTTOM_MENU.download_panel]: showDownloadPanel,
   };
   const action = map[text];
   if (!action) return false;
@@ -1332,7 +1377,7 @@ async function handleMessage(msg: TgMessage) {
     const st0 = await getState(telegram_id);
     if (st0?.state === "recharge_amount") {
       const n = Number(text.replace(",", "."));
-      if (Number.isFinite(n) && n >= MIN_RECHARGE_USD) {
+      if (Number.isFinite(n) && n >= (await getMinRecharge())) {
         const cc = (st0.context?.country_code as string) ?? "";
         silentDelete("shop", chat_id, msg.message_id).catch(() => {});
         // Anti-spam en background — no bloquea la UX.
@@ -1445,11 +1490,12 @@ async function handleMessage(msg: TgMessage) {
       ]);
       return;
     }
-    if (n < MIN_RECHARGE_USD) {
+    const min = await getMinRecharge();
+    if (n < min) {
       await screen(
-    telegram_id,
+        telegram_id,
         chat_id,
-        `El monto mínimo es <b>${MIN_RECHARGE_USD.toFixed(2)} USD</b>. Probá de nuevo.`,
+        `El monto mínimo es <b>${min.toFixed(2)} USD</b>. Probá de nuevo.`,
         [[{ text: "Volver", callback_data: "menu:recharge" }]],
       );
       return;

@@ -115,6 +115,8 @@ const ADMIN_BOTTOM = {
   usuarios: "Usuarios",
   addkeys: "Agregar Keys",
   precios: "Precios",
+  productos: "📦 Productos",
+  minrecharge: "💵 Recarga Mín.",
   anuncio: "📣 Anuncio",
   metodos: "💳 Métodos",
   borrar: "🗑 Borrar",
@@ -126,6 +128,7 @@ function adminBottomKeyboard() {
       [{ text: ADMIN_BOTTOM.inicio }],
       [{ text: ADMIN_BOTTOM.stock }, { text: ADMIN_BOTTOM.usuarios }],
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.precios }],
+      [{ text: ADMIN_BOTTOM.productos }, { text: ADMIN_BOTTOM.minrecharge }],
       [{ text: ADMIN_BOTTOM.anuncio }, { text: ADMIN_BOTTOM.metodos }],
       [{ text: ADMIN_BOTTOM.borrar }],
     ],
@@ -816,6 +819,114 @@ async function adminPromptNewPrice(chat_id: number, price_id: string) {
   );
 }
 
+// ===== Gestión de productos (renombrar / borrar) =====
+async function adminProductsList(chat_id: number) {
+  const { data: products } = await sb
+    .from("products")
+    .select("id, name, category, active")
+    .order("category")
+    .order("sort_order");
+  if (!products || products.length === 0) {
+    await sendMessage("warehouse", chat_id, `No hay productos cargados.`);
+    return;
+  }
+  const kb = products.map((p) => [
+    {
+      text: `${p.active ? "" : "⏸ "}${p.name}  ·  ${p.category}`,
+      callback_data: `prodm:${p.id}`,
+    },
+  ]);
+  await sendMessage("warehouse", chat_id, `<b>📦 Productos (iOS / Android)</b>\n\nElegí un producto para editar o borrar:`, {
+    reply_markup: { inline_keyboard: kb },
+  });
+}
+
+async function adminProductMenu(chat_id: number, product_id: string) {
+  const { data: p } = await sb
+    .from("products")
+    .select("id, name, category, active")
+    .eq("id", product_id)
+    .maybeSingle();
+  if (!p) {
+    await sendMessage("warehouse", chat_id, `Producto no encontrado.`);
+    return;
+  }
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>${escapeHtml(p.name)}</b>  ·  ${p.category}\n${p.active ? "✅ Activo" : "⏸ Inactivo"}\n\n¿Qué querés hacer?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "✏️ Renombrar", callback_data: `prodren:${p.id}` }],
+          [{ text: p.active ? "⏸ Desactivar" : "▶️ Activar", callback_data: `prodtog:${p.id}` }],
+          [{ text: "🗑 Borrar (definitivo)", callback_data: `proddel:${p.id}` }],
+          [{ text: "Volver", callback_data: "akp:prodlist" }],
+        ],
+      },
+    },
+  );
+}
+
+async function adminPromptProductRename(chat_id: number, product_id: string) {
+  const { data: p } = await sb
+    .from("products")
+    .select("name")
+    .eq("id", product_id)
+    .maybeSingle();
+  if (!p) {
+    await sendMessage("warehouse", chat_id, `Producto no encontrado.`);
+    return;
+  }
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PRODRENAME:${product_id}</b>\nNombre actual: <b>${escapeHtml(p.name)}</b>\n\nRespondé a este mensaje con el nuevo nombre.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function adminConfirmProductDelete(chat_id: number, product_id: string) {
+  const { data: p } = await sb
+    .from("products")
+    .select("name")
+    .eq("id", product_id)
+    .maybeSingle();
+  if (!p) return;
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `⚠️ <b>Borrar producto</b>\n\n<b>${escapeHtml(p.name)}</b>\n\nEsta acción elimina el producto, sus precios y sus keys disponibles. ¿Confirmás?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "Confirmar borrado", callback_data: `proddelok:${product_id}` },
+            { text: "Cancelar", callback_data: `prodm:${product_id}` },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+// ===== Edición de recarga mínima =====
+async function adminPromptMinRecharge(chat_id: number) {
+  const { data } = await sb
+    .from("telegram_bot_settings")
+    .select("min_recharge_usd")
+    .eq("singleton", true)
+    .maybeSingle();
+  const cur = Number((data as { min_recharge_usd?: number } | null)?.min_recharge_usd ?? 4);
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>MINRECHARGE</b>\nRecarga mínima actual: <b>$${cur.toFixed(2)} USD</b>\n\nRespondé a este mensaje con el nuevo monto mínimo en USD (ej: <code>4</code>).`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+
 // ===== Descuento personal por usuario =====
 const INICIO_ROW = [{ text: "🏠 Inicio", callback_data: "akp:inicio" }];
 
@@ -1205,6 +1316,63 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Renombrar producto =====
+    const prodRenameMatch = replySource.match(/PRODRENAME:([a-f0-9-]{36})/);
+    if (prodRenameMatch) {
+      const productId = prodRenameMatch[1];
+      const newName = text.trim();
+      if (newName.length < 2 || newName.length > 60) {
+        await sendMessage("warehouse", msg.chat.id, `Nombre inválido (2-60 caracteres).`);
+        return;
+      }
+      const { error } = await sb.from("products").update({ name: newName }).eq("id", productId);
+      if (error) {
+        await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`);
+        return;
+      }
+      invalidateCatalogCache();
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "product_rename",
+        target_type: "product",
+        target_id: productId,
+        details: { name: newName } as never,
+      });
+      await sendMessage("warehouse", msg.chat.id, `✅ Producto renombrado a <b>${escapeHtml(newName)}</b>.`);
+      await adminProductMenu(msg.chat.id, productId);
+      return;
+    }
+
+    // ===== Cambiar recarga mínima =====
+    if (replySource.includes("MINRECHARGE")) {
+      const n = Number(text.replace(",", "."));
+      if (!Number.isFinite(n) || n <= 0 || n > 10000) {
+        await sendMessage("warehouse", msg.chat.id, `Monto inválido. Ejemplo: <code>4</code>`);
+        return;
+      }
+      const { error } = await sb
+        .from("telegram_bot_settings")
+        .upsert({ singleton: true, min_recharge_usd: n });
+      if (error) {
+        await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`);
+        return;
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "min_recharge_set",
+        target_type: "settings",
+        target_id: "singleton",
+        details: { min_recharge_usd: n } as never,
+      });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ Recarga mínima actualizada a <b>$${n.toFixed(2)} USD</b>.`,
+      );
+      return;
+    }
+
+
     // ===== Buscar usuario por ID =====
     if (replySource.includes("FINDUSER")) {
       const id = parseInt(text.replace(/\D/g, ""), 10);
@@ -1420,6 +1588,12 @@ async function handleMessage(msg: TgMessage) {
       return;
     case ADMIN_BOTTOM.precios:
       await adminListaPrecios(msg.chat.id);
+      return;
+    case ADMIN_BOTTOM.productos:
+      await adminProductsList(msg.chat.id);
+      return;
+    case ADMIN_BOTTOM.minrecharge:
+      await adminPromptMinRecharge(msg.chat.id);
       return;
     case ADMIN_BOTTOM.anuncio:
       await adminPromptAnuncio(msg.chat.id);
@@ -1640,6 +1814,65 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminPromptNewPrice(chat_id, data.slice(5));
     return;
   }
+
+  // ===== Productos: gestión =====
+  if (data === "akp:prodlist") {
+    if (chat_id) await adminProductsList(chat_id);
+    return;
+  }
+  if (data.startsWith("prodm:")) {
+    if (chat_id) await adminProductMenu(chat_id, data.slice(6));
+    return;
+  }
+  if (data.startsWith("prodren:")) {
+    if (chat_id) await adminPromptProductRename(chat_id, data.slice(8));
+    return;
+  }
+  if (data.startsWith("prodtog:")) {
+    const pid = data.slice(8);
+    const { data: p } = await sb.from("products").select("active").eq("id", pid).maybeSingle();
+    if (p) {
+      await sb.from("products").update({ active: !p.active }).eq("id", pid);
+      invalidateCatalogCache();
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: cb.from.id,
+        action: "product_toggle",
+        target_type: "product",
+        target_id: pid,
+        details: { active: !p.active } as never,
+      });
+    }
+    if (chat_id) await adminProductMenu(chat_id, pid);
+    return;
+  }
+  if (data.startsWith("proddel:")) {
+    if (chat_id) await adminConfirmProductDelete(chat_id, data.slice(8));
+    return;
+  }
+  if (data.startsWith("proddelok:")) {
+    const pid = data.slice(10);
+    // Borrar en cascada: keys, precios y producto
+    await sb.from("product_stock_keys").delete().eq("product_id", pid);
+    await sb.from("product_prices").delete().eq("product_id", pid);
+    const { error } = await sb.from("products").delete().eq("id", pid);
+    if (error) {
+      if (chat_id) await sendMessage("warehouse", chat_id, `Error: ${error.message}`);
+      return;
+    }
+    invalidateCatalogCache();
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: cb.from.id,
+      action: "product_delete",
+      target_type: "product",
+      target_id: pid,
+    });
+    if (chat_id) {
+      await sendMessage("warehouse", chat_id, `🗑 Producto eliminado.`);
+      await adminProductsList(chat_id);
+    }
+    return;
+  }
+
 
 
 

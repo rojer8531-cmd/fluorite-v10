@@ -664,18 +664,21 @@ export type Database = {
         Row: {
           created_at: string
           hide_out_of_stock: boolean
+          min_recharge_usd: number
           singleton: boolean
           updated_at: string
         }
         Insert: {
           created_at?: string
           hide_out_of_stock?: boolean
+          min_recharge_usd?: number
           singleton?: boolean
           updated_at?: string
         }
         Update: {
           created_at?: string
           hide_out_of_stock?: boolean
+          min_recharge_usd?: number
           singleton?: boolean
           updated_at?: string
         }
