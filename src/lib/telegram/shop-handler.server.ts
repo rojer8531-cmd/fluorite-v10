@@ -672,11 +672,12 @@ async function askRechargeAmount(telegram_id: number, chat_id: number, country_c
   const cc = country_code.toUpperCase();
   const countryName = COUNTRY_NAMES[cc] ?? cc;
   setState(telegram_id, "recharge_amount", { country_code: cc }).catch(() => {});
+  const min = await getMinRecharge();
   await screen(
     telegram_id,
     chat_id,
     `💰 <b>Recargar Saldo Desde ${countryName}</b>\n\n` +
-      `Recarga Mínima: <b>${MIN_RECHARGE_USD.toFixed(2)} USD</b>\n\n` +
+      `Recarga Mínima: <b>${min.toFixed(2)} USD</b>\n\n` +
       `¿Cuánto deseas recargar?\n\n` +
       `Ejemplo:\n<code>10</code>\n\n` +
       `Escribí el monto en USD.`,
