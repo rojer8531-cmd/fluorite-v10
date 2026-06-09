@@ -1464,11 +1464,12 @@ async function handleMessage(msg: TgMessage) {
       ]);
       return;
     }
-    if (n < MIN_RECHARGE_USD) {
+    const min = await getMinRecharge();
+    if (n < min) {
       await screen(
-    telegram_id,
+        telegram_id,
         chat_id,
-        `El monto mínimo es <b>${MIN_RECHARGE_USD.toFixed(2)} USD</b>. Probá de nuevo.`,
+        `El monto mínimo es <b>${min.toFixed(2)} USD</b>. Probá de nuevo.`,
         [[{ text: "Volver", callback_data: "menu:recharge" }]],
       );
       return;
