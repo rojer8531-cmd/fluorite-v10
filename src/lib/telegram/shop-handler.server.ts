@@ -1351,7 +1351,7 @@ async function handleMessage(msg: TgMessage) {
     const st0 = await getState(telegram_id);
     if (st0?.state === "recharge_amount") {
       const n = Number(text.replace(",", "."));
-      if (Number.isFinite(n) && n >= MIN_RECHARGE_USD) {
+      if (Number.isFinite(n) && n >= (await getMinRecharge())) {
         const cc = (st0.context?.country_code as string) ?? "";
         silentDelete("shop", chat_id, msg.message_id).catch(() => {});
         // Anti-spam en background — no bloquea la UX.
