@@ -7,7 +7,7 @@ import {
   getWarehouseChatId,
   getFile,
   downloadFile,
-  sendPhoto,
+  
   sendPhotoMultipart,
   tg,
 } from "./api.server";
