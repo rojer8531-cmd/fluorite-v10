@@ -9,6 +9,7 @@ import {
   downloadFile,
   sendPhoto,
   sendPhotoMultipart,
+  tg,
 } from "./api.server";
 import {
   sb,
