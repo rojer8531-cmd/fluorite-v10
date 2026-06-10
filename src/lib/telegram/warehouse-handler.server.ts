@@ -1081,23 +1081,130 @@ async function creditRecharge(
   );
 }
 
-// ===== Anuncio (broadcast usando copyMessage, soporta cualquier tipo) =====
+// ===== Anuncio (broadcast — soporta texto, foto, documento, video, audio, voice) =====
+type MediaKind = "photo" | "document" | "video" | "audio" | "voice" | null;
+
+async function uploadMedia(
+  chatId: number,
+  kind: MediaKind,
+  bytes: ArrayBuffer,
+  filename: string,
+  caption: string,
+): Promise<{ ok: boolean; result?: { message_id: number; photo?: TgPhotoSize[]; document?: { file_id: string }; video?: { file_id: string }; audio?: { file_id: string }; voice?: { file_id: string } } }> {
+  if (!kind) return { ok: false };
+  const method =
+    kind === "photo" ? "sendPhoto" :
+    kind === "document" ? "sendDocument" :
+    kind === "video" ? "sendVideo" :
+    kind === "audio" ? "sendAudio" : "sendVoice";
+  const fd = new FormData();
+  fd.append("chat_id", String(chatId));
+  if (caption) {
+    fd.append("caption", caption);
+    fd.append("parse_mode", "HTML");
+  }
+  fd.append(kind, new Blob([bytes]), filename);
+  return tg("shop", method, fd);
+}
+
+async function sendByFileId(
+  chatId: number,
+  kind: MediaKind,
+  fileId: string,
+  caption: string,
+): Promise<{ ok: boolean; result?: { message_id: number } }> {
+  if (!kind) return { ok: false };
+  const method =
+    kind === "photo" ? "sendPhoto" :
+    kind === "document" ? "sendDocument" :
+    kind === "video" ? "sendVideo" :
+    kind === "audio" ? "sendAudio" : "sendVoice";
+  const payload: Record<string, unknown> = { chat_id: chatId, [kind]: fileId };
+  if (caption) {
+    payload.caption = caption;
+    payload.parse_mode = "HTML";
+  }
+  return tg("shop", method, payload);
+}
+
+function extractShopFileId(
+  kind: MediaKind,
+  result?: { photo?: TgPhotoSize[]; document?: { file_id: string }; video?: { file_id: string }; audio?: { file_id: string }; voice?: { file_id: string } },
+): string | null {
+  if (!kind || !result) return null;
+  if (kind === "photo") return result.photo?.[result.photo.length - 1]?.file_id ?? null;
+  if (kind === "document") return result.document?.file_id ?? null;
+  if (kind === "video") return result.video?.file_id ?? null;
+  if (kind === "audio") return result.audio?.file_id ?? null;
+  if (kind === "voice") return result.voice?.file_id ?? null;
+  return null;
+}
+
 async function handleBroadcast(msg: TgMessage) {
-  const { data: users } = await sb.from("bot_users").select("telegram_id, chat_id");
+  // Ack inmediato al admin para que sienta respuesta instantánea.
+  void sendMessage("warehouse", msg.chat.id, `Procesando anuncio…`);
+
+  // Determinar tipo de media y descargar UNA sola vez vía bot warehouse.
+  let kind: MediaKind = null;
+  let sourceFileId: string | null = null;
+  let filename = "anuncio";
+  if (msg.photo && msg.photo.length > 0) {
+    kind = "photo";
+    sourceFileId = msg.photo[msg.photo.length - 1].file_id;
+    filename = "anuncio.jpg";
+  } else if (msg.document) {
+    kind = "document";
+    sourceFileId = msg.document.file_id;
+    filename = msg.document.file_name || "archivo";
+  } else if (msg.video) {
+    kind = "video";
+    sourceFileId = msg.video.file_id;
+    filename = "video.mp4";
+  } else if (msg.audio) {
+    kind = "audio";
+    sourceFileId = msg.audio.file_id;
+    filename = "audio.mp3";
+  } else if (msg.voice) {
+    kind = "voice";
+    sourceFileId = msg.voice.file_id;
+    filename = "voice.ogg";
+  }
+
+  const textBody = (msg.text ?? "").trim();
+  const caption = (msg.caption ?? "").trim();
+
+  // Descargar bytes en paralelo con consulta de usuarios.
+  const usersPromise = sb.from("bot_users").select("telegram_id, chat_id");
+  let mediaBytes: ArrayBuffer | null = null;
+  if (kind && sourceFileId) {
+    const f = await getFile("warehouse", sourceFileId);
+    if (f.ok && f.result?.file_path) {
+      mediaBytes = await downloadFile("warehouse", f.result.file_path);
+      const parts = f.result.file_path.split("/");
+      const baseName = parts[parts.length - 1];
+      if (baseName && kind !== "document") filename = baseName;
+    }
+    if (!mediaBytes) {
+      await sendMessage("warehouse", msg.chat.id, `No pude descargar el archivo. Reintentá.`);
+      return;
+    }
+  }
+
+  const { data: users } = await usersPromise;
   const targets = (users ?? []).filter((u) => u.chat_id);
   if (targets.length === 0) {
     await sendMessage("warehouse", msg.chat.id, `No hay usuarios para enviar el anuncio.`);
     return;
   }
 
-  // Preview corto: texto, caption, o nombre de archivo.
+  // Preview corto.
   const preview =
-    (msg.text ?? "").trim() ||
-    (msg.caption ?? "").trim() ||
+    textBody ||
+    caption ||
     (msg.document?.file_name ? `Archivo: ${msg.document.file_name}` : "") ||
-    (msg.photo ? "Imagen" : "") ||
-    (msg.video ? "Video" : "") ||
-    (msg.voice || msg.audio ? "Audio" : "") ||
+    (kind === "photo" ? "Imagen" : "") ||
+    (kind === "video" ? "Video" : "") ||
+    (kind === "audio" || kind === "voice" ? "Audio" : "") ||
     "Anuncio";
 
   const { data: ann } = await sb
@@ -1114,32 +1221,23 @@ async function handleBroadcast(msg: TgMessage) {
     return;
   }
 
-  await sendMessage("warehouse", msg.chat.id, `Enviando anuncio a ${targets.length} usuarios…`);
+  void sendMessage("warehouse", msg.chat.id, `Enviando a ${targets.length} usuarios…`);
 
-  // Preparar contenido reutilizable para enviar vía bot de SHOP.
-  // (copyMessage entre bots distintos no funciona: el shop bot no ve el chat del admin.)
-  const textBody = (msg.text ?? "").trim();
-  const caption = (msg.caption ?? "").trim();
-  let photoBytes: ArrayBuffer | null = null;
-  let photoName = "anuncio.jpg";
-  if (msg.photo && msg.photo.length > 0) {
-    const largest = msg.photo[msg.photo.length - 1];
-    const f = await getFile("warehouse", largest.file_id);
-    if (f.ok && f.result?.file_path) {
-      photoBytes = await downloadFile("warehouse", f.result.file_path);
-      const parts = f.result.file_path.split("/");
-      photoName = parts[parts.length - 1] || photoName;
-    }
-  }
-
+  // Subir UNA vez al primer usuario y reutilizar file_id del shop bot.
+  let shopFileId: string | null = null;
   const annId = ann.id;
   let ok = 0;
   let fail = 0;
-  const CONCURRENCY = 25;
+
   async function sendOne(u: { telegram_id: number; chat_id: number }) {
     let sent: { ok: boolean; result?: { message_id: number } } = { ok: false };
-    if (photoBytes) {
-      sent = await sendPhotoMultipart("shop", u.chat_id, photoBytes, photoName, caption);
+    if (kind && shopFileId) {
+      sent = await sendByFileId(u.chat_id, kind, shopFileId, caption);
+    } else if (kind && mediaBytes) {
+      // Fallback: subir multipart (solo si la reutilización aún no está lista)
+      sent = await uploadMedia(u.chat_id, kind, mediaBytes, filename, caption);
+      const fid = extractShopFileId(kind, sent.result as never);
+      if (fid && !shopFileId) shopFileId = fid;
     } else if (textBody) {
       sent = await _rawSendMessage("shop", u.chat_id, textBody);
     } else if (caption) {
@@ -1147,7 +1245,7 @@ async function handleBroadcast(msg: TgMessage) {
     }
     if (sent.ok && sent.result) {
       ok++;
-      await recordAnnouncementDelivery({
+      void recordAnnouncementDelivery({
         announcement_id: annId,
         telegram_id: u.telegram_id,
         chat_id: u.chat_id,
@@ -1157,11 +1255,19 @@ async function handleBroadcast(msg: TgMessage) {
       fail++;
     }
   }
-  for (let i = 0; i < targets.length; i += CONCURRENCY) {
-    const batch = targets.slice(i, i + CONCURRENCY);
-    await Promise.all(batch.map((u) => sendOne(u)));
+
+  // Primera entrega secuencial (para conseguir file_id reusable).
+  if (kind && targets.length > 0) {
+    await sendOne(targets[0]);
   }
 
+  // Resto en alta concurrencia con file_id reutilizado.
+  const rest = kind ? targets.slice(1) : targets;
+  const CONCURRENCY = 50;
+  for (let i = 0; i < rest.length; i += CONCURRENCY) {
+    const batch = rest.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map((u) => sendOne(u)));
+  }
 
   await sb
     .from("announcements")
@@ -1174,6 +1280,7 @@ async function handleBroadcast(msg: TgMessage) {
     `<b>Anuncio finalizado</b>\nEntregados  <b>${ok}</b>\nFallidos    <b>${fail}</b>`,
   );
 }
+
 
 // ===== Mensajes =====
 async function handleMessage(msg: TgMessage) {
