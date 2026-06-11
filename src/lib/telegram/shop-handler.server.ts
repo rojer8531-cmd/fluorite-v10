@@ -1571,6 +1571,12 @@ async function handleCallback(cb: TgCallback) {
   if (data === "menu:recharge") return startRecharge(telegram_id, chat_id);
   if (data === "menu:support") return showSupport(telegram_id, chat_id);
   if (data === "menu:announcements") return showAnnouncements(telegram_id, chat_id);
+  if (data === "more:status") return showOrderStatus(telegram_id, chat_id);
+  if (data === "more:keys") return showMyKeys(telegram_id, chat_id);
+  if (data === "more:ann") return showAnnouncements(telegram_id, chat_id);
+  if (data === "more:share") return showShareBot(telegram_id, chat_id);
+  if (data === "more:support") return showSupport(telegram_id, chat_id);
+  if (data === "more:panel") return showDownloadPanel(telegram_id, chat_id);
   if (data.startsWith("anvw:")) return openAnnouncement(telegram_id, chat_id, data.slice(5));
 
   if (data.startsWith("cat:")) return showCategory(telegram_id, chat_id, data.slice(4));
