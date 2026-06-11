@@ -838,11 +838,12 @@ async function routeBottomMenu(
 ): Promise<boolean> {
   const map: Record<string, (tid: number, cid: number) => Promise<unknown>> = {
     [BOTTOM_MENU.products]: showProducts,
-    [BOTTOM_MENU.buy]: showBuyWithBalance,
-    [BOTTOM_MENU.status]: showOrderStatus,
-    [BOTTOM_MENU.profile]: showProfile,
-    [BOTTOM_MENU.keys]: showMyKeys,
     [BOTTOM_MENU.recharge]: startRecharge,
+    [BOTTOM_MENU.buy]: showBuyWithBalance,
+    [BOTTOM_MENU.profile]: showProfile,
+    [BOTTOM_MENU.more]: showMoreOptions,
+    [BOTTOM_MENU.status]: showOrderStatus,
+    [BOTTOM_MENU.keys]: showMyKeys,
     [BOTTOM_MENU.announcements]: showAnnouncements,
     [BOTTOM_MENU.share]: showShareBot,
     [BOTTOM_MENU.support]: showSupport,
