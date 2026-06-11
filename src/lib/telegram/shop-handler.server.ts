@@ -1248,21 +1248,26 @@ async function handleReceiptDocument(msg: TgMessage) {
   const isRecharge = st.state === "awaiting_recharge_receipt";
   const order_id = st.context.order_id as string;
 
-  // Anti duplicado 24h: el mismo usuario puede reenviar hasta 3 veces el mismo comprobante.
+  // Anti-spoofing: si ALGÚN otro usuario ya envió este comprobante (en cualquier
+  // momento), lo rechazamos. Para el mismo usuario, máximo 3 reenvíos en 24h.
   const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const { data: dupRows } = await sb
+  const { data: anyDup } = await sb
     .from("receipt_fingerprints")
     .select("telegram_id")
     .eq("file_unique_id", doc.file_unique_id)
-    .gte("created_at", cutoff);
-  const dupList = dupRows ?? [];
-  const otherUser = dupList.some((r) => r.telegram_id !== telegram_id);
-  const sameUserCount = dupList.filter((r) => r.telegram_id === telegram_id).length;
-  if (otherUser) {
-    await sendMessage("shop", chat_id, `Este comprobante ya fue enviado antes.`);
+    .neq("telegram_id", telegram_id)
+    .limit(1);
+  if (anyDup && anyDup.length > 0) {
+    await sendMessage("shop", chat_id, `⚠️ Este comprobante pertenece a otro usuario y no puede ser usado.`);
     return;
   }
-  if (sameUserCount >= 3) {
+  const { data: sameRows } = await sb
+    .from("receipt_fingerprints")
+    .select("telegram_id")
+    .eq("file_unique_id", doc.file_unique_id)
+    .eq("telegram_id", telegram_id)
+    .gte("created_at", cutoff);
+  if ((sameRows?.length ?? 0) >= 3) {
     await sendMessage("shop", chat_id, `Ya reenviaste este comprobante 3 veces. Esperá la revisión del admin.`);
     return;
   }
