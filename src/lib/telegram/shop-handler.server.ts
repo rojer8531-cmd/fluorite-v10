@@ -200,11 +200,13 @@ const SUPPORT_USERNAME = "@smallffx7";
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
   products: "🛒 Productos",
-  buy: "💳 Comprar",
-  status: "📦 Estado",
-  profile: "👤 Perfil",
-  keys: "🔑 Mis Keys",
   recharge: "💰 Recargar",
+  buy: "💳 Comprar",
+  profile: "👤 Cuenta",
+  more: "📋 Todo",
+  // Opciones extras (solo accesibles vía "Todo" como inline buttons)
+  status: "📦 Estado",
+  keys: "🔑 Mis Keys",
   announcements: "Anuncios",
   share: "Compartir Bot",
   support: "💬 Soporte",
@@ -220,16 +222,35 @@ function isBottomMenuText(text: string) {
 function bottomKeyboard() {
   return {
     keyboard: [
-      [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.buy }],
-      [{ text: BOTTOM_MENU.status }, { text: BOTTOM_MENU.profile }],
-      [{ text: BOTTOM_MENU.keys }, { text: BOTTOM_MENU.recharge }],
-      [{ text: BOTTOM_MENU.announcements }, { text: BOTTOM_MENU.share }],
-      [{ text: BOTTOM_MENU.support }, { text: BOTTOM_MENU.download_panel }],
+      [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.recharge }],
+      [{ text: BOTTOM_MENU.buy }, { text: BOTTOM_MENU.profile }],
+      [{ text: BOTTOM_MENU.more }],
     ],
     resize_keyboard: true,
     is_persistent: true,
     one_time_keyboard: false,
   };
+}
+
+async function showMoreOptions(_telegram_id: number, chat_id: number) {
+  await sendMessage("shop", chat_id, `📋 <b>Más opciones</b>`, {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: BOTTOM_MENU.status, callback_data: "more:status" },
+          { text: BOTTOM_MENU.keys, callback_data: "more:keys" },
+        ],
+        [
+          { text: BOTTOM_MENU.announcements, callback_data: "more:ann" },
+          { text: BOTTOM_MENU.share, callback_data: "more:share" },
+        ],
+        [
+          { text: BOTTOM_MENU.support, callback_data: "more:support" },
+          { text: BOTTOM_MENU.download_panel, callback_data: "more:panel" },
+        ],
+      ],
+    },
+  });
 }
 
 const BACK_BUTTON = [{ text: "↩️ Volver", callback_data: "menu:main" }];
