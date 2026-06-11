@@ -200,11 +200,13 @@ const SUPPORT_USERNAME = "@smallffx7";
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
   products: "🛒 Productos",
-  buy: "💳 Comprar",
-  status: "📦 Estado",
-  profile: "👤 Perfil",
-  keys: "🔑 Mis Keys",
   recharge: "💰 Recargar",
+  buy: "💳 Comprar",
+  profile: "👤 Cuenta",
+  more: "📋 Todo",
+  // Opciones extras (solo accesibles vía "Todo" como inline buttons)
+  status: "📦 Estado",
+  keys: "🔑 Mis Keys",
   announcements: "Anuncios",
   share: "Compartir Bot",
   support: "💬 Soporte",
@@ -220,16 +222,35 @@ function isBottomMenuText(text: string) {
 function bottomKeyboard() {
   return {
     keyboard: [
-      [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.buy }],
-      [{ text: BOTTOM_MENU.status }, { text: BOTTOM_MENU.profile }],
-      [{ text: BOTTOM_MENU.keys }, { text: BOTTOM_MENU.recharge }],
-      [{ text: BOTTOM_MENU.announcements }, { text: BOTTOM_MENU.share }],
-      [{ text: BOTTOM_MENU.support }, { text: BOTTOM_MENU.download_panel }],
+      [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.recharge }],
+      [{ text: BOTTOM_MENU.buy }, { text: BOTTOM_MENU.profile }],
+      [{ text: BOTTOM_MENU.more }],
     ],
     resize_keyboard: true,
     is_persistent: true,
     one_time_keyboard: false,
   };
+}
+
+async function showMoreOptions(_telegram_id: number, chat_id: number) {
+  await sendMessage("shop", chat_id, `📋 <b>Más opciones</b>`, {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: BOTTOM_MENU.status, callback_data: "more:status" },
+          { text: BOTTOM_MENU.keys, callback_data: "more:keys" },
+        ],
+        [
+          { text: BOTTOM_MENU.announcements, callback_data: "more:ann" },
+          { text: BOTTOM_MENU.share, callback_data: "more:share" },
+        ],
+        [
+          { text: BOTTOM_MENU.support, callback_data: "more:support" },
+          { text: BOTTOM_MENU.download_panel, callback_data: "more:panel" },
+        ],
+      ],
+    },
+  });
 }
 
 const BACK_BUTTON = [{ text: "↩️ Volver", callback_data: "menu:main" }];
@@ -817,11 +838,12 @@ async function routeBottomMenu(
 ): Promise<boolean> {
   const map: Record<string, (tid: number, cid: number) => Promise<unknown>> = {
     [BOTTOM_MENU.products]: showProducts,
-    [BOTTOM_MENU.buy]: showBuyWithBalance,
-    [BOTTOM_MENU.status]: showOrderStatus,
-    [BOTTOM_MENU.profile]: showProfile,
-    [BOTTOM_MENU.keys]: showMyKeys,
     [BOTTOM_MENU.recharge]: startRecharge,
+    [BOTTOM_MENU.buy]: showBuyWithBalance,
+    [BOTTOM_MENU.profile]: showProfile,
+    [BOTTOM_MENU.more]: showMoreOptions,
+    [BOTTOM_MENU.status]: showOrderStatus,
+    [BOTTOM_MENU.keys]: showMyKeys,
     [BOTTOM_MENU.announcements]: showAnnouncements,
     [BOTTOM_MENU.share]: showShareBot,
     [BOTTOM_MENU.support]: showSupport,
@@ -1001,21 +1023,26 @@ async function handleReceiptPhoto(msg: TgMessage) {
   // (Sin límite diario de comprobantes — los usuarios pueden enviar los que necesiten.)
 
 
-  // Anti duplicado 24h: el mismo usuario puede reenviar hasta 3 veces el mismo comprobante.
+  // Anti-spoofing: si ALGÚN otro usuario ya envió este comprobante (en cualquier
+  // momento), lo rechazamos. Para el mismo usuario, máximo 3 reenvíos en 24h.
   const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const { data: dupRows } = await sb
+  const { data: anyDup } = await sb
     .from("receipt_fingerprints")
     .select("telegram_id")
     .eq("file_unique_id", photo.file_unique_id)
-    .gte("created_at", cutoff);
-  const dupList = dupRows ?? [];
-  const otherUser = dupList.some((r) => r.telegram_id !== telegram_id);
-  const sameUserCount = dupList.filter((r) => r.telegram_id === telegram_id).length;
-  if (otherUser) {
-    await notifyUser(chat_id, `⚠️ Este comprobante ya fue enviado antes.`);
+    .neq("telegram_id", telegram_id)
+    .limit(1);
+  if (anyDup && anyDup.length > 0) {
+    await notifyUser(chat_id, `⚠️ Este comprobante pertenece a otro usuario y no puede ser usado.`);
     return;
   }
-  if (sameUserCount >= 3) {
+  const { data: sameRows } = await sb
+    .from("receipt_fingerprints")
+    .select("telegram_id")
+    .eq("file_unique_id", photo.file_unique_id)
+    .eq("telegram_id", telegram_id)
+    .gte("created_at", cutoff);
+  if ((sameRows?.length ?? 0) >= 3) {
     await notifyUser(chat_id, `⚠️ Ya reenviaste este comprobante 3 veces. Esperá la revisión del admin.`);
     return;
   }
@@ -1221,21 +1248,26 @@ async function handleReceiptDocument(msg: TgMessage) {
   const isRecharge = st.state === "awaiting_recharge_receipt";
   const order_id = st.context.order_id as string;
 
-  // Anti duplicado 24h: el mismo usuario puede reenviar hasta 3 veces el mismo comprobante.
+  // Anti-spoofing: si ALGÚN otro usuario ya envió este comprobante (en cualquier
+  // momento), lo rechazamos. Para el mismo usuario, máximo 3 reenvíos en 24h.
   const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const { data: dupRows } = await sb
+  const { data: anyDup } = await sb
     .from("receipt_fingerprints")
     .select("telegram_id")
     .eq("file_unique_id", doc.file_unique_id)
-    .gte("created_at", cutoff);
-  const dupList = dupRows ?? [];
-  const otherUser = dupList.some((r) => r.telegram_id !== telegram_id);
-  const sameUserCount = dupList.filter((r) => r.telegram_id === telegram_id).length;
-  if (otherUser) {
-    await sendMessage("shop", chat_id, `Este comprobante ya fue enviado antes.`);
+    .neq("telegram_id", telegram_id)
+    .limit(1);
+  if (anyDup && anyDup.length > 0) {
+    await sendMessage("shop", chat_id, `⚠️ Este comprobante pertenece a otro usuario y no puede ser usado.`);
     return;
   }
-  if (sameUserCount >= 3) {
+  const { data: sameRows } = await sb
+    .from("receipt_fingerprints")
+    .select("telegram_id")
+    .eq("file_unique_id", doc.file_unique_id)
+    .eq("telegram_id", telegram_id)
+    .gte("created_at", cutoff);
+  if ((sameRows?.length ?? 0) >= 3) {
     await sendMessage("shop", chat_id, `Ya reenviaste este comprobante 3 veces. Esperá la revisión del admin.`);
     return;
   }
@@ -1549,6 +1581,12 @@ async function handleCallback(cb: TgCallback) {
   if (data === "menu:recharge") return startRecharge(telegram_id, chat_id);
   if (data === "menu:support") return showSupport(telegram_id, chat_id);
   if (data === "menu:announcements") return showAnnouncements(telegram_id, chat_id);
+  if (data === "more:status") return showOrderStatus(telegram_id, chat_id);
+  if (data === "more:keys") return showMyKeys(telegram_id, chat_id);
+  if (data === "more:ann") return showAnnouncements(telegram_id, chat_id);
+  if (data === "more:share") return showShareBot(telegram_id, chat_id);
+  if (data === "more:support") return showSupport(telegram_id, chat_id);
+  if (data === "more:panel") return showDownloadPanel(telegram_id, chat_id);
   if (data.startsWith("anvw:")) return openAnnouncement(telegram_id, chat_id, data.slice(5));
 
   if (data.startsWith("cat:")) return showCategory(telegram_id, chat_id, data.slice(4));
