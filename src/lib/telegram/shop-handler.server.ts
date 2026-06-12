@@ -1384,6 +1384,10 @@ async function handleMessage(msg: TgMessage) {
   const chat_id = msg.chat.id;
   const text = (msg.text ?? "").trim();
 
+  // Oferta semanal (martes y viernes, 1 vez cada 24h por usuario)
+  maybeSendWeeklyOffer(telegram_id, chat_id).catch(() => {});
+
+
   // La barra inferior debe sentirse instantánea: evitamos writes/checks lentos
   // antes de enviar la nueva pantalla. El anti-spam corre en segundo plano.
   if (isBottomMenuText(text)) {
