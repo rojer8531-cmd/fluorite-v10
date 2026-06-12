@@ -1378,11 +1378,39 @@ export async function handleShopUpdate(update: Update): Promise<void> {
   }
 }
 
+// Oferta promocional: martes (2) y viernes (5), 1 vez cada 24h por usuario.
+async function maybeSendWeeklyOffer(telegram_id: number, chat_id: number) {
+  const dow = new Date().getUTCDay();
+  if (dow !== 2 && dow !== 5) return;
+  const ok = await checkRateLimit(telegram_id, "weekly_offer", 1, 86400);
+  if (!ok) return;
+  await sendMessage(
+    "shop",
+    chat_id,
+    `🔥 <b>¡APROVECHA LA OFERTA!</b> 🔥\n\n` +
+      `Las contraseñas para tus paneles están en <b>descuento por tiempo limitado</b>.\n\n` +
+      `✅ Mejor precio\n` +
+      `✅ Activación rápida\n` +
+      `✅ Oferta limitada\n\n` +
+      `Contáctanos ahora y aprovecha el descuento.`,
+    {
+      reply_markup: {
+        inline_keyboard: [[{ text: "💳 Recargar Saldo", callback_data: "menu:recharge" }]],
+      },
+    },
+  );
+}
+
+
 async function handleMessage(msg: TgMessage) {
   if (!msg.from) return;
   const telegram_id = msg.from.id;
   const chat_id = msg.chat.id;
   const text = (msg.text ?? "").trim();
+
+  // Oferta semanal (martes y viernes, 1 vez cada 24h por usuario)
+  maybeSendWeeklyOffer(telegram_id, chat_id).catch(() => {});
+
 
   // La barra inferior debe sentirse instantánea: evitamos writes/checks lentos
   // antes de enviar la nueva pantalla. El anti-spam corre en segundo plano.

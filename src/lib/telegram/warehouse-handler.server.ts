@@ -1170,8 +1170,17 @@ async function handleBroadcast(msg: TgMessage) {
     filename = "voice.ogg";
   }
 
-  const textBody = (msg.text ?? "").trim();
-  const caption = (msg.caption ?? "").trim();
+  const rawText = (msg.text ?? "").trim();
+  const rawCaption = (msg.caption ?? "").trim();
+  const highlight = (s: string) =>
+    s
+      ? `📣📣📣 <b>ANUNCIO IMPORTANTE</b> 📣📣📣\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `<b>${escapeHtml(s)}</b>\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━`
+      : s;
+  const textBody = highlight(rawText);
+  const caption = highlight(rawCaption);
 
   // Descargar bytes en paralelo con consulta de usuarios.
   const usersPromise = sb.from("bot_users").select("telegram_id, chat_id");

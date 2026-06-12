@@ -704,21 +704,39 @@ async function handleCallback(cb: TgCallback) {
 
   if (action === "reject") {
     if (!chat_id) return;
+    const note = "El comprobante es falso";
+    const { data: order } = await sb
+      .from("orders")
+      .select("*, bot_users(telegram_id, chat_id)")
+      .eq("id", target)
+      .single();
+    if (!order) {
+      await answerCallbackQuery("admin", cb.id, "Orden no encontrada", true);
+      return;
+    }
     const { data: rcpt } = await sb
       .from("receipts")
       .select("admin_message_id")
       .eq("order_id", target)
       .maybeSingle();
     const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
-    const sent = await sendMessage(
-      chat_id,
-      `<b>REJECT:${target}:${photoMid}</b>\n\nRespondé a este mensaje con el motivo del rechazo.`,
-      { reply_markup: { force_reply: true, selective: true } },
-    );
-    if (sent.ok && sent.result) {
-      await sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", target);
+    await Promise.all([
+      sb.from("orders").update({ status: "rejected", admin_note: note }).eq("id", target),
+      sb.from("receipts").update({ status: "rejected" }).eq("order_id", target),
+      sb.from("admin_logs").insert({
+        admin_telegram_id: cb.from.id,
+        action: "reject_order",
+        target_type: "order",
+        target_id: target,
+        details: { note } as never,
+      }),
+    ]);
+    const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
+    await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id, note, pending: tpId(order.created_at) });
+    if (photoMid > 0) {
+      await deleteMessage("admin", chat_id, photoMid).catch(() => {});
     }
-    await answerCallbackQuery("admin", cb.id, "Esperando motivo…");
+    await answerCallbackQuery("admin", cb.id, "❌ Rechazado · Falso", true);
     return;
   }
 
