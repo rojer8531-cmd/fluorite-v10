@@ -1176,7 +1176,7 @@ async function handleBroadcast(msg: TgMessage) {
     s
       ? `📣📣📣 <b>ANUNCIO IMPORTANTE</b> 📣📣📣\n` +
         `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `<b>${s}</b>\n\n` +
+        `<b>${escapeHtml(s)}</b>\n\n` +
         `━━━━━━━━━━━━━━━━━━━━`
       : s;
   const textBody = highlight(rawText);
