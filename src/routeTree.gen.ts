@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicTelegramWarehouseRouteImport } from './routes/api/public/telegram/warehouse'
 import { Route as ApiPublicTelegramShopRouteImport } from './routes/api/public/telegram/shop'
 import { Route as ApiPublicTelegramSetupRouteImport } from './routes/api/public/telegram/setup'
+import { Route as ApiPublicTelegramHealthRouteImport } from './routes/api/public/telegram/health'
 import { Route as ApiPublicTelegramAdminRouteImport } from './routes/api/public/telegram/admin'
 
 const IndexRoute = IndexRouteImport.update({
@@ -36,6 +37,11 @@ const ApiPublicTelegramSetupRoute = ApiPublicTelegramSetupRouteImport.update({
   path: '/api/public/telegram/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicTelegramHealthRoute = ApiPublicTelegramHealthRouteImport.update({
+  id: '/api/public/telegram/health',
+  path: '/api/public/telegram/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicTelegramAdminRoute = ApiPublicTelegramAdminRouteImport.update({
   id: '/api/public/telegram/admin',
   path: '/api/public/telegram/admin',
@@ -45,6 +51,7 @@ const ApiPublicTelegramAdminRoute = ApiPublicTelegramAdminRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
+  '/api/public/telegram/health': typeof ApiPublicTelegramHealthRoute
   '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
   '/api/public/telegram/shop': typeof ApiPublicTelegramShopRoute
   '/api/public/telegram/warehouse': typeof ApiPublicTelegramWarehouseRoute
@@ -52,6 +59,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
+  '/api/public/telegram/health': typeof ApiPublicTelegramHealthRoute
   '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
   '/api/public/telegram/shop': typeof ApiPublicTelegramShopRoute
   '/api/public/telegram/warehouse': typeof ApiPublicTelegramWarehouseRoute
@@ -60,6 +68,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
+  '/api/public/telegram/health': typeof ApiPublicTelegramHealthRoute
   '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
   '/api/public/telegram/shop': typeof ApiPublicTelegramShopRoute
   '/api/public/telegram/warehouse': typeof ApiPublicTelegramWarehouseRoute
@@ -69,6 +78,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/api/public/telegram/admin'
+    | '/api/public/telegram/health'
     | '/api/public/telegram/setup'
     | '/api/public/telegram/shop'
     | '/api/public/telegram/warehouse'
@@ -76,6 +86,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/api/public/telegram/admin'
+    | '/api/public/telegram/health'
     | '/api/public/telegram/setup'
     | '/api/public/telegram/shop'
     | '/api/public/telegram/warehouse'
@@ -83,6 +94,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/api/public/telegram/admin'
+    | '/api/public/telegram/health'
     | '/api/public/telegram/setup'
     | '/api/public/telegram/shop'
     | '/api/public/telegram/warehouse'
@@ -91,6 +103,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiPublicTelegramAdminRoute: typeof ApiPublicTelegramAdminRoute
+  ApiPublicTelegramHealthRoute: typeof ApiPublicTelegramHealthRoute
   ApiPublicTelegramSetupRoute: typeof ApiPublicTelegramSetupRoute
   ApiPublicTelegramShopRoute: typeof ApiPublicTelegramShopRoute
   ApiPublicTelegramWarehouseRoute: typeof ApiPublicTelegramWarehouseRoute
@@ -126,6 +139,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTelegramSetupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/telegram/health': {
+      id: '/api/public/telegram/health'
+      path: '/api/public/telegram/health'
+      fullPath: '/api/public/telegram/health'
+      preLoaderRoute: typeof ApiPublicTelegramHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/telegram/admin': {
       id: '/api/public/telegram/admin'
       path: '/api/public/telegram/admin'
@@ -139,6 +159,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiPublicTelegramAdminRoute: ApiPublicTelegramAdminRoute,
+  ApiPublicTelegramHealthRoute: ApiPublicTelegramHealthRoute,
   ApiPublicTelegramSetupRoute: ApiPublicTelegramSetupRoute,
   ApiPublicTelegramShopRoute: ApiPublicTelegramShopRoute,
   ApiPublicTelegramWarehouseRoute: ApiPublicTelegramWarehouseRoute,
