@@ -5,19 +5,25 @@ import { sb } from "@/lib/telegram/db.server";
 const BOTS: BotKind[] = ["shop", "admin", "warehouse"];
 
 async function checkAlertCooldown(bot: string): Promise<boolean> {
-  // Permite máximo 1 alerta por bot cada 30 min
-  const key = `tg_health_alert:${bot}`;
+  // Máximo 1 alerta por bot cada 30 min, basado en admin_logs
   const since = new Date(Date.now() - 30 * 60_000).toISOString();
   const { data } = await sb
-    .from("rate_limits")
-    .select("key")
-    .eq("key", key)
-    .gte("updated_at", since)
-    .maybeSingle();
-  if (data) return false;
-  await sb.from("rate_limits").upsert({ key, count: 1, updated_at: new Date().toISOString() } as never);
+    .from("admin_logs")
+    .select("id")
+    .eq("action", "tg_health_alert")
+    .eq("target_id", bot)
+    .gte("created_at", since)
+    .limit(1);
+  if (data && data.length > 0) return false;
+  await sb.from("admin_logs").insert({
+    admin_telegram_id: 0,
+    action: "tg_health_alert",
+    target_type: "telegram_api",
+    target_id: bot,
+  });
   return true;
 }
+
 
 async function handle() {
   const results: Record<string, { ok: boolean; username?: string; error?: string }> = {};
