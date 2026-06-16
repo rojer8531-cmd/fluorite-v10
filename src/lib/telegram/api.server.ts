@@ -29,7 +29,54 @@ export interface TgResult<T = unknown> {
   parameters?: { retry_after?: number };
 }
 
-const TG_TIMEOUT_MS = 5_000;
+const TG_TIMEOUT_MS = 8_000;
+const MAX_ATTEMPTS = 4;
+const MAX_RETRY_AFTER_SEC = 30;
+
+// Errores que indican usuario inalcanzable: NO reintentar.
+function isUnreachableUserError(desc?: string, code?: number): boolean {
+  if (code === 403) return true; // bot blocked / kicked / deactivated
+  if (!desc) return false;
+  const d = desc.toLowerCase();
+  return (
+    d.includes("bot was blocked") ||
+    d.includes("user is deactivated") ||
+    d.includes("chat not found") ||
+    d.includes("bot can't initiate conversation") ||
+    d.includes("user is deleted")
+  );
+}
+
+// Errores de payload: NO reintentar.
+function isClientPayloadError(code?: number): boolean {
+  return code === 400 || code === 401 || code === 404;
+}
+
+async function logTelegramError(
+  bot: BotKind,
+  method: string,
+  data: TgResult<unknown>,
+  attempts: number,
+) {
+  try {
+    const mod = await import("./db.server");
+    const sb = mod.adminClient();
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: 0,
+      action: "tg_error",
+      target_type: "telegram_api",
+      target_id: `${bot}/${method}`,
+      details: {
+        code: data.error_code,
+        description: data.description,
+        attempts,
+        retry_after: data.parameters?.retry_after,
+      } as never,
+    });
+  } catch {
+    /* swallow: logging nunca debe romper el flujo */
+  }
+}
 
 export async function tg<T = unknown>(
   bot: BotKind,
@@ -55,24 +102,55 @@ export async function tg<T = unknown>(
     const res = await fetch(url, init);
     const data = (await res.json()) as TgResult<T>;
     if (!data.ok) {
-      if (data.error_code === 429 && data.parameters?.retry_after && data.parameters.retry_after <= 2 && attempt < 1) {
-        await sleep((data.parameters.retry_after + 1) * 1000);
+      // 429: respeta retry_after si es razonable
+      if (data.error_code === 429) {
+        const ra = data.parameters?.retry_after ?? 1;
+        if (ra <= MAX_RETRY_AFTER_SEC && attempt < MAX_ATTEMPTS - 1) {
+          await sleep((ra + 1) * 1000);
+          return tg<T>(bot, method, payload, attempt + 1);
+        }
+        void logTelegramError(bot, method, data, attempt + 1);
+        return data;
+      }
+      // Usuario inalcanzable: no reintentes, sólo loggea suave
+      if (isUnreachableUserError(data.description, data.error_code)) {
+        return data;
+      }
+      // Errores de payload: no reintentar
+      if (isClientPayloadError(data.error_code)) {
+        console.error(`[tg ${bot}/${method}] ${data.error_code}`, data.description);
+        void logTelegramError(bot, method, data, attempt + 1);
+        return data;
+      }
+      // 5xx u otros: exponential backoff
+      if (attempt < MAX_ATTEMPTS - 1) {
+        const delay = Math.min(8000, 300 * Math.pow(2, attempt));
+        await sleep(delay);
         return tg<T>(bot, method, payload, attempt + 1);
       }
       console.error(`[tg ${bot}/${method}]`, data.description);
+      void logTelegramError(bot, method, data, attempt + 1);
     }
     return data;
   } catch (err) {
-    console.error(`[tg ${bot}/${method}] fetch error`, err);
-    if (attempt < 1) {
-      await sleep(300);
+    if (attempt < MAX_ATTEMPTS - 1) {
+      const delay = Math.min(8000, 300 * Math.pow(2, attempt));
+      await sleep(delay);
       return tg<T>(bot, method, payload, attempt + 1);
     }
-    return { ok: false, description: String(err) };
+    console.error(`[tg ${bot}/${method}] fetch error`, err);
+    const data: TgResult<T> = { ok: false, description: String(err) };
+    void logTelegramError(bot, method, data, attempt + 1);
+    return data;
   } finally {
     clearTimeout(timer);
   }
 }
+
+export async function getMe(bot: BotKind) {
+  return tg<{ id: number; username: string; is_bot: boolean }>(bot, "getMe");
+}
+
 
 export async function sendMessage(
   bot: BotKind,
