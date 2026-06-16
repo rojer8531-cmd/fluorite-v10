@@ -60,7 +60,8 @@ async function logTelegramError(
 ) {
   try {
     const mod = await import("./db.server");
-    const sb = mod.adminClient();
+    const sb = mod.sb;
+
     await sb.from("admin_logs").insert({
       admin_telegram_id: 0,
       action: "tg_error",
