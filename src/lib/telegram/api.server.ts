@@ -29,9 +29,9 @@ export interface TgResult<T = unknown> {
   parameters?: { retry_after?: number };
 }
 
-const TG_TIMEOUT_MS = 8_000;
-const MAX_ATTEMPTS = 4;
-const MAX_RETRY_AFTER_SEC = 30;
+const TG_TIMEOUT_MS = 5_000;
+const MAX_ATTEMPTS = 3;
+const MAX_RETRY_AFTER_SEC = 20;
 
 // Errores que indican usuario inalcanzable: NO reintentar.
 function isUnreachableUserError(desc?: string, code?: number): boolean {
