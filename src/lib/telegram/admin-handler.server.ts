@@ -903,3 +903,122 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
 }
+
+// =====================================================================
+// Sistema de Rangos — Menú ROL 🏆
+// =====================================================================
+async function rolMenu(chat_id: number) {
+  const counts: Record<string, number> = {};
+  for (const r of RANKS) {
+    const { count } = await sb
+      .from("bot_users")
+      .select("telegram_id", { count: "exact", head: true })
+      .eq("rank", r);
+    counts[r] = count ?? 0;
+  }
+  const text =
+    `<b>🏆 ROL · Sistema de Rangos</b>\n\n` +
+    `🏆 <b>Gold</b>     · 0% descuento · ${counts.gold ?? 0} usuarios\n` +
+    `💠 <b>Platinum</b> · 0.5% descuento · ${counts.platinum ?? 0} usuarios\n` +
+    `💎 <b>Diamond</b>  · 1% descuento · ${counts.diamond ?? 0} usuarios\n` +
+    `👑 <b>Elite</b>    · productos $30 → $25 · ${counts.elite ?? 0} usuarios\n\n` +
+    `<b>Ascensos automáticos</b>\n` +
+    `• $100 → Platinum\n• $180 → Diamond\n• $400 → Elite`;
+  await sendMessage(chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🔍 Buscar usuario por ID", callback_data: "rol:lookup" }],
+        [{ text: "📋 Filtrar por rango", callback_data: "rol:filters" }],
+      ],
+    },
+  });
+}
+
+async function rolFiltersMenu(chat_id: number) {
+  await sendMessage(chat_id, `<b>📋 Filtrar usuarios por rango</b>`, {
+    reply_markup: {
+      inline_keyboard: RANKS.map((r) => [
+        { text: `${RANK_INFO[r].badge} ${RANK_INFO[r].label}`, callback_data: `rol:filter:${r}` },
+      ]),
+    },
+  });
+}
+
+async function rolFilter(chat_id: number, rank: Rank) {
+  const { data } = await sb
+    .from("bot_users")
+    .select("telegram_id, username, display_name, total_recharged, rank_assigned_at")
+    .eq("rank", rank)
+    .order("total_recharged", { ascending: false })
+    .limit(30);
+  if (!data || data.length === 0) {
+    await sendMessage(chat_id, `<b>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label}</b>\n\nSin usuarios.`);
+    return;
+  }
+  const lines = data.map((u, i) => {
+    const name = u.display_name ? escapeHtml(String(u.display_name)) : (u.username ? `@${escapeHtml(String(u.username))}` : "—");
+    return `${i + 1}. ${name} · <code>${u.telegram_id}</code> · $${Number(u.total_recharged).toFixed(2)}`;
+  });
+  const kb = data.slice(0, 10).map((u) => [
+    { text: `Ver ${u.telegram_id}`, callback_data: `rol:user:${u.telegram_id}` },
+  ]);
+  await sendMessage(
+    chat_id,
+    `<b>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label} (${data.length})</b>\n\n${lines.join("\n")}`,
+    { reply_markup: { inline_keyboard: kb } },
+  );
+}
+
+async function rolShowUser(chat_id: number, telegram_id: number) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("telegram_id, username, display_name, balance, total_recharged, rank, rank_assigned_at, registered_at")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  if (!u) {
+    await sendMessage(chat_id, `No encontré usuario con ID <code>${telegram_id}</code>.`);
+    return;
+  }
+  const current = normalizeRank(u.rank);
+  const info = RANK_INFO[current];
+  const assigned = u.rank_assigned_at ? new Date(u.rank_assigned_at).toLocaleString("es") : "—";
+  const text =
+    `<b>${info.badge} ${info.label}</b>\n\n` +
+    `Usuario   ${escapeHtml(u.display_name ?? "—")} ${info.badge}\n` +
+    `@${escapeHtml(u.username ?? "—")} · <code>${u.telegram_id}</code>\n` +
+    `Comprado  $${Number(u.total_recharged).toFixed(2)} USD\n` +
+    `Saldo     $${Number(u.balance).toFixed(2)} USD\n` +
+    `Descuento ${current === "elite" ? "productos $30 → $25" : `${info.discountPct}%`}\n` +
+    `Rango desde ${assigned}`;
+  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (const r of RANKS) {
+    if (r === current) continue;
+    kb.push([{ text: `Asignar ${RANK_INFO[r].badge} ${RANK_INFO[r].label}`, callback_data: `rol:set:${telegram_id}:${r}` }]);
+  }
+  if (current !== "gold") {
+    kb.push([{ text: "♻️ Quitar rango (→ Gold)", callback_data: `rol:reset:${telegram_id}` }]);
+  }
+  kb.push([{ text: "📜 Ver historial", callback_data: `rol:history:${telegram_id}` }]);
+  await sendMessage(chat_id, text, { reply_markup: { inline_keyboard: kb } });
+}
+
+async function rolHistory(chat_id: number, telegram_id: number) {
+  const { data } = await sb
+    .from("rank_history")
+    .select("old_rank, new_rank, changed_by, admin_telegram_id, reason, created_at")
+    .eq("telegram_id", telegram_id)
+    .order("created_at", { ascending: false })
+    .limit(15);
+  if (!data || data.length === 0) {
+    await sendMessage(chat_id, `<b>📜 Historial</b> · <code>${telegram_id}</code>\n\nSin cambios registrados.`);
+    return;
+  }
+  const lines = data.map((h) => {
+    const from = h.old_rank ? `${RANK_INFO[normalizeRank(h.old_rank)].badge}` : "—";
+    const to = `${RANK_INFO[normalizeRank(h.new_rank)].badge} ${RANK_INFO[normalizeRank(h.new_rank)].label}`;
+    const who = h.changed_by === "admin" ? `admin ${h.admin_telegram_id ?? ""}` : "auto";
+    const when = new Date(h.created_at).toLocaleString("es");
+    return `${when} · ${from} → ${to} · <i>${escapeHtml(String(h.reason ?? who))}</i>`;
+  });
+  await sendMessage(chat_id, `<b>📜 Historial</b> · <code>${telegram_id}</code>\n\n${lines.join("\n")}`);
+}
