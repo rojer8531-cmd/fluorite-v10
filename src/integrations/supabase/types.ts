@@ -189,6 +189,7 @@ export type Database = {
           last_seen_at: string
           password_hash: string | null
           rank: Database["public"]["Enums"]["user_rank"]
+          rank_assigned_at: string
           referred_by_telegram_id: number | null
           registered_at: string
           shares_count: number
@@ -207,6 +208,7 @@ export type Database = {
           last_seen_at?: string
           password_hash?: string | null
           rank?: Database["public"]["Enums"]["user_rank"]
+          rank_assigned_at?: string
           referred_by_telegram_id?: number | null
           registered_at?: string
           shares_count?: number
@@ -225,6 +227,7 @@ export type Database = {
           last_seen_at?: string
           password_hash?: string | null
           rank?: Database["public"]["Enums"]["user_rank"]
+          rank_assigned_at?: string
           referred_by_telegram_id?: number | null
           registered_at?: string
           shares_count?: number
@@ -552,6 +555,39 @@ export type Database = {
         }
         Relationships: []
       }
+      rank_history: {
+        Row: {
+          admin_telegram_id: number | null
+          changed_by: string
+          created_at: string
+          id: string
+          new_rank: Database["public"]["Enums"]["user_rank"]
+          old_rank: Database["public"]["Enums"]["user_rank"] | null
+          reason: string | null
+          telegram_id: number
+        }
+        Insert: {
+          admin_telegram_id?: number | null
+          changed_by?: string
+          created_at?: string
+          id?: string
+          new_rank: Database["public"]["Enums"]["user_rank"]
+          old_rank?: Database["public"]["Enums"]["user_rank"] | null
+          reason?: string | null
+          telegram_id: number
+        }
+        Update: {
+          admin_telegram_id?: number | null
+          changed_by?: string
+          created_at?: string
+          id?: string
+          new_rank?: Database["public"]["Enums"]["user_rank"]
+          old_rank?: Database["public"]["Enums"]["user_rank"] | null
+          reason?: string | null
+          telegram_id?: number
+        }
+        Relationships: []
+      }
       rate_limits: {
         Row: {
           bucket: string
@@ -766,7 +802,14 @@ export type Database = {
         | "cancelled"
       product_category: "iOS" | "Android"
       receipt_status: "pending" | "approved" | "rejected" | "duplicate"
-      user_rank: "normal" | "pro" | "leyenda"
+      user_rank:
+        | "normal"
+        | "pro"
+        | "leyenda"
+        | "gold"
+        | "platinum"
+        | "diamond"
+        | "elite"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -904,7 +947,15 @@ export const Constants = {
       ],
       product_category: ["iOS", "Android"],
       receipt_status: ["pending", "approved", "rejected", "duplicate"],
-      user_rank: ["normal", "pro", "leyenda"],
+      user_rank: [
+        "normal",
+        "pro",
+        "leyenda",
+        "gold",
+        "platinum",
+        "diamond",
+        "elite",
+      ],
     },
   },
 } as const
