@@ -512,7 +512,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   await patchContext(telegram_id, { product_id });
   const rows = prices.map((p) => {
     const affordable = balance >= Number(p.price_usd);
-    const tag = p.has_override ? "  🎁" : "";
+    const tag = p.has_override ? "  🎁" : p.rank_discounted ? `  ${RANK_INFO[rank].badge}` : "";
     return [
       {
         text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}${affordable ? "" : "  ·  sin saldo"}`,
@@ -526,9 +526,10 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   }
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
 
+  const rankNote = rank === "gold" ? "" : `\n<i>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label}${rank === "elite" ? " — productos de $30 a $25" : ` · -${RANK_INFO[rank].discountPct}% aplicado`}</i>`;
   const header = lowBalance
-    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nPodés ver los precios. Recargá saldo para comprar:`
-    : `<b>${product.name}</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`;
+    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>${rankNote}\n\nPodés ver los precios. Recargá saldo para comprar:`
+    : `<b>${product.name}</b>${rankNote}\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`;
 
   await screen(telegram_id, chat_id, header, rows);
 }
