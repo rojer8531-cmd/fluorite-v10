@@ -157,6 +157,15 @@ async function getUserPriceOverrides(telegram_id: number): Promise<Map<string, n
   return m;
 }
 
+async function getUserRank(telegram_id: number): Promise<string> {
+  const { data } = await sb
+    .from("bot_users")
+    .select("rank")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  return (data?.rank as string) ?? "gold";
+}
+
 async function getUserPriceForId(telegram_id: number, price_id: string, fallback: number): Promise<number> {
   const { data } = await sb
     .from("user_price_overrides")
@@ -164,7 +173,10 @@ async function getUserPriceForId(telegram_id: number, price_id: string, fallback
     .eq("telegram_id", telegram_id)
     .eq("price_id", price_id)
     .maybeSingle();
-  return data ? Number(data.price_usd) : fallback;
+  const base = data ? Number(data.price_usd) : fallback;
+  // Aplicar descuento por rango sobre el precio base (u override)
+  const rank = await getUserRank(telegram_id);
+  return applyRankDiscount(base, normalizeRank(rank));
 }
 
 
