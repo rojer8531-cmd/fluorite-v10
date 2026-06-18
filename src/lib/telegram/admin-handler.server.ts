@@ -627,6 +627,73 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
 
+  // ===== Sistema de Rangos =====
+  if (data === "rol:menu") {
+    if (chat_id) await rolMenu(chat_id);
+    return;
+  }
+  if (data === "rol:lookup") {
+    await setState(cb.from.id, "rol_lookup", {});
+    if (chat_id) await sendMessage(chat_id, `<b>🔍 Buscar usuario</b>\n\nEnviá el ID de Telegram (solo números).`);
+    return;
+  }
+  if (data.startsWith("rol:filter:")) {
+    const r = data.slice("rol:filter:".length) as Rank;
+    if (chat_id) await rolFilter(chat_id, r);
+    return;
+  }
+  if (data === "rol:filters") {
+    if (chat_id) await rolFiltersMenu(chat_id);
+    return;
+  }
+  if (data.startsWith("rol:history:")) {
+    const tgId = parseInt(data.slice("rol:history:".length), 10);
+    if (chat_id && Number.isFinite(tgId)) await rolHistory(chat_id, tgId);
+    return;
+  }
+  if (data.startsWith("rol:user:")) {
+    const tgId = parseInt(data.slice("rol:user:".length), 10);
+    if (chat_id && Number.isFinite(tgId)) await rolShowUser(chat_id, tgId);
+    return;
+  }
+  if (data.startsWith("rol:set:")) {
+    const [, , idStr, r] = data.split(":");
+    const tgId = parseInt(idStr, 10);
+    if (!Number.isFinite(tgId) || !RANKS.includes(r as Rank)) {
+      await answerCallbackQuery("admin", cb.id, "Datos inválidos", true);
+      return;
+    }
+    await assignRank({
+      telegram_id: tgId,
+      new_rank: r as Rank,
+      admin_telegram_id: cb.from.id,
+      reason: "asignación manual desde panel admin",
+    });
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: cb.from.id,
+      action: "assign_rank",
+      target_type: "telegram_id",
+      target_id: String(tgId),
+      details: { new_rank: r } as never,
+    });
+    await answerCallbackQuery("admin", cb.id, `${RANK_INFO[r as Rank].badge} ${RANK_INFO[r as Rank].label} asignado.`, true);
+    if (chat_id) await rolShowUser(chat_id, tgId);
+    return;
+  }
+  if (data.startsWith("rol:reset:")) {
+    const tgId = parseInt(data.slice("rol:reset:".length), 10);
+    if (!Number.isFinite(tgId)) return;
+    await assignRank({
+      telegram_id: tgId,
+      new_rank: "gold",
+      admin_telegram_id: cb.from.id,
+      reason: "rango removido (reset a Gold)",
+    });
+    await answerCallbackQuery("admin", cb.id, `Rango removido. Vuelve a 🏆 Gold.`, true);
+    if (chat_id) await rolShowUser(chat_id, tgId);
+    return;
+  }
+
   if (data.startsWith("usr:")) {
     const [, action, idStr] = data.split(":");
     const tgId = parseInt(idStr, 10);
