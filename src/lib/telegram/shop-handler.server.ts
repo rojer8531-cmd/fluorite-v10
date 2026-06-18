@@ -24,6 +24,7 @@ import {
   sb,
 } from "./db.server";
 import { silentDelete } from "./ui.server";
+import { applyRankDiscount, nextRankProgress, rankLabel, rankBadge, RANK_INFO, normalizeRank } from "./ranks.server";
 
 const forceNewScreenFor = new Set<number>();
 const activeMessageHints = new Map<number, { chat_id: number; message_id: number }>();
@@ -156,6 +157,15 @@ async function getUserPriceOverrides(telegram_id: number): Promise<Map<string, n
   return m;
 }
 
+async function getUserRank(telegram_id: number): Promise<string> {
+  const { data } = await sb
+    .from("bot_users")
+    .select("rank")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  return (data?.rank as string) ?? "gold";
+}
+
 async function getUserPriceForId(telegram_id: number, price_id: string, fallback: number): Promise<number> {
   const { data } = await sb
     .from("user_price_overrides")
@@ -163,7 +173,10 @@ async function getUserPriceForId(telegram_id: number, price_id: string, fallback
     .eq("telegram_id", telegram_id)
     .eq("price_id", price_id)
     .maybeSingle();
-  return data ? Number(data.price_usd) : fallback;
+  const base = data ? Number(data.price_usd) : fallback;
+  // Aplicar descuento por rango sobre el precio base (u override)
+  const rank = await getUserRank(telegram_id);
+  return applyRankDiscount(base, normalizeRank(rank));
 }
 
 
@@ -190,9 +203,14 @@ interface TgCallback {
 }
 
 const RANK_LABEL: Record<string, string> = {
-  normal: "Normal",
-  pro: "Pro",
-  leyenda: "Leyenda",
+  gold: "🏆 Gold",
+  platinum: "💠 Platinum",
+  diamond: "💎 Diamond",
+  elite: "👑 Elite",
+  // legacy
+  normal: "🏆 Gold",
+  pro: "💠 Platinum",
+  leyenda: "💎 Diamond",
 };
 
 const SUPPORT_USERNAME = "@smallffx7";
@@ -389,15 +407,32 @@ async function showProfile(telegram_id: number, chat_id: number) {
     .eq("telegram_id", telegram_id)
     .single();
   if (!u) return;
+  const rank = normalizeRank(u.rank);
+  const info = RANK_INFO[rank];
+  const total = Number(u.total_recharged);
+  const progress = nextRankProgress(total);
+  const discountLine =
+    rank === "elite"
+      ? `Descuento <b>👑 Elite</b> — productos de $30 a <b>$25</b>`
+      : info.discountPct > 0
+        ? `Descuento <b>${info.discountPct}%</b> automático en todas las compras`
+        : `Descuento <b>0%</b>`;
+  const progressLine = progress
+    ? `Próximo  ${RANK_INFO[progress.next].badge} ${RANK_INFO[progress.next].label} · faltan <b>$${progress.missing.toFixed(2)}</b>`
+    : `🏅 <i>Rango máximo alcanzado</i>`;
+  const assigned = u.rank_assigned_at ? new Date(u.rank_assigned_at).toLocaleDateString("es") : "—";
   const text =
-    `👤 <b>Mi Perfil</b>\n\n` +
+    `👤 <b>Mi Perfil</b> ${info.badge}\n\n` +
     `Nombre   <b>${u.display_name ?? "—"}</b>\n` +
     `Usuario  @${u.username ?? "—"}\n` +
     `ID       <code>${u.telegram_id}</code>\n` +
     `Saldo    <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
-    `Recargado $${Number(u.total_recharged).toFixed(2)} USD\n` +
-    `Rango    ${RANK_LABEL[u.rank] ?? u.rank}\n` +
-    `Registro ${new Date(u.registered_at).toLocaleDateString("es")}`;
+    `Comprado <b>$${total.toFixed(2)} USD</b>\n` +
+    `Registro ${new Date(u.registered_at).toLocaleDateString("es")}\n\n` +
+    `<b>Rango ${info.badge} ${info.label}</b>\n` +
+    `Desde    ${assigned}\n` +
+    `${discountLine}\n` +
+    `${progressLine}`;
   await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
 }
 
@@ -461,13 +496,14 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     ]);
     return;
   }
-  // Aplicar precios personalizados por usuario (si existen)
+  // Aplicar precios personalizados por usuario (si existen) + descuento por rango
   const overrides = await getUserPriceOverrides(telegram_id);
-  const prices = rawPrices.map((p) => ({
-    ...p,
-    price_usd: overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd),
-    has_override: overrides.has(p.id),
-  }));
+  const rank = normalizeRank(await getUserRank(telegram_id));
+  const prices = rawPrices.map((p) => {
+    const base = overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd);
+    const price_usd = applyRankDiscount(base, rank);
+    return { ...p, price_usd, has_override: overrides.has(p.id), rank_discounted: price_usd < base };
+  });
   // Mostramos SIEMPRE los precios. Si el saldo no alcanza, el botón queda
   // deshabilitado pero el usuario ya ve cuánto cuesta cada key.
   const minPrice = Math.min(...prices.map((p) => Number(p.price_usd)));
@@ -476,7 +512,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   await patchContext(telegram_id, { product_id });
   const rows = prices.map((p) => {
     const affordable = balance >= Number(p.price_usd);
-    const tag = p.has_override ? "  🎁" : "";
+    const tag = p.has_override ? "  🎁" : p.rank_discounted ? `  ${RANK_INFO[rank].badge}` : "";
     return [
       {
         text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}${affordable ? "" : "  ·  sin saldo"}`,
@@ -490,9 +526,10 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   }
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
 
+  const rankNote = rank === "gold" ? "" : `\n<i>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label}${rank === "elite" ? " — productos de $30 a $25" : ` · -${RANK_INFO[rank].discountPct}% aplicado`}</i>`;
   const header = lowBalance
-    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\nPodés ver los precios. Recargá saldo para comprar:`
-    : `<b>${product.name}</b>\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`;
+    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>${rankNote}\n\nPodés ver los precios. Recargá saldo para comprar:`
+    : `<b>${product.name}</b>${rankNote}\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`;
 
   await screen(telegram_id, chat_id, header, rows);
 }

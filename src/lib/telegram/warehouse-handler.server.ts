@@ -1038,7 +1038,7 @@ async function creditRecharge(
   }
   const { data: u } = await sb
     .from("bot_users")
-    .select("id, telegram_id, chat_id, balance, total_recharged")
+    .select("id, telegram_id, chat_id, balance, total_recharged, rank")
     .eq("id", order.user_id)
     .single();
   if (!u) {
@@ -1047,14 +1047,20 @@ async function creditRecharge(
   }
   const newBalance = Number(u.balance) + amount;
   const newRecharged = Number(u.total_recharged) + amount;
-  let rank: "normal" | "pro" | "leyenda" = "normal";
-  if (newRecharged >= 200) rank = "leyenda";
-  else if (newRecharged >= 50) rank = "pro";
+  const { rankFromRecharged, normalizeRank } = await import("./ranks.server");
+  const newRank = rankFromRecharged(newRecharged);
+  const oldRank = normalizeRank((u as { rank?: string }).rank);
+  const rankChanged = newRank !== oldRank;
 
   await Promise.all([
     sb
       .from("bot_users")
-      .update({ balance: newBalance, total_recharged: newRecharged, rank })
+      .update({
+        balance: newBalance,
+        total_recharged: newRecharged,
+        rank: newRank,
+        ...(rankChanged ? { rank_assigned_at: new Date().toISOString() } : {}),
+      })
       .eq("id", u.id),
     sb.from("orders").update({ status: "approved", total_usd: amount }).eq("id", order.id),
     sb.from("receipts").update({ status: "approved" }).eq("order_id", order.id),
@@ -1066,6 +1072,16 @@ async function creditRecharge(
       details: { amount_usd: amount } as never,
     }),
   ]);
+
+  if (rankChanged) {
+    await sb.from("rank_history").insert({
+      telegram_id: u.telegram_id,
+      old_rank: oldRank as never,
+      new_rank: newRank as never,
+      changed_by: "system",
+      reason: `auto · recarga $${amount.toFixed(2)} · total $${newRecharged.toFixed(2)}`,
+    });
+  }
 
   await notifyUserApproved({
     telegram_id: u.telegram_id,
