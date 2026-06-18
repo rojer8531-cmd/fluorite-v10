@@ -523,6 +523,21 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_BOTTOM.usuario:
       await startUserLookup(msg.from.id, msg.chat.id);
       return;
+    case ADMIN_BOTTOM.rol:
+      await rolMenu(msg.chat.id);
+      return;
+  }
+
+  // Búsqueda dentro del flujo ROL
+  if (adminState?.state === "rol_lookup" && text && !text.startsWith("/")) {
+    const tgId = parseInt(text.replace(/\D+/g, ""), 10);
+    await setState(msg.from.id, "menu", {});
+    if (!Number.isFinite(tgId) || tgId <= 0) {
+      await sendMessage(msg.chat.id, `ID inválido.`);
+      return;
+    }
+    await rolShowUser(msg.chat.id, tgId);
+    return;
   }
 
 
