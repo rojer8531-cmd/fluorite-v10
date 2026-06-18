@@ -496,13 +496,14 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     ]);
     return;
   }
-  // Aplicar precios personalizados por usuario (si existen)
+  // Aplicar precios personalizados por usuario (si existen) + descuento por rango
   const overrides = await getUserPriceOverrides(telegram_id);
-  const prices = rawPrices.map((p) => ({
-    ...p,
-    price_usd: overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd),
-    has_override: overrides.has(p.id),
-  }));
+  const rank = normalizeRank(await getUserRank(telegram_id));
+  const prices = rawPrices.map((p) => {
+    const base = overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd);
+    const price_usd = applyRankDiscount(base, rank);
+    return { ...p, price_usd, has_override: overrides.has(p.id), rank_discounted: price_usd < base };
+  });
   // Mostramos SIEMPRE los precios. Si el saldo no alcanza, el botón queda
   // deshabilitado pero el usuario ya ve cuánto cuesta cada key.
   const minPrice = Math.min(...prices.map((p) => Number(p.price_usd)));
