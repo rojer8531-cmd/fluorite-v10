@@ -12,7 +12,8 @@ export interface BotUser {
   is_authenticated: boolean;
   balance: number;
   total_recharged: number;
-  rank: "normal" | "pro" | "leyenda";
+  rank: "gold" | "platinum" | "diamond" | "elite" | "normal" | "pro" | "leyenda";
+  rank_assigned_at?: string;
 }
 
 export async function getOrCreateUser(opts: {
