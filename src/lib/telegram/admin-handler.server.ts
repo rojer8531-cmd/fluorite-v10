@@ -249,14 +249,19 @@ async function creditRecharge(
   }
   const newBalance = Number(u.balance) + amount;
   const newRecharged = Number(u.total_recharged) + amount;
-  let rank: "normal" | "pro" | "leyenda" = "normal";
-  if (newRecharged >= 200) rank = "leyenda";
-  else if (newRecharged >= 50) rank = "pro";
+  const newRank = rankFromRecharged(newRecharged);
+  const oldRank = normalizeRank((u as { rank?: string }).rank);
+  const rankChanged = newRank !== oldRank;
 
   await Promise.all([
     sb
       .from("bot_users")
-      .update({ balance: newBalance, total_recharged: newRecharged, rank })
+      .update({
+        balance: newBalance,
+        total_recharged: newRecharged,
+        rank: newRank,
+        ...(rankChanged ? { rank_assigned_at: new Date().toISOString() } : {}),
+      })
       .eq("id", u.id),
     sb.from("orders").update({ status: "approved", total_usd: amount }).eq("id", order.id),
     sb.from("receipts").update({ status: "approved" }).eq("order_id", order.id),
