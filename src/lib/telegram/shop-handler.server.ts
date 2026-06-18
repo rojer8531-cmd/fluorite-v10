@@ -395,15 +395,32 @@ async function showProfile(telegram_id: number, chat_id: number) {
     .eq("telegram_id", telegram_id)
     .single();
   if (!u) return;
+  const rank = normalizeRank(u.rank);
+  const info = RANK_INFO[rank];
+  const total = Number(u.total_recharged);
+  const progress = nextRankProgress(total);
+  const discountLine =
+    rank === "elite"
+      ? `Descuento <b>👑 Elite</b> — productos de $30 a <b>$25</b>`
+      : info.discountPct > 0
+        ? `Descuento <b>${info.discountPct}%</b> automático en todas las compras`
+        : `Descuento <b>0%</b>`;
+  const progressLine = progress
+    ? `Próximo  ${RANK_INFO[progress.next].badge} ${RANK_INFO[progress.next].label} · faltan <b>$${progress.missing.toFixed(2)}</b>`
+    : `🏅 <i>Rango máximo alcanzado</i>`;
+  const assigned = u.rank_assigned_at ? new Date(u.rank_assigned_at).toLocaleDateString("es") : "—";
   const text =
-    `👤 <b>Mi Perfil</b>\n\n` +
+    `👤 <b>Mi Perfil</b> ${info.badge}\n\n` +
     `Nombre   <b>${u.display_name ?? "—"}</b>\n` +
     `Usuario  @${u.username ?? "—"}\n` +
     `ID       <code>${u.telegram_id}</code>\n` +
     `Saldo    <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
-    `Recargado $${Number(u.total_recharged).toFixed(2)} USD\n` +
-    `Rango    ${RANK_LABEL[u.rank] ?? u.rank}\n` +
-    `Registro ${new Date(u.registered_at).toLocaleDateString("es")}`;
+    `Comprado <b>$${total.toFixed(2)} USD</b>\n` +
+    `Registro ${new Date(u.registered_at).toLocaleDateString("es")}\n\n` +
+    `<b>Rango ${info.badge} ${info.label}</b>\n` +
+    `Desde    ${assigned}\n` +
+    `${discountLine}\n` +
+    `${progressLine}`;
   await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
 }
 
