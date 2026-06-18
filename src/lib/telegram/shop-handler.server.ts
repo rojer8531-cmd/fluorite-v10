@@ -191,9 +191,14 @@ interface TgCallback {
 }
 
 const RANK_LABEL: Record<string, string> = {
-  normal: "Normal",
-  pro: "Pro",
-  leyenda: "Leyenda",
+  gold: "🏆 Gold",
+  platinum: "💠 Platinum",
+  diamond: "💎 Diamond",
+  elite: "👑 Elite",
+  // legacy
+  normal: "🏆 Gold",
+  pro: "💠 Platinum",
+  leyenda: "💎 Diamond",
 };
 
 const SUPPORT_USERNAME = "@smallffx7";
