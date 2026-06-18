@@ -1073,6 +1073,16 @@ async function creditRecharge(
     }),
   ]);
 
+  if (rankChanged) {
+    await sb.from("rank_history").insert({
+      telegram_id: u.telegram_id,
+      old_rank: oldRank as never,
+      new_rank: newRank as never,
+      changed_by: "system",
+      reason: `auto · recarga $${amount.toFixed(2)} · total $${newRecharged.toFixed(2)}`,
+    });
+  }
+
   await notifyUserApproved({
     telegram_id: u.telegram_id,
     chat_id: u.chat_id,
