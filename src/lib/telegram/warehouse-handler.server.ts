@@ -1038,7 +1038,7 @@ async function creditRecharge(
   }
   const { data: u } = await sb
     .from("bot_users")
-    .select("id, telegram_id, chat_id, balance, total_recharged")
+    .select("id, telegram_id, chat_id, balance, total_recharged, rank")
     .eq("id", order.user_id)
     .single();
   if (!u) {
