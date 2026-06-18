@@ -673,18 +673,23 @@ async function handleCallback(cb: TgCallback) {
       await answerCallbackQuery("admin", cb.id, "Monto inválido en la orden.", true);
       return;
     }
-    const u = (order as { bot_users: { id: string; telegram_id: number; chat_id: number; balance: number; total_recharged: number } }).bot_users;
+    const u = (order as { bot_users: { id: string; telegram_id: number; chat_id: number; balance: number; total_recharged: number; rank: string } }).bot_users;
     const amount = Number(order.total_usd);
     const newBalance = Number(u.balance) + amount;
     const newRecharged = Number(u.total_recharged) + amount;
-    let rank: "normal" | "pro" | "leyenda" = "normal";
-    if (newRecharged >= 200) rank = "leyenda";
-    else if (newRecharged >= 50) rank = "pro";
+    const newRank = rankFromRecharged(newRecharged);
+    const oldRank = normalizeRank(u.rank);
+    const rankChanged = newRank !== oldRank;
 
     await Promise.all([
       sb
         .from("bot_users")
-        .update({ balance: newBalance, total_recharged: newRecharged, rank })
+        .update({
+          balance: newBalance,
+          total_recharged: newRecharged,
+          rank: newRank,
+          ...(rankChanged ? { rank_assigned_at: new Date().toISOString() } : {}),
+        })
         .eq("id", u.id),
       sb.from("orders").update({ status: "approved" }).eq("id", target),
       sb.from("receipts").update({ status: "approved" }).eq("order_id", target),
@@ -696,6 +701,16 @@ async function handleCallback(cb: TgCallback) {
         details: { amount_usd: amount } as never,
       }),
     ]);
+
+    if (rankChanged) {
+      await sb.from("rank_history").insert({
+        telegram_id: u.telegram_id,
+        old_rank: oldRank as never,
+        new_rank: newRank as never,
+        changed_by: "system",
+        reason: `auto · recarga $${amount.toFixed(2)} · total $${newRecharged.toFixed(2)}`,
+      });
+    }
 
     await notifyUserApproved({
       telegram_id: u.telegram_id,
