@@ -662,7 +662,7 @@ async function handleCallback(cb: TgCallback) {
   if (action === "approve") {
     const { data: order } = await sb
       .from("orders")
-      .select("*, bot_users(id, telegram_id, chat_id, balance, total_recharged)")
+      .select("*, bot_users(id, telegram_id, chat_id, balance, total_recharged, rank)")
       .eq("id", target)
       .single();
     if (!order || order.status !== "pending_approval") {
