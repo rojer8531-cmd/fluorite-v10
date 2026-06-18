@@ -24,6 +24,7 @@ import {
   sb,
 } from "./db.server";
 import { silentDelete } from "./ui.server";
+import { applyRankDiscount, nextRankProgress, rankLabel, rankBadge, RANK_INFO, normalizeRank } from "./ranks.server";
 
 const forceNewScreenFor = new Set<number>();
 const activeMessageHints = new Map<number, { chat_id: number; message_id: number }>();
