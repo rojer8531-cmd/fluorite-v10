@@ -56,14 +56,12 @@ export async function updateUser(
 export async function updateRankFromRecharged(telegram_id: number) {
   const { data: u } = await sb
     .from("bot_users")
-    .select("total_recharged")
+    .select("total_recharged, rank")
     .eq("telegram_id", telegram_id)
     .single();
   if (!u) return;
-  let rank: "normal" | "pro" | "leyenda" = "normal";
-  if (u.total_recharged >= 200) rank = "leyenda";
-  else if (u.total_recharged >= 50) rank = "pro";
-  await sb.from("bot_users").update({ rank }).eq("telegram_id", telegram_id);
+  const { autoPromote } = await import("./ranks.server");
+  await autoPromote(telegram_id, Number(u.total_recharged), u.rank);
 }
 
 export interface UserState {
