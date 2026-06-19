@@ -199,7 +199,25 @@ export async function autoBlock(telegram_id: number, reason: string) {
       { telegram_id, reason, blocked_until: until, infraction_count: next },
       { onConflict: "telegram_id" },
     );
-  return { minutes, infraction_count: next };
+  return { minutes, infraction_count: next, blocked_until: until };
+}
+
+/** Bloqueo fijo de 24h por spam de comprobantes inválidos. Reincidente → mismo 24h. */
+export async function blockSpamReceipt(telegram_id: number) {
+  const { data: existing } = await sb
+    .from("blocked_users")
+    .select("infraction_count")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  const next = (existing?.infraction_count ?? 0) + 1;
+  const until = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+  await sb
+    .from("blocked_users")
+    .upsert(
+      { telegram_id, reason: "spam_receipt", blocked_until: until, infraction_count: next },
+      { onConflict: "telegram_id" },
+    );
+  return { blocked_until: until, infraction_count: next };
 }
 
 export async function unblockUser(telegram_id: number) {
