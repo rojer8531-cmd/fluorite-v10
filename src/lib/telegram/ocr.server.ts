@@ -20,14 +20,14 @@ function toNumber(v: unknown): number | null {
   return null;
 }
 
-export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promise<OcrResult | null> {
-  const key = process.env.LOVABLE_API_KEY;
-  if (!key) return null;
+async function ocrOnce(
+  key: string,
+  dataUrl: string,
+  timeoutMs: number,
+): Promise<OcrResult | null> {
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 3_500);
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
-    const b64 = Buffer.from(bytes).toString("base64");
-    const dataUrl = `data:${mime};base64,${b64}`;
     const res = await fetch(GATEWAY, {
       method: "POST",
       signal: ac.signal,
@@ -43,7 +43,6 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
             content:
               "Sos un verificador de comprobantes de pago bancario / billetera digital (Nequi, Daviplata, Bancolombia, Zelle, PayPal, transferencias, depósitos, etc). Respondé SOLO con JSON con los campos: is_payment (boolean), amount (número sin símbolos), reference (string del número de operación/referencia), date (YYYY-MM-DD si es posible), recipient (nombre del destinatario o número de cuenta visible). Reglas para is_payment: marcá true si la imagen muestra señales claras de un movimiento de dinero exitoso: monto + fecha/hora + (referencia/comprobante/operación/transacción) o un banner de 'Transferencia exitosa', 'Pago realizado', 'Comprobante de pago', etc. No exijas que TODOS los datos estén presentes — si dudás pero hay monto + algún identificador bancario/billetera, marcá true. Marcá false SOLO si claramente no es un comprobante (selfie, meme, foto random, captura de chat sin datos de pago, pantalla de saldo, formulario en blanco, error de transacción). Si no estás seguro, preferí true. Usá null en los campos que no puedas leer.",
           },
-
           {
             role: "user",
             content: [
@@ -56,7 +55,10 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
       }),
     });
     if (!res.ok) {
-      console.error("[ocr] gateway", res.status, await res.text().catch(() => ""));
+      const body = await res.text().catch(() => "");
+      console.error("[ocr] gateway", res.status, body);
+      // 429/5xx → reintentar
+      if (res.status === 429 || res.status >= 500) throw new Error(`retry:${res.status}`);
       return null;
     }
     const j = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
@@ -75,12 +77,38 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
       is_payment: typeof parsed.is_payment === "boolean" ? parsed.is_payment : null,
       recipient: parsed.recipient ? String(parsed.recipient).slice(0, 80) : null,
     };
-  } catch (e) {
-    console.error("[ocr] err", e);
-    return null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promise<OcrResult | null> {
+  const key = process.env.LOVABLE_API_KEY;
+  if (!key) {
+    console.error("[ocr] missing LOVABLE_API_KEY");
+    return null;
+  }
+  const b64 = Buffer.from(bytes).toString("base64");
+  const dataUrl = `data:${mime};base64,${b64}`;
+
+  // Reintento con backoff: 3 intentos, timeouts crecientes (15s, 25s, 35s).
+  // Garantiza que la IA siempre dé una respuesta, incluso bajo carga.
+  const timeouts = [15_000, 25_000, 35_000];
+  let lastErr: unknown = null;
+  for (let i = 0; i < timeouts.length; i++) {
+    try {
+      const result = await ocrOnce(key, dataUrl, timeouts[i]);
+      return result;
+    } catch (e) {
+      lastErr = e;
+      console.error(`[ocr] attempt ${i + 1} failed`, e instanceof Error ? e.message : e);
+      if (i < timeouts.length - 1) {
+        await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+      }
+    }
+  }
+  console.error("[ocr] all attempts failed", lastErr);
+  return null;
 }
 
 /** Devuelve un resumen ya formateado para insertar en el caption del admin. */
