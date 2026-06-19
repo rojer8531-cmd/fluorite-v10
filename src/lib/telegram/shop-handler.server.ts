@@ -19,6 +19,7 @@ import {
   checkRateLimit,
   isBlocked,
   autoBlock,
+  blockSpamReceipt,
   getActiveMessage,
   setActiveMessage,
   sb,
@@ -347,6 +348,22 @@ async function notifyUserInvalidReceipt(
   });
 }
 
+/** Notifica el bloqueo de 24h por spam de comprobantes. */
+async function notifySpamBlock(chat_id: number) {
+  const text =
+    `🚫 <b>Tu cuenta ha sido bloqueada temporalmente por 24 horas.</b>\n\n` +
+    `<b>Motivo:</b> Spam de comprobantes.\n\n` +
+    `Si consideras que se trata de un error, contacta al soporte.\n\n` +
+    `⏳ <b>Tiempo restante:</b> 24 horas.`;
+  await sendMessage("shop", chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
+      ],
+    },
+  }).catch(() => {});
+}
+
 
 
 async function showShareBot(telegram_id: number, chat_id: number) {
@@ -410,29 +427,37 @@ async function showProfile(telegram_id: number, chat_id: number) {
   const rank = normalizeRank(u.rank);
   const info = RANK_INFO[rank];
   const total = Number(u.total_recharged);
+  const balance = Number(u.balance);
   const progress = nextRankProgress(total);
-  const discountLine =
+  const fmtDate = (d: string | null | undefined) =>
+    d ? new Date(d).toLocaleDateString("es", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
+
+  const benefitBlock =
     rank === "elite"
-      ? `Descuento <b>👑 Elite</b> — productos de $30 a <b>$25</b>`
+      ? `\n🎁 <b>Beneficio Elite</b>\nProductos de $30.00 → <b>$25.00 USD</b>\n`
       : info.discountPct > 0
-        ? `Descuento <b>${info.discountPct}%</b> automático en todas las compras`
-        : `Descuento <b>0%</b>`;
-  const progressLine = progress
-    ? `Próximo  ${RANK_INFO[progress.next].badge} ${RANK_INFO[progress.next].label} · faltan <b>$${progress.missing.toFixed(2)}</b>`
-    : `🏅 <i>Rango máximo alcanzado</i>`;
-  const assigned = u.rank_assigned_at ? new Date(u.rank_assigned_at).toLocaleDateString("es") : "—";
+        ? `\n🎁 <b>Beneficio ${info.label}</b>\nDescuento automático del <b>${info.discountPct}%</b> en todas las compras\n`
+        : `\n🎁 <b>Beneficio</b>\nSin descuento activo (rango inicial)\n`;
+
+  const progressBlock = progress
+    ? `\n🚀 <b>Próximo Rango:</b> ${RANK_INFO[progress.next].badge} ${RANK_INFO[progress.next].label}\n💵 <b>Monto Restante:</b> $${progress.missing.toFixed(2)} USD`
+    : `\n🏅 <i>Has alcanzado el rango máximo</i>`;
+
   const text =
-    `👤 <b>Mi Perfil</b> ${info.badge}\n\n` +
-    `Nombre   <b>${u.display_name ?? "—"}</b>\n` +
-    `Usuario  @${u.username ?? "—"}\n` +
-    `ID       <code>${u.telegram_id}</code>\n` +
-    `Saldo    <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
-    `Comprado <b>$${total.toFixed(2)} USD</b>\n` +
-    `Registro ${new Date(u.registered_at).toLocaleDateString("es")}\n\n` +
-    `<b>Rango ${info.badge} ${info.label}</b>\n` +
-    `Desde    ${assigned}\n` +
-    `${discountLine}\n` +
-    `${progressLine}`;
+    `👤 <b>Mi Perfil</b>\n` +
+    `━━━━━━━━━━━━━━━\n` +
+    `🪪 <b>Nombre:</b> ${u.display_name ?? "—"}\n` +
+    `💬 <b>Usuario:</b> @${u.username ?? "—"}\n` +
+    `🆔 <b>ID:</b> <code>${u.telegram_id}</code>\n\n` +
+    `💼 <b>Saldo Actual:</b> $${balance.toFixed(2)} USD\n` +
+    `🛍 <b>Total Comprado:</b> $${total.toFixed(2)} USD\n` +
+    `📅 <b>Fecha de Registro:</b> ${fmtDate(u.registered_at)}\n` +
+    `━━━━━━━━━━━━━━━\n` +
+    `${info.badge} <b>Rango Actual:</b> ${info.label}\n` +
+    `📆 <b>Activo Desde:</b> ${fmtDate(u.rank_assigned_at)}\n` +
+    benefitBlock +
+    progressBlock;
+
   await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
 }
 
@@ -1079,8 +1104,15 @@ async function handleReceiptPhoto(msg: TgMessage) {
     .eq("file_unique_id", photo.file_unique_id)
     .eq("telegram_id", telegram_id)
     .gte("created_at", cutoff);
-  if ((sameRows?.length ?? 0) >= 3) {
-    await notifyUser(chat_id, `⚠️ Ya reenviaste este comprobante 3 veces. Esperá la revisión del admin.`);
+  if ((sameRows?.length ?? 0) >= 1) {
+    // Comprobante duplicado: avisamos pero NO bloqueamos al primer intento.
+    await notifyUser(
+      chat_id,
+      `📌 <b>Este comprobante ya fue enviado anteriormente.</b>\n\n` +
+        `Por favor espera la revisión del comprobante actual.\n\n` +
+        `Si continúas enviando el mismo comprobante tu cuenta podrá ser bloqueada y podrías perder tu pago.\n\n` +
+        `Gracias por tu paciencia.`,
+    );
     return;
   }
 
@@ -1165,15 +1197,13 @@ async function handleReceiptPhoto(msg: TgMessage) {
     o.total_local ? Number(o.total_local) : null,
   );
 
-  // IA: si la imagen no parece un pago, avisar al usuario y NO enviar al admin
+  // IA: si la imagen no parece un pago, bloqueo automático 24h por spam.
   if (ocr?.is_payment === false) {
-    await notifyUserInvalidReceipt(chat_id, {
-      reason: "la imagen no parece un comprobante de pago válido.",
-      holder: o.payment_methods?.holder_name ?? null,
-      account: o.payment_methods?.account_info ?? null,
-    });
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
+    await blockSpamReceipt(telegram_id).catch(() => {});
+    blockCache.delete(telegram_id);
+    await notifySpamBlock(chat_id);
     return;
   }
 
@@ -1304,8 +1334,15 @@ async function handleReceiptDocument(msg: TgMessage) {
     .eq("file_unique_id", doc.file_unique_id)
     .eq("telegram_id", telegram_id)
     .gte("created_at", cutoff);
-  if ((sameRows?.length ?? 0) >= 3) {
-    await sendMessage("shop", chat_id, `Ya reenviaste este comprobante 3 veces. Esperá la revisión del admin.`);
+  if ((sameRows?.length ?? 0) >= 1) {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `📌 <b>Este comprobante ya fue enviado anteriormente.</b>\n\n` +
+        `Por favor espera la revisión del comprobante actual.\n\n` +
+        `Si continúas enviando el mismo comprobante tu cuenta podrá ser bloqueada y podrías perder tu pago.\n\n` +
+        `Gracias por tu paciencia.`,
+    );
     return;
   }
 
