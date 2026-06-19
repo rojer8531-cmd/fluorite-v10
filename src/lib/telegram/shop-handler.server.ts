@@ -1334,8 +1334,15 @@ async function handleReceiptDocument(msg: TgMessage) {
     .eq("file_unique_id", doc.file_unique_id)
     .eq("telegram_id", telegram_id)
     .gte("created_at", cutoff);
-  if ((sameRows?.length ?? 0) >= 3) {
-    await sendMessage("shop", chat_id, `Ya reenviaste este comprobante 3 veces. Esperá la revisión del admin.`);
+  if ((sameRows?.length ?? 0) >= 1) {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `📌 <b>Este comprobante ya fue enviado anteriormente.</b>\n\n` +
+        `Por favor espera la revisión del comprobante actual.\n\n` +
+        `Si continúas enviando el mismo comprobante tu cuenta podrá ser bloqueada y podrías perder tu pago.\n\n` +
+        `Gracias por tu paciencia.`,
+    );
     return;
   }
 
