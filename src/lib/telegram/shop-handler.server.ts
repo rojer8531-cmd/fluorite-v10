@@ -1197,15 +1197,13 @@ async function handleReceiptPhoto(msg: TgMessage) {
     o.total_local ? Number(o.total_local) : null,
   );
 
-  // IA: si la imagen no parece un pago, avisar al usuario y NO enviar al admin
+  // IA: si la imagen no parece un pago, bloqueo automático 24h por spam.
   if (ocr?.is_payment === false) {
-    await notifyUserInvalidReceipt(chat_id, {
-      reason: "la imagen no parece un comprobante de pago válido.",
-      holder: o.payment_methods?.holder_name ?? null,
-      account: o.payment_methods?.account_info ?? null,
-    });
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
     await sb.from("receipts").delete().eq("id", receipt!.id);
+    await blockSpamReceipt(telegram_id).catch(() => {});
+    blockCache.delete(telegram_id);
+    await notifySpamBlock(chat_id);
     return;
   }
 
