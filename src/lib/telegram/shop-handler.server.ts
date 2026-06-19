@@ -19,6 +19,7 @@ import {
   checkRateLimit,
   isBlocked,
   autoBlock,
+  blockSpamReceipt,
   getActiveMessage,
   setActiveMessage,
   sb,
