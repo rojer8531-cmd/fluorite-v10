@@ -427,29 +427,37 @@ async function showProfile(telegram_id: number, chat_id: number) {
   const rank = normalizeRank(u.rank);
   const info = RANK_INFO[rank];
   const total = Number(u.total_recharged);
+  const balance = Number(u.balance);
   const progress = nextRankProgress(total);
-  const discountLine =
+  const fmtDate = (d: string | null | undefined) =>
+    d ? new Date(d).toLocaleDateString("es", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
+
+  const benefitBlock =
     rank === "elite"
-      ? `Descuento <b>👑 Elite</b> — productos de $30 a <b>$25</b>`
+      ? `\n🎁 <b>Beneficio Elite</b>\nProductos de $30.00 → <b>$25.00 USD</b>\n`
       : info.discountPct > 0
-        ? `Descuento <b>${info.discountPct}%</b> automático en todas las compras`
-        : `Descuento <b>0%</b>`;
-  const progressLine = progress
-    ? `Próximo  ${RANK_INFO[progress.next].badge} ${RANK_INFO[progress.next].label} · faltan <b>$${progress.missing.toFixed(2)}</b>`
-    : `🏅 <i>Rango máximo alcanzado</i>`;
-  const assigned = u.rank_assigned_at ? new Date(u.rank_assigned_at).toLocaleDateString("es") : "—";
+        ? `\n🎁 <b>Beneficio ${info.label}</b>\nDescuento automático del <b>${info.discountPct}%</b> en todas las compras\n`
+        : `\n🎁 <b>Beneficio</b>\nSin descuento activo (rango inicial)\n`;
+
+  const progressBlock = progress
+    ? `\n🚀 <b>Próximo Rango:</b> ${RANK_INFO[progress.next].badge} ${RANK_INFO[progress.next].label}\n💵 <b>Monto Restante:</b> $${progress.missing.toFixed(2)} USD`
+    : `\n🏅 <i>Has alcanzado el rango máximo</i>`;
+
   const text =
-    `👤 <b>Mi Perfil</b> ${info.badge}\n\n` +
-    `Nombre   <b>${u.display_name ?? "—"}</b>\n` +
-    `Usuario  @${u.username ?? "—"}\n` +
-    `ID       <code>${u.telegram_id}</code>\n` +
-    `Saldo    <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
-    `Comprado <b>$${total.toFixed(2)} USD</b>\n` +
-    `Registro ${new Date(u.registered_at).toLocaleDateString("es")}\n\n` +
-    `<b>Rango ${info.badge} ${info.label}</b>\n` +
-    `Desde    ${assigned}\n` +
-    `${discountLine}\n` +
-    `${progressLine}`;
+    `👤 <b>Mi Perfil</b>\n` +
+    `━━━━━━━━━━━━━━━\n` +
+    `🪪 <b>Nombre:</b> ${u.display_name ?? "—"}\n` +
+    `💬 <b>Usuario:</b> @${u.username ?? "—"}\n` +
+    `🆔 <b>ID:</b> <code>${u.telegram_id}</code>\n\n` +
+    `💼 <b>Saldo Actual:</b> $${balance.toFixed(2)} USD\n` +
+    `🛍 <b>Total Comprado:</b> $${total.toFixed(2)} USD\n` +
+    `📅 <b>Fecha de Registro:</b> ${fmtDate(u.registered_at)}\n` +
+    `━━━━━━━━━━━━━━━\n` +
+    `${info.badge} <b>Rango Actual:</b> ${info.label}\n` +
+    `📆 <b>Activo Desde:</b> ${fmtDate(u.rank_assigned_at)}\n` +
+    benefitBlock +
+    progressBlock;
+
   await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
 }
 
