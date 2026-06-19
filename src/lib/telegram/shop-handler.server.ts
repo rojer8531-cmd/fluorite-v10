@@ -348,6 +348,22 @@ async function notifyUserInvalidReceipt(
   });
 }
 
+/** Notifica el bloqueo de 24h por spam de comprobantes. */
+async function notifySpamBlock(chat_id: number) {
+  const text =
+    `🚫 <b>Tu cuenta ha sido bloqueada temporalmente por 24 horas.</b>\n\n` +
+    `<b>Motivo:</b> Spam de comprobantes.\n\n` +
+    `Si consideras que se trata de un error, contacta al soporte.\n\n` +
+    `⏳ <b>Tiempo restante:</b> 24 horas.`;
+  await sendMessage("shop", chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
+      ],
+    },
+  }).catch(() => {});
+}
+
 
 
 async function showShareBot(telegram_id: number, chat_id: number) {
