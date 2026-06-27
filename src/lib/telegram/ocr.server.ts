@@ -41,7 +41,7 @@ async function ocrOnce(
           {
             role: "system",
             content:
-              "Sos un verificador de comprobantes de pago bancario / billetera digital (Nequi, Daviplata, Bancolombia, Zelle, PayPal, transferencias, depósitos, etc). Respondé SOLO con JSON con los campos: is_payment (boolean), amount (número sin símbolos), reference (string del número de operación/referencia), date (YYYY-MM-DD si es posible), recipient (nombre del destinatario o número de cuenta visible). Reglas para is_payment: marcá true si la imagen muestra señales claras de un movimiento de dinero exitoso: monto + fecha/hora + (referencia/comprobante/operación/transacción) o un banner de 'Transferencia exitosa', 'Pago realizado', 'Comprobante de pago', etc. No exijas que TODOS los datos estén presentes — si dudás pero hay monto + algún identificador bancario/billetera, marcá true. Marcá false SOLO si claramente no es un comprobante (selfie, meme, foto random, captura de chat sin datos de pago, pantalla de saldo, formulario en blanco, error de transacción). Si no estás seguro, preferí true. Usá null en los campos que no puedas leer.",
+              "Sos un verificador de comprobantes de pago bancario / billetera digital (Nequi, Daviplata, Bancolombia, Zelle, PayPal, transferencias, depósitos, etc). Respondé SOLO con JSON con [...]",
           },
           {
             role: "user",
@@ -91,9 +91,10 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
   const b64 = Buffer.from(bytes).toString("base64");
   const dataUrl = `data:${mime};base64,${b64}`;
 
-  // Reintento con backoff: 3 intentos, timeouts crecientes (15s, 25s, 35s).
-  // Garantiza que la IA siempre dé una respuesta, incluso bajo carga.
-  const timeouts = [15_000, 25_000, 35_000];
+  // Reintento con backoff AGRESIVO: timeouts reducidos de 3s → 5s → 8s.
+  // OCR es best-effort: si falla, el comprobante continúa su flujo sin bloqueos.
+  // Evita que Telegram timeout (1.5s en webhook-runner) por esperas excesivas en la IA.
+  const timeouts = [3_000, 5_000, 8_000];
   let lastErr: unknown = null;
   for (let i = 0; i < timeouts.length; i++) {
     try {
@@ -103,7 +104,7 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
       lastErr = e;
       console.error(`[ocr] attempt ${i + 1} failed`, e instanceof Error ? e.message : e);
       if (i < timeouts.length - 1) {
-        await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+        await new Promise((r) => setTimeout(r, 200 * (i + 1)));
       }
     }
   }
@@ -129,4 +130,3 @@ export function formatOcrSummary(ocr: OcrResult | null, expectedUsd: number, exp
   if (ocr.reference) parts.push(`ref ${ocr.reference}`);
   return `\n<i>${parts.join(" · ")}</i>`;
 }
-
