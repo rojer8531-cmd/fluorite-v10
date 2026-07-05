@@ -125,7 +125,7 @@ export const updatePrice = createServerFn({ method: "POST" })
     for (const k of ["price_usd", "sale_price_usd", "sale_ends_at", "active", "sort_order", "duration_label", "duration_days"] as const) {
       if ((data as Record<string, unknown>)[k] !== undefined) patch[k] = (data as Record<string, unknown>)[k];
     }
-    const { error } = await db.from("product_prices").update(patch).eq("id", data.id);
+    const { error } = await db.from("product_prices").update(patch as never).eq("id", data.id);
     if (error) throw error;
     await invalidateCatalog();
     await log("price.update", "price", data.id, patch);
@@ -235,7 +235,7 @@ export const updateProduct = createServerFn({ method: "POST" })
     for (const k of ["name", "description", "category", "active", "sort_order"] as const) {
       if ((data as Record<string, unknown>)[k] !== undefined) patch[k] = (data as Record<string, unknown>)[k];
     }
-    const { error } = await db.from("products").update(patch).eq("id", data.id);
+    const { error } = await db.from("products").update(patch as never).eq("id", data.id);
     if (error) throw error;
     await invalidateCatalog();
     await log("product.update", "product", data.id, patch);
@@ -320,7 +320,7 @@ export const updatePaymentMethod = createServerFn({ method: "POST" })
     for (const k of ["country_code", "country_name", "method_name", "holder_name", "account_info", "extra_info", "currency", "usd_rate", "active", "sort_order"]) {
       if (data[k] !== undefined) patch[k] = data[k];
     }
-    const { error } = await db.from("payment_methods").update(patch).eq("id", data.id);
+    const { error } = await db.from("payment_methods").update(patch as never).eq("id", data.id);
     if (error) throw error;
     await log("payment.update", "payment_method", data.id, patch);
     return { ok: true };
