@@ -22,7 +22,8 @@ export const Route = createFileRoute("/api/public/telegram/shop")({
         const got = request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
         if (!safeEq(got, expected)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
-        await runTelegramWebhook("shop", () => handleShopUpdate(update));
+        const startLike = typeof update?.message?.text === "string" && update.message.text.trim().startsWith("/start");
+        await runTelegramWebhook("shop", () => handleShopUpdate(update), startLike ? 9_000 : undefined);
         return Response.json({ ok: true });
       },
     },

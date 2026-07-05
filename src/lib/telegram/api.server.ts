@@ -29,8 +29,8 @@ export interface TgResult<T = unknown> {
   parameters?: { retry_after?: number };
 }
 
-const TG_TIMEOUT_MS = 5_000;
-const MAX_ATTEMPTS = 3;
+const TG_TIMEOUT_MS = 8_000;
+const MAX_ATTEMPTS = 4;
 const MAX_RETRY_AFTER_SEC = 20;
 
 // Errores que indican usuario inalcanzable: NO reintentar.
@@ -125,7 +125,7 @@ export async function tg<T = unknown>(
       }
       // 5xx u otros: exponential backoff
       if (attempt < MAX_ATTEMPTS - 1) {
-        const delay = Math.min(8000, 300 * Math.pow(2, attempt));
+        const delay = Math.min(3000, 250 * Math.pow(2, attempt));
         await sleep(delay);
         return tg<T>(bot, method, payload, attempt + 1);
       }
@@ -135,7 +135,7 @@ export async function tg<T = unknown>(
     return data;
   } catch (err) {
     if (attempt < MAX_ATTEMPTS - 1) {
-      const delay = Math.min(8000, 300 * Math.pow(2, attempt));
+      const delay = Math.min(3000, 250 * Math.pow(2, attempt));
       await sleep(delay);
       return tg<T>(bot, method, payload, attempt + 1);
     }

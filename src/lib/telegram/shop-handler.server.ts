@@ -15,7 +15,6 @@ import {
   getState,
   setState,
   patchContext,
-  tryAcquireStartLock,
   checkRateLimit,
   isBlocked,
   autoBlock,
@@ -1482,6 +1481,63 @@ async function handleMessage(msg: TgMessage) {
   const chat_id = msg.chat.id;
   const text = (msg.text ?? "").trim();
 
+  if (text === "/start" || text.startsWith("/start ")) {
+    const rawParam = text.startsWith("/start ") ? text.slice(7).trim() : "";
+    const refMatch = rawParam.match(/ref(\d+)/i);
+    const starter = await sendMessage(
+      "shop",
+      chat_id,
+      `⚡ <b>Bot activo</b>\n\nCargando tu menú...`,
+      { reply_markup: bottomKeyboard() },
+    );
+
+    try {
+      const botUser = await getOrCreateUser({ telegram_id, chat_id, username: msg.from.username });
+      if (refMatch) {
+        const refId = Number(refMatch[1]);
+        if (Number.isFinite(refId) && refId > 0 && refId !== telegram_id) {
+          try {
+            const { data: rpcRes, error: rpcErr } = await sb.rpc("apply_referral", {
+              _new_user: telegram_id,
+              _referrer: refId,
+            });
+            if (rpcErr) {
+              console.error("[referral] rpc error", rpcErr);
+            } else if (rpcRes && (rpcRes as any).ok) {
+              const prev = Number((rpcRes as any).prev ?? 0);
+              const next = Number((rpcRes as any).next ?? 0);
+              if (prev < REFERRAL_GOAL && next >= REFERRAL_GOAL) {
+                sendMessage("shop", refId, `🎉 <b>Felicidades, descuento aplicado</b>\n\nDesde ahora cada key te cuesta $${REFERRAL_DISCOUNT_USD.toFixed(2)} USD menos.`).catch(() => {});
+              }
+            } else {
+              console.log("[referral] skipped", { telegram_id, refId, reason: (rpcRes as any)?.reason });
+            }
+          } catch (e) {
+            console.error("[referral] exception", e);
+          }
+        }
+      }
+      if (botUser.is_authenticated) {
+        await showMainMenu(telegram_id, chat_id);
+      } else {
+        await askName(telegram_id, chat_id);
+      }
+    } catch (err) {
+      console.error("[shop /start] recovery", err);
+      await sendMessage(
+        "shop",
+        chat_id,
+        `✅ <b>Estoy en línea.</b>\n\nToca /start nuevamente en unos segundos si el menú no termina de cargar.`,
+        { reply_markup: bottomKeyboard() },
+      ).catch(() => {});
+    }
+
+    if (!starter.ok) {
+      console.error("[shop /start] immediate send failed", starter.description);
+    }
+    return;
+  }
+
   // Oferta semanal (martes y viernes, 1 vez cada 24h por usuario)
   maybeSendWeeklyOffer(telegram_id, chat_id).catch(() => {});
 
@@ -1561,42 +1617,6 @@ async function handleMessage(msg: TgMessage) {
     botUser.is_authenticated &&
     (await routeBottomMenu(text, telegram_id, chat_id, msg.message_id))
   ) {
-    return;
-  }
-
-  if (text === "/start" || text.startsWith("/start ")) {
-    if (!(await tryAcquireStartLock(telegram_id))) return;
-    const rawParam = text.startsWith("/start ") ? text.slice(7).trim() : "";
-    const refMatch = rawParam.match(/ref(\d+)/i);
-    if (refMatch) {
-      const refId = Number(refMatch[1]);
-      if (Number.isFinite(refId) && refId > 0 && refId !== telegram_id) {
-        try {
-          const { data: rpcRes, error: rpcErr } = await sb.rpc("apply_referral", {
-            _new_user: telegram_id,
-            _referrer: refId,
-          });
-          if (rpcErr) {
-            console.error("[referral] rpc error", rpcErr);
-          } else if (rpcRes && (rpcRes as any).ok) {
-            const prev = Number((rpcRes as any).prev ?? 0);
-            const next = Number((rpcRes as any).next ?? 0);
-            if (prev < REFERRAL_GOAL && next >= REFERRAL_GOAL) {
-              sendMessage("shop", refId, `🎉 <b>Felicidades, descuento aplicado</b>\n\nDesde ahora cada key te cuesta $${REFERRAL_DISCOUNT_USD.toFixed(2)} USD menos.`).catch(() => {});
-            }
-          } else {
-            console.log("[referral] skipped", { telegram_id, refId, reason: (rpcRes as any)?.reason });
-          }
-        } catch (e) {
-          console.error("[referral] exception", e);
-        }
-      }
-    }
-    if (botUser.is_authenticated) {
-      await showMainMenu(telegram_id, chat_id);
-    } else {
-      await askName(telegram_id, chat_id);
-    }
     return;
   }
 

@@ -1314,9 +1314,21 @@ async function handleMessage(msg: TgMessage) {
     await sendMessage("warehouse", msg.chat.id, `No autorizado.`);
     return;
   }
-  if (!(await checkRateLimit(msg.from.id, "admin_msg", 30, 10))) return;
-
   const text = (msg.text ?? "").trim();
+
+  if (text === "/start" || text === "/help" || text === "/panel") {
+    const sent = await sendMessage(
+      "warehouse",
+      msg.chat.id,
+      `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
+      { reply_markup: adminBottomKeyboard() },
+    );
+    patchContext(msg.from.id, { bar_shown: true }).catch((err) => console.error("[warehouse /start] state", err));
+    if (!sent.ok) console.error("[warehouse /start] immediate send failed", sent.description);
+    return;
+  }
+
+  if (!(await checkRateLimit(msg.from.id, "admin_msg", 30, 10))) return;
 
   // ===== Cancelar broadcast en espera =====
   if (text === "/cancelar") {
@@ -1741,19 +1753,6 @@ async function handleMessage(msg: TgMessage) {
 
   if (text === "/delete" || text === "/borrar") {
     await cleanAdminChat(msg.chat.id, msg.from.id);
-    return;
-  }
-
-  if (text === "/start" || text === "/help" || text === "/panel") {
-    // Forzar siempre la barra inferior (aunque ya se haya mostrado antes).
-    await patchContext(msg.from.id, { bar_shown: false });
-    await sendMessage(
-      "warehouse",
-      msg.chat.id,
-      `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
-      { reply_markup: adminBottomKeyboard() },
-    );
-    await patchContext(msg.from.id, { bar_shown: true });
     return;
   }
 
