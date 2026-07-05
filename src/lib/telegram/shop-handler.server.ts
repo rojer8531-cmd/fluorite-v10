@@ -15,7 +15,6 @@ import {
   getState,
   setState,
   patchContext,
-  tryAcquireStartLock,
   checkRateLimit,
   isBlocked,
   autoBlock,
