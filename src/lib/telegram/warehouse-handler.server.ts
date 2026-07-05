@@ -1371,6 +1371,108 @@ async function handleMessage(msg: TgMessage) {
   if (msg.reply_to_message) {
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
 
+    // ===== Envío de key manual desde el almacén =====
+    const almSendMatch = replySource.match(/ALMSENDKEY:([a-f0-9-]{36})/);
+    if (almSendMatch && text.length > 0) {
+      const orderId = almSendMatch[1];
+      const { data: ord } = await sb
+        .from("orders")
+        .select("id, user_id, telegram_id, product_id, price_id, status")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (!ord) {
+        await sendMessage("warehouse", msg.chat.id, `Orden no encontrada.`);
+        return;
+      }
+      await Promise.all([
+        sb.from("order_keys").insert({
+          order_id: ord.id,
+          user_id: ord.user_id,
+          key_value: text,
+        }),
+        sb.from("orders").update({ status: "delivered" }).eq("id", ord.id),
+        sb.from("admin_logs").insert({
+          admin_telegram_id: msg.from.id,
+          action: "manual_key_delivered",
+          target_type: "order",
+          target_id: ord.id,
+        }),
+      ]);
+      const [{ data: u }, { data: prod }, { data: pr }] = await Promise.all([
+        sb.from("bot_users").select("telegram_id, chat_id").eq("id", ord.user_id).single(),
+        ord.product_id
+          ? sb.from("products").select("name").eq("id", ord.product_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        ord.price_id
+          ? sb.from("product_prices").select("duration_label").eq("id", ord.price_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (u) {
+        await notifyUserKey({
+          telegram_id: u.telegram_id,
+          chat_id: u.chat_id,
+          key_value: text,
+          product_name: (prod as { name: string } | null)?.name,
+          duration_label: (pr as { duration_label: string } | null)?.duration_label,
+        });
+      }
+      deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+      deleteMessage("warehouse", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ Key enviada a <code>${u?.telegram_id ?? ord.telegram_id}</code>.`,
+      );
+      return;
+    }
+
+    // ===== Pegar Método (parser rápido con formato de recarga) =====
+    if (replySource.includes("PMPASTE")) {
+      const parsed = parsePaymentMethodPaste(text);
+      if (!parsed) {
+        await sendMessage(
+          "warehouse",
+          msg.chat.id,
+          `No pude leer el método. Verificá que incluya país, banco, titular y cuenta/alias.`,
+        );
+        return;
+      }
+      // Reemplaza cualquier método existente para ese país (mismo criterio que PMSETCC)
+      await sb.from("payment_methods").delete().eq("country_code", parsed.country_code);
+      const { data: inserted, error } = await sb.from("payment_methods").insert({
+        country_code: parsed.country_code,
+        country_name: parsed.country_name,
+        method_name: parsed.method_name,
+        holder_name: parsed.holder_name,
+        account_info: parsed.account_info,
+        extra_info: null,
+        currency: parsed.currency,
+        usd_rate: parsed.usd_rate,
+        active: true,
+      }).select().single();
+      if (error || !inserted) {
+        await sendMessage("warehouse", msg.chat.id, `Error guardando: ${error?.message ?? "desconocido"}`);
+        return;
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "pm_paste",
+        target_type: "payment_method",
+        target_id: inserted.id,
+        details: parsed as never,
+      });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ <b>Método actualizado para ${parsed.country_name}</b>\n\n` +
+          `🏦 ${parsed.method_name}\n🪪 ${parsed.holder_name}\n📋 <code>${parsed.account_info}</code>\n💱 ${parsed.currency} · rate ${parsed.usd_rate}\n\n` +
+          `La información anterior del país fue reemplazada.`,
+      );
+      return;
+    }
+
+
+
 
 
 
