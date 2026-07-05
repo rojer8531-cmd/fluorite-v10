@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PanelRouteImport } from './routes/panel'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PanelUnlockRouteImport } from './routes/panel/unlock'
 import { Route as ApiPublicTelegramWarehouseRouteImport } from './routes/api/public/telegram/warehouse'
 import { Route as ApiPublicTelegramShopRouteImport } from './routes/api/public/telegram/shop'
 import { Route as ApiPublicTelegramSetupRouteImport } from './routes/api/public/telegram/setup'
@@ -26,6 +27,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const PanelUnlockRoute = PanelUnlockRouteImport.update({
+  id: '/unlock',
+  path: '/unlock',
+  getParentRoute: () => PanelRoute,
 } as any)
 const ApiPublicTelegramWarehouseRoute =
   ApiPublicTelegramWarehouseRouteImport.update({
@@ -56,7 +62,8 @@ const ApiPublicTelegramAdminRoute = ApiPublicTelegramAdminRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/panel': typeof PanelRoute
+  '/panel': typeof PanelRouteWithChildren
+  '/panel/unlock': typeof PanelUnlockRoute
   '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
   '/api/public/telegram/health': typeof ApiPublicTelegramHealthRoute
   '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
@@ -65,7 +72,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/panel': typeof PanelRoute
+  '/panel': typeof PanelRouteWithChildren
+  '/panel/unlock': typeof PanelUnlockRoute
   '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
   '/api/public/telegram/health': typeof ApiPublicTelegramHealthRoute
   '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
@@ -75,7 +83,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/panel': typeof PanelRoute
+  '/panel': typeof PanelRouteWithChildren
+  '/panel/unlock': typeof PanelUnlockRoute
   '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
   '/api/public/telegram/health': typeof ApiPublicTelegramHealthRoute
   '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/panel'
+    | '/panel/unlock'
     | '/api/public/telegram/admin'
     | '/api/public/telegram/health'
     | '/api/public/telegram/setup'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/panel'
+    | '/panel/unlock'
     | '/api/public/telegram/admin'
     | '/api/public/telegram/health'
     | '/api/public/telegram/setup'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/panel'
+    | '/panel/unlock'
     | '/api/public/telegram/admin'
     | '/api/public/telegram/health'
     | '/api/public/telegram/setup'
@@ -114,7 +126,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  PanelRoute: typeof PanelRoute
+  PanelRoute: typeof PanelRouteWithChildren
   ApiPublicTelegramAdminRoute: typeof ApiPublicTelegramAdminRoute
   ApiPublicTelegramHealthRoute: typeof ApiPublicTelegramHealthRoute
   ApiPublicTelegramSetupRoute: typeof ApiPublicTelegramSetupRoute
@@ -137,6 +149,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/panel/unlock': {
+      id: '/panel/unlock'
+      path: '/unlock'
+      fullPath: '/panel/unlock'
+      preLoaderRoute: typeof PanelUnlockRouteImport
+      parentRoute: typeof PanelRoute
     }
     '/api/public/telegram/warehouse': {
       id: '/api/public/telegram/warehouse'
@@ -176,9 +195,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface PanelRouteChildren {
+  PanelUnlockRoute: typeof PanelUnlockRoute
+}
+
+const PanelRouteChildren: PanelRouteChildren = {
+  PanelUnlockRoute: PanelUnlockRoute,
+}
+
+const PanelRouteWithChildren = PanelRoute._addFileChildren(PanelRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  PanelRoute: PanelRoute,
+  PanelRoute: PanelRouteWithChildren,
   ApiPublicTelegramAdminRoute: ApiPublicTelegramAdminRoute,
   ApiPublicTelegramHealthRoute: ApiPublicTelegramHealthRoute,
   ApiPublicTelegramSetupRoute: ApiPublicTelegramSetupRoute,
