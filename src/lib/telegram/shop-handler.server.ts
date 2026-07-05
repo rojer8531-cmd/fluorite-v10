@@ -1444,10 +1444,27 @@ async function askName(telegram_id: number, chat_id: number) {
 
 // ===== Handler principal =====
 export async function handleShopUpdate(update: Update): Promise<void> {
-  if (update.message) {
-    await handleMessage(update.message);
-  } else if (update.callback_query) {
-    await handleCallback(update.callback_query);
+  try {
+    if (update.message) {
+      await handleMessage(update.message);
+    } else if (update.callback_query) {
+      await handleCallback(update.callback_query);
+    }
+  } catch (err) {
+    console.error("[shop handler] fatal", err);
+    const cb = update.callback_query;
+    const chat_id = update.message?.chat.id ?? cb?.message?.chat.id ?? cb?.from.id;
+    if (cb?.id) {
+      answerCallbackQuery("shop", cb.id, "Procesando. Intenta de nuevo en unos segundos.", true).catch(() => {});
+    }
+    if (chat_id) {
+      await sendMessage(
+        "shop",
+        chat_id,
+        `El bot está activo. No se pudo completar esa acción en este intento; vuelve a tocar la opción.`,
+        { reply_markup: bottomKeyboard() },
+      ).catch(() => {});
+    }
   }
 }
 
@@ -1719,6 +1736,10 @@ async function handleCallback(cb: TgCallback) {
   }
   if (data.startsWith("rcc:")) return askRechargeAmount(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("rcpay:")) return startRechargeReceipt(telegram_id, chat_id, data.slice(6));
+
+  await sendMessage("shop", chat_id, `Esa opción ya no está disponible. Volví al menú principal.`, {
+    reply_markup: bottomKeyboard(),
+  }).catch(() => {});
 }
 
 async function showOrderStatus(telegram_id: number, chat_id: number) {

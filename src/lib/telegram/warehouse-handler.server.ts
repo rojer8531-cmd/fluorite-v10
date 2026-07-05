@@ -200,6 +200,21 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
   try {
     if (update.message) await handleMessage(update.message);
     else if (update.callback_query) await handleCallback(update.callback_query);
+  } catch (err) {
+    console.error("[warehouse handler] fatal", err);
+    const cb = update.callback_query;
+    const fallbackChat = chat_id ?? cb?.from.id ?? null;
+    if (cb?.id) {
+      answerCallbackQuery("warehouse", cb.id, "Error temporal. Toca de nuevo.", true).catch(() => {});
+    }
+    if (fallbackChat) {
+      await sendMessage(
+        "warehouse",
+        fallbackChat,
+        `Almacén activo. Esa acción tuvo un error temporal; intenta nuevamente.`,
+        { reply_markup: adminBottomKeyboard() },
+      ).catch(() => {});
+    }
   } finally {
     _currentAdminId = null;
   }
@@ -1854,6 +1869,10 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminStockView(chat_id);
     return;
   }
+  if (data === "akp:pend") {
+    if (chat_id) await sendMessage("warehouse", chat_id, `Los comprobantes pendientes se gestionan desde el bot admin principal.`);
+    return;
+  }
   if (data === "akp:users") {
     if (chat_id) await adminUsuarios(chat_id);
     return;
@@ -2036,5 +2055,11 @@ async function handleCallback(cb: TgCallback) {
     await answerCallbackQuery("warehouse", cb.id, "Usuario bloqueado.", true);
     if (chat_id) await adminUserDetail(chat_id, tgId);
     return;
+  }
+
+  if (chat_id) {
+    await sendMessage("warehouse", chat_id, `Esa opción ya no está disponible. Usa la barra inferior para continuar.`, {
+      reply_markup: adminBottomKeyboard(),
+    });
   }
 }
