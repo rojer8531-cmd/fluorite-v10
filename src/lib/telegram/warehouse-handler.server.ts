@@ -322,12 +322,116 @@ async function markReceiptStatus(
 }
 
 
+// Mapa mínimo de países LATAM/comunes para deducir country_code desde el texto pegado.
+const COUNTRY_MAP: Record<string, string> = {
+  argentina: "AR", colombia: "CO", mexico: "MX", "méxico": "MX", peru: "PE", "perú": "PE",
+  chile: "CL", venezuela: "VE", ecuador: "EC", bolivia: "BO", paraguay: "PY",
+  uruguay: "UY", brasil: "BR", brazil: "BR", espana: "ES", "españa": "ES", spain: "ES",
+  "estados unidos": "US", usa: "US", "eeuu": "US", "ee.uu": "US", "ee.uu.": "US",
+  "republica dominicana": "DO", "república dominicana": "DO", panama: "PA", "panamá": "PA",
+  "costa rica": "CR", guatemala: "GT", honduras: "HN", "el salvador": "SV",
+  nicaragua: "NI", cuba: "CU", "puerto rico": "PR",
+};
+
+interface ParsedPaymentMethod {
+  country_code: string;
+  country_name: string;
+  method_name: string;
+  holder_name: string;
+  account_info: string;
+  currency: string;
+  usd_rate: number;
+}
+
+function parsePaymentMethodPaste(raw: string): ParsedPaymentMethod | null {
+  if (!raw) return null;
+  // Eliminar emojis para trabajar con texto plano; guardamos original para líneas específicas.
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 3) return null;
+
+  // Buscar línea del país: "Métodos De Pago - <País>"
+  let country_name = "";
+  for (const l of lines) {
+    const m = l.match(/M[eé]todos?\s+De?\s+Pago\s*-\s*([^\n]+)$/i);
+    if (m) {
+      country_name = m[1].replace(/[^\p{L}\s.]/gu, "").trim();
+      break;
+    }
+  }
+  if (!country_name) return null;
+  const cc = COUNTRY_MAP[country_name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")];
+  if (!cc) return null;
+
+  // Banco/método: línea con 🏦
+  let method_name = "";
+  for (const l of lines) {
+    if (l.includes("🏦")) {
+      method_name = l.replace(/🏦|✅|❌/g, "").trim();
+      break;
+    }
+  }
+  if (!method_name) return null;
+
+  // Titular: 🪪 Nombre: ...
+  let holder_name = "";
+  for (const l of lines) {
+    const m = l.match(/🪪\s*(?:Nombre|Titular)\s*:\s*(.+)/i) ?? l.match(/(?:Nombre|Titular)\s*:\s*(.+)/i);
+    if (m) { holder_name = m[1].trim(); break; }
+  }
+  if (!holder_name) return null;
+
+  // Cuenta / alias / CBU / número: 📋 <cualquier etiqueta>: valor
+  let account_info = "";
+  for (const l of lines) {
+    const m = l.match(/📋\s*[^:]*:\s*(.+)/) ?? l.match(/(?:Alias|CBU|CVU|Cuenta|N[uú]mero|Cta)\s*:\s*(.+)/i);
+    if (m) { account_info = m[1].trim(); break; }
+  }
+  if (!account_info) return null;
+
+  // Monto USD y monto local para calcular la tasa
+  let amount_usd: number | null = null;
+  let amount_local: number | null = null;
+  let currency = "USD";
+  for (const l of lines) {
+    const usdM = l.match(/(?:Monto|USD)\s*:?\s*([\d.,]+)\s*USD/i);
+    if (usdM) amount_usd = parseNumberLoose(usdM[1]);
+    const localM = l.match(/(?:Pagas|Total)\s*:?\s*([\d.,]+)\s*([A-Z]{3})/);
+    if (localM) {
+      amount_local = parseNumberLoose(localM[1]);
+      currency = localM[2].toUpperCase();
+    }
+  }
+  let usd_rate = 1;
+  if (amount_usd && amount_local && amount_usd > 0) {
+    usd_rate = Math.round((amount_local / amount_usd) * 100) / 100;
+  }
+  if (currency === "USD") usd_rate = 1;
+
+  return {
+    country_code: cc,
+    country_name,
+    method_name,
+    holder_name,
+    account_info,
+    currency,
+    usd_rate: Number.isFinite(usd_rate) && usd_rate > 0 ? usd_rate : 1,
+  };
+}
+
+function parseNumberLoose(s: string): number | null {
+  if (!s) return null;
+  const cleaned = s.replace(/[^\d.,-]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
 
 // ===== Gestión de métodos de pago =====
+
 async function pmMenu(chat_id: number) {
   await sendMessage("warehouse", chat_id, `<b>Gestión de Métodos de Pago</b>`, {
     reply_markup: {
       inline_keyboard: [
+        [{ text: "Pegar Método (rápido)", callback_data: "pm:paste" }],
         [{ text: "Agregar Método", callback_data: "pm:add" }],
         [{ text: "Editar Método", callback_data: "pm:editlist" }],
         [{ text: "Eliminar Método", callback_data: "pm:dellist" }],
@@ -336,6 +440,7 @@ async function pmMenu(chat_id: number) {
     },
   });
 }
+
 
 async function pmListAll(chat_id: number, mode: "edit" | "del") {
   if (mode === "edit") {
@@ -1369,6 +1474,108 @@ async function handleMessage(msg: TgMessage) {
   if (msg.reply_to_message) {
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
 
+    // ===== Envío de key manual desde el almacén =====
+    const almSendMatch = replySource.match(/ALMSENDKEY:([a-f0-9-]{36})/);
+    if (almSendMatch && text.length > 0) {
+      const orderId = almSendMatch[1];
+      const { data: ord } = await sb
+        .from("orders")
+        .select("id, user_id, telegram_id, product_id, price_id, status")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (!ord) {
+        await sendMessage("warehouse", msg.chat.id, `Orden no encontrada.`);
+        return;
+      }
+      await Promise.all([
+        sb.from("order_keys").insert({
+          order_id: ord.id,
+          user_id: ord.user_id,
+          key_value: text,
+        }),
+        sb.from("orders").update({ status: "delivered" }).eq("id", ord.id),
+        sb.from("admin_logs").insert({
+          admin_telegram_id: msg.from.id,
+          action: "manual_key_delivered",
+          target_type: "order",
+          target_id: ord.id,
+        }),
+      ]);
+      const [{ data: u }, { data: prod }, { data: pr }] = await Promise.all([
+        sb.from("bot_users").select("telegram_id, chat_id").eq("id", ord.user_id).single(),
+        ord.product_id
+          ? sb.from("products").select("name").eq("id", ord.product_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        ord.price_id
+          ? sb.from("product_prices").select("duration_label").eq("id", ord.price_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      if (u) {
+        await notifyUserKey({
+          telegram_id: u.telegram_id,
+          chat_id: u.chat_id,
+          key_value: text,
+          product_name: (prod as { name: string } | null)?.name,
+          duration_label: (pr as { duration_label: string } | null)?.duration_label,
+        });
+      }
+      deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+      deleteMessage("warehouse", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ Key enviada a <code>${u?.telegram_id ?? ord.telegram_id}</code>.`,
+      );
+      return;
+    }
+
+    // ===== Pegar Método (parser rápido con formato de recarga) =====
+    if (replySource.includes("PMPASTE")) {
+      const parsed = parsePaymentMethodPaste(text);
+      if (!parsed) {
+        await sendMessage(
+          "warehouse",
+          msg.chat.id,
+          `No pude leer el método. Verificá que incluya país, banco, titular y cuenta/alias.`,
+        );
+        return;
+      }
+      // Reemplaza cualquier método existente para ese país (mismo criterio que PMSETCC)
+      await sb.from("payment_methods").delete().eq("country_code", parsed.country_code);
+      const { data: inserted, error } = await sb.from("payment_methods").insert({
+        country_code: parsed.country_code,
+        country_name: parsed.country_name,
+        method_name: parsed.method_name,
+        holder_name: parsed.holder_name,
+        account_info: parsed.account_info,
+        extra_info: null,
+        currency: parsed.currency,
+        usd_rate: parsed.usd_rate,
+        active: true,
+      }).select().single();
+      if (error || !inserted) {
+        await sendMessage("warehouse", msg.chat.id, `Error guardando: ${error?.message ?? "desconocido"}`);
+        return;
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "pm_paste",
+        target_type: "payment_method",
+        target_id: inserted.id,
+        details: parsed as never,
+      });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ <b>Método actualizado para ${parsed.country_name}</b>\n\n` +
+          `🏦 ${parsed.method_name}\n🪪 ${parsed.holder_name}\n📋 <code>${parsed.account_info}</code>\n💱 ${parsed.currency} · rate ${parsed.usd_rate}\n\n` +
+          `La información anterior del país fue reemplazada.`,
+      );
+      return;
+    }
+
+
+
 
 
 
@@ -1911,6 +2118,54 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await sendMessage("warehouse", chat_id, `Método eliminado.`);
     return;
   }
+
+  // ===== Envío de key manual (redirigido desde el shop cuando no hay stock) =====
+  if (data.startsWith("alm:sendkey:")) {
+    if (!chat_id) return;
+    const order_id = data.slice("alm:sendkey:".length);
+    const { data: ord } = await sb
+      .from("orders")
+      .select("id, telegram_id, products(name), product_prices(duration_label)")
+      .eq("id", order_id)
+      .maybeSingle();
+    if (!ord) {
+      await sendMessage("warehouse", chat_id, `Orden no encontrada.`);
+      return;
+    }
+    const name = (ord as { products: { name: string } | null }).products?.name ?? "—";
+    const dur = (ord as { product_prices: { duration_label: string } | null }).product_prices?.duration_label ?? "—";
+    const sent = await sendMessage(
+      "warehouse",
+      chat_id,
+      `<b>ALMSENDKEY:${order_id}</b>\n\n` +
+        `Producto  ${name}\n` +
+        `Duración  ${dur}\n` +
+        `Usuario   <code>${ord.telegram_id}</code>\n\n` +
+        `Respondé a este mensaje pegando la key. Se enviará solo a este usuario.`,
+      { reply_markup: { force_reply: true, selective: true } },
+    );
+    if (sent.ok && sent.result) {
+      await sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id);
+    }
+    return;
+  }
+
+  // ===== Pegar Método (rápido) =====
+  if (data === "pm:paste") {
+    if (chat_id) {
+      await sendMessage(
+        "warehouse",
+        chat_id,
+        `<b>PMPASTE</b>\n\n` +
+          `Respondé a este mensaje pegando el método de pago con este formato:\n\n` +
+          `<code>💳 Métodos De Pago - Argentina 🇦🇷\n\n🆔 Recarga: TP...\n💰 Monto: 10.00 USD\n🧾 Pagas: 16,000.00 ARS\n\n🏦 ✅ MERCADO PAGO\n🪪 Nombre: Jeremías Velozo\n📋 Alias: jerevelozo\n💵 Total: 16,000.00 ARS</code>\n\n` +
+          `Detecto país, banco, titular, cuenta, moneda y tasa automáticamente. Reemplaza al método anterior del país.`,
+        { reply_markup: { force_reply: true, selective: true } },
+      );
+    }
+    return;
+  }
+
 
   if (data.startsWith("akprod:")) {
     if (chat_id) await adminListDurations(chat_id, data.slice(7));

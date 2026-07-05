@@ -7,8 +7,10 @@ import {
   answerCallbackQuery,
   editMessageText,
   getAdminChatId,
+  getWarehouseChatId,
   tg,
 } from "./api.server";
+
 import {
   getOrCreateUser,
   updateUser,
@@ -1020,12 +1022,12 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     return;
   }
 
-  // Sin stock → entrega manual: notificar al admin con botón "Enviar Key"
-  const adminChat = getAdminChatId();
-  if (adminChat) {
-    const sentAdmin = await sendMessage(
-      "admin",
-      adminChat,
+  // Sin stock → entrega manual: notificar al ALMACÉN (no al admin) con botón "Enviar Key"
+  const warehouseChat = getWarehouseChatId();
+  if (warehouseChat) {
+    const sentWh = await sendMessage(
+      "warehouse",
+      warehouseChat,
       `<b>Nueva compra · entrega manual</b>\n\n` +
         `Producto  ${(price as { products: { name: string } }).products.name}\n` +
         `Duración  ${price.duration_label}\n` +
@@ -1036,18 +1038,19 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: "Enviar Key", callback_data: `adm:sendkey:${order.id}` }],
+            [{ text: "Enviar Key", callback_data: `alm:sendkey:${order.id}` }],
           ],
         },
       },
     );
-    if (sentAdmin.ok && sentAdmin.result) {
+    if (sentWh.ok && sentWh.result) {
       await sb
         .from("orders")
-        .update({ admin_message_id: sentAdmin.result.message_id })
+        .update({ admin_message_id: sentWh.result.message_id })
         .eq("id", order.id);
     }
   }
+
 
   await screen(
     telegram_id,
@@ -1210,15 +1213,42 @@ async function handleReceiptPhoto(msg: TgMessage) {
   if (ocr?.recipient && o.payment_methods?.holder_name) {
     if (!recipientMatches(ocr.recipient, o.payment_methods.holder_name, o.payment_methods.account_info)) {
       await notifyUserInvalidReceipt(chat_id, {
-        reason: "el destinatario del pago no coincide con nuestra cuenta.",
+        reason: "el destinatario del pago no coincide con la cuenta indicada.",
         holder: o.payment_methods.holder_name,
         account: o.payment_methods.account_info,
       });
       await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
       await sb.from("receipts").delete().eq("id", receipt!.id);
+      await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
       return;
     }
   }
+
+  // IA: verificar monto contra total esperado (USD o moneda local).
+  // Solo bloqueamos cuando la IA leyó un monto claro y está fuera de tolerancia.
+  if (ocr && typeof ocr.amount === "number" && Number.isFinite(ocr.amount)) {
+    const expectedUsd = Number(o.total_usd);
+    const expectedLocal = o.total_local ? Number(o.total_local) : null;
+    const tolUsd = Math.max(1, expectedUsd * 0.05);
+    const tolLocal = expectedLocal ? Math.max(2, expectedLocal * 0.05) : 0;
+    const matchesUsd = Math.abs(ocr.amount - expectedUsd) <= tolUsd;
+    const matchesLocal = expectedLocal ? Math.abs(ocr.amount - expectedLocal) <= tolLocal : false;
+    if (!matchesUsd && !matchesLocal) {
+      const expectedTxt = expectedLocal
+        ? `$${expectedUsd.toFixed(2)} USD (${expectedLocal.toLocaleString("es-AR")} ${o.currency ?? ""})`
+        : `$${expectedUsd.toFixed(2)} USD`;
+      await notifyUserInvalidReceipt(chat_id, {
+        reason: `el monto del comprobante (${ocr.amount}) no coincide con el total a pagar (${expectedTxt}).`,
+        holder: o.payment_methods?.holder_name ?? null,
+        account: o.payment_methods?.account_info ?? null,
+      });
+      await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+      await sb.from("receipts").delete().eq("id", receipt!.id);
+      await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
+      return;
+    }
+  }
+
 
 
 
