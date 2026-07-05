@@ -346,9 +346,20 @@ async function showUserCard(chat_id: number, telegram_id: number) {
 async function handleMessage(msg: TgMessage) {
   if (!msg.from) return;
   if (!isAdmin(msg.from.id)) return;
-  if (!(await checkRateLimit(msg.from.id, "admin_msg", 30, 10))) return;
-
   const text = (msg.text ?? "").trim();
+
+  if (text === "/start" || text === "/help" || text === "/panel") {
+    const sent = await sendMessage(
+      msg.chat.id,
+      `<b>Panel Admin ✅</b>\nUsá la barra inferior para todas las funciones.`,
+      { reply_markup: adminBottomKeyboard() },
+    );
+    patchContext(msg.from.id, { admin_bar_shown: true }).catch((err) => console.error("[admin /start] state", err));
+    if (!sent.ok) console.error("[admin /start] immediate send failed", sent.description);
+    return;
+  }
+
+  if (!(await checkRateLimit(msg.from.id, "admin_msg", 30, 10))) return;
 
   // ===== flujo de búsqueda / mensaje directo a usuario =====
   const adminState = await getState(msg.from.id);
@@ -540,17 +551,6 @@ async function handleMessage(msg: TgMessage) {
     return;
   }
 
-
-  if (text === "/start" || text === "/help" || text === "/panel") {
-    await patchContext(msg.from.id, { admin_bar_shown: false });
-    await sendMessage(
-      msg.chat.id,
-      `<b>Panel Admin ✅</b>\nUsá la barra inferior para todas las funciones.`,
-      { reply_markup: adminBottomKeyboard() },
-    );
-    await patchContext(msg.from.id, { admin_bar_shown: true });
-    return;
-  }
 
   if (text === "/pendientes") return adminPendientes(msg.chat.id);
   if (text === "/bloqueos") return adminBloqueos(msg.chat.id);

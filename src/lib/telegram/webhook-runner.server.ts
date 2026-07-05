@@ -9,7 +9,7 @@ export async function runTelegramWebhook(
   // Ventana mínima para que el primer sendMessage/answerCallbackQuery
   // se despache antes de devolver 200 a Telegram. Si el handler tarda
   // más, soltamos la respuesta y dejamos el resto en background.
-  ackAfterMs = 1_500,
+  ackAfterMs = 8_000,
 ) {
   const job = work()
     .catch((err) => {
