@@ -372,6 +372,33 @@ export type Database = {
           },
         ]
       }
+      panel_action_logs: {
+        Row: {
+          action: string
+          created_at: string
+          entity: string | null
+          entity_id: string | null
+          id: string
+          metadata: Json
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          entity?: string | null
+          entity_id?: string | null
+          id?: string
+          metadata?: Json
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          entity?: string | null
+          entity_id?: string | null
+          id?: string
+          metadata?: Json
+        }
+        Relationships: []
+      }
       payment_methods: {
         Row: {
           account_info: string
@@ -420,6 +447,27 @@ export type Database = {
         }
         Relationships: []
       }
+      product_categories: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       product_prices: {
         Row: {
           active: boolean
@@ -427,8 +475,11 @@ export type Database = {
           duration_days: number
           duration_label: string
           id: string
+          original_price_usd: number | null
           price_usd: number
           product_id: string
+          sale_ends_at: string | null
+          sale_price_usd: number | null
           sort_order: number
           updated_at: string
         }
@@ -438,8 +489,11 @@ export type Database = {
           duration_days: number
           duration_label: string
           id?: string
+          original_price_usd?: number | null
           price_usd: number
           product_id: string
+          sale_ends_at?: string | null
+          sale_price_usd?: number | null
           sort_order?: number
           updated_at?: string
         }
@@ -449,8 +503,11 @@ export type Database = {
           duration_days?: number
           duration_label?: string
           id?: string
+          original_price_usd?: number | null
           price_usd?: number
           product_id?: string
+          sale_ends_at?: string | null
+          sale_price_usd?: number | null
           sort_order?: number
           updated_at?: string
         }
@@ -789,6 +846,10 @@ export type Database = {
     Functions: {
       apply_referral: {
         Args: { _new_user: number; _referrer: number }
+        Returns: Json
+      }
+      purchase_key_atomic: {
+        Args: { _price_id: string; _telegram_id: number }
         Returns: Json
       }
     }
