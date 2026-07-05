@@ -91,49 +91,66 @@ async function ocrOnce(
 }
 
 /**
- * OCR agresivo: 3 intentos con timeouts muy cortos (3s, 5s, 8s).
- * Máximo 16 segundos totales. Si falla todo, devuelve null.
- * NUNCA bloquea el Event Loop más de lo necesario.
- * Ejecutada en BACKGROUND: el bot responde inmediatamente al usuario.
+ * OCR robusto: 3 intentos con timeouts realistas (12s, 20s, 30s).
+ * Gemini Vision suele tardar 5-15s; timeouts cortos hacían que abortara
+ * antes de responder. Como se ejecuta en background (webhook ya ACK-eado
+ * a los 1.5s), ampliar timeouts NO congela el bot.
+ *
+ * Garantías:
+ *  - NUNCA lanza excepción (siempre devuelve OcrResult | null).
+ *  - Cap total duro de 70s vía Promise.race — no puede quedar pendiente.
+ *  - Si todo falla, devuelve null y el comprobante sigue al admin con
+ *    etiqueta "OCR: sin lectura" (lo maneja formatOcrSummary).
  */
 export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promise<OcrResult | null> {
-  const key = process.env.LOVABLE_API_KEY;
-  if (!key) {
-    console.error("[ocr] missing LOVABLE_API_KEY");
+  try {
+    const key = process.env.LOVABLE_API_KEY;
+    if (!key) {
+      console.error("[ocr] missing LOVABLE_API_KEY");
+      return null;
+    }
+    const b64 = Buffer.from(bytes).toString("base64");
+    const dataUrl = `data:${mime};base64,${b64}`;
+
+    const run = async (): Promise<OcrResult | null> => {
+      const timeouts = [12_000, 20_000, 30_000];
+      for (let i = 0; i < timeouts.length; i++) {
+        try {
+          console.log(`[ocr] attempt ${i + 1}/${timeouts.length} timeout=${timeouts[i]}ms`);
+          const result = await ocrOnce(key, dataUrl, timeouts[i]);
+          if (result) {
+            console.log(`[ocr] success on attempt ${i + 1}`);
+            return result;
+          }
+          console.log(`[ocr] attempt ${i + 1} null, retrying...`);
+        } catch (e) {
+          console.error(
+            `[ocr] attempt ${i + 1} exception`,
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+        if (i < timeouts.length - 1) {
+          // Backoff exponencial suave: 500ms, 1200ms
+          const delayMs = 500 * Math.pow(2, i);
+          await new Promise((r) => setTimeout(r, delayMs));
+        }
+      }
+      return null;
+    };
+
+    // Cap total duro: aunque los timeouts individuales sumen más, jamás
+    // dejamos la promesa colgada más de 70s.
+    const hardCap = new Promise<null>((resolve) => setTimeout(() => {
+      console.error("[ocr] hard cap 70s reached, giving up");
+      resolve(null);
+    }, 70_000));
+
+    return await Promise.race([run(), hardCap]);
+  } catch (e) {
+    // Última red de seguridad: jamás propagar.
+    console.error("[ocr] unexpected top-level error", e instanceof Error ? e.message : String(e));
     return null;
   }
-  const b64 = Buffer.from(bytes).toString("base64");
-  const dataUrl = `data:${mime};base64,${b64}`;
-
-  // Timeouts AGRESIVOS: 3s → 5s → 8s = 16s máximo total (+ 500ms entre intentos = ~17s máx)
-  // MUCHO más rápido que los 75s anteriores que bloqueaba TODO.
-  const timeouts = [3_000, 5_000, 8_000];
-  let lastErr: unknown = null;
-  
-  for (let i = 0; i < timeouts.length; i++) {
-    try {
-      console.log(`[ocr] attempt ${i + 1}/${timeouts.length} with ${timeouts[i]}ms timeout`);
-      const result = await ocrOnce(key, dataUrl, timeouts[i]);
-      if (result) {
-        console.log(`[ocr] success on attempt ${i + 1}`);
-        return result;
-      }
-      // Null significa error recoverable, intentar de nuevo
-      console.log(`[ocr] attempt ${i + 1} returned null, retrying...`);
-    } catch (e) {
-      lastErr = e;
-      console.error(`[ocr] attempt ${i + 1} caught exception`, e instanceof Error ? e.message : String(e));
-      // Si es retry-able (429/5xx), esperar antes de reintentar
-      if (i < timeouts.length - 1) {
-        const delayMs = 200 * (i + 1);
-        console.log(`[ocr] waiting ${delayMs}ms before retry...`);
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
-    }
-  }
-  
-  console.error("[ocr] all 3 attempts exhausted, returning null");
-  return null;
 }
 
 /**
