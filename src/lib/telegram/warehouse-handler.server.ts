@@ -352,7 +352,7 @@ function parsePaymentMethodPaste(raw: string): ParsedPaymentMethod | null {
   // Buscar línea del país: "Métodos De Pago - <País>"
   let country_name = "";
   for (const l of lines) {
-    const m = l.match(/M[eé]todos?\s+De?\s+Pago\s*-\s*([^\n]+?)(?:\s+[🇦-🇿]+)?$/i);
+    const m = l.match(/M[eé]todos?\s+De?\s+Pago\s*-\s*([^\n]+)$/i);
     if (m) {
       country_name = m[1].replace(/[^\p{L}\s.]/gu, "").trim();
       break;
