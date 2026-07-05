@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PanelRouteImport } from './routes/panel'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicTelegramWarehouseRouteImport } from './routes/api/public/telegram/warehouse'
 import { Route as ApiPublicTelegramShopRouteImport } from './routes/api/public/telegram/shop'
@@ -16,6 +17,11 @@ import { Route as ApiPublicTelegramSetupRouteImport } from './routes/api/public/
 import { Route as ApiPublicTelegramHealthRouteImport } from './routes/api/public/telegram/health'
 import { Route as ApiPublicTelegramAdminRouteImport } from './routes/api/public/telegram/admin'
 
+const PanelRoute = PanelRouteImport.update({
+  id: '/panel',
+  path: '/panel',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -50,6 +56,7 @@ const ApiPublicTelegramAdminRoute = ApiPublicTelegramAdminRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/panel': typeof PanelRoute
   '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
   '/api/public/telegram/health': typeof ApiPublicTelegramHealthRoute
   '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
@@ -58,6 +65,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/panel': typeof PanelRoute
   '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
   '/api/public/telegram/health': typeof ApiPublicTelegramHealthRoute
   '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
@@ -67,6 +75,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/panel': typeof PanelRoute
   '/api/public/telegram/admin': typeof ApiPublicTelegramAdminRoute
   '/api/public/telegram/health': typeof ApiPublicTelegramHealthRoute
   '/api/public/telegram/setup': typeof ApiPublicTelegramSetupRoute
@@ -77,6 +86,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/panel'
     | '/api/public/telegram/admin'
     | '/api/public/telegram/health'
     | '/api/public/telegram/setup'
@@ -85,6 +95,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/panel'
     | '/api/public/telegram/admin'
     | '/api/public/telegram/health'
     | '/api/public/telegram/setup'
@@ -93,6 +104,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/panel'
     | '/api/public/telegram/admin'
     | '/api/public/telegram/health'
     | '/api/public/telegram/setup'
@@ -102,6 +114,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  PanelRoute: typeof PanelRoute
   ApiPublicTelegramAdminRoute: typeof ApiPublicTelegramAdminRoute
   ApiPublicTelegramHealthRoute: typeof ApiPublicTelegramHealthRoute
   ApiPublicTelegramSetupRoute: typeof ApiPublicTelegramSetupRoute
@@ -111,6 +124,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/panel': {
+      id: '/panel'
+      path: '/panel'
+      fullPath: '/panel'
+      preLoaderRoute: typeof PanelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -158,6 +178,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  PanelRoute: PanelRoute,
   ApiPublicTelegramAdminRoute: ApiPublicTelegramAdminRoute,
   ApiPublicTelegramHealthRoute: ApiPublicTelegramHealthRoute,
   ApiPublicTelegramSetupRoute: ApiPublicTelegramSetupRoute,
