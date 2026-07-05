@@ -328,6 +328,7 @@ async function pmMenu(chat_id: number) {
   await sendMessage("warehouse", chat_id, `<b>Gestión de Métodos de Pago</b>`, {
     reply_markup: {
       inline_keyboard: [
+        [{ text: "Pegar Método (rápido)", callback_data: "pm:paste" }],
         [{ text: "Agregar Método", callback_data: "pm:add" }],
         [{ text: "Editar Método", callback_data: "pm:editlist" }],
         [{ text: "Eliminar Método", callback_data: "pm:dellist" }],
@@ -336,6 +337,7 @@ async function pmMenu(chat_id: number) {
     },
   });
 }
+
 
 async function pmListAll(chat_id: number, mode: "edit" | "del") {
   if (mode === "edit") {
