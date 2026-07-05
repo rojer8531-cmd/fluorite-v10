@@ -11,12 +11,17 @@ export async function runTelegramWebhook(
   // más, soltamos la respuesta y dejamos el resto en background.
   ackAfterMs = 8_000,
 ) {
+  const startedAt = Date.now();
   const job = work()
     .catch((err) => {
       console.error(`[${label} webhook] error`, err);
     })
     .finally(() => {
       inflight.delete(job);
+      const elapsed = Date.now() - startedAt;
+      if (elapsed > 12_000) {
+        console.warn(`[${label} webhook] slow handler ${elapsed}ms`);
+      }
     });
   inflight.add(job);
 

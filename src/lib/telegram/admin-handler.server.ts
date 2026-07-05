@@ -100,8 +100,24 @@ export async function handleAdminUpdate(update: Update): Promise<void> {
     ensureAdminBar(chat_id, admin_id).catch(() => {});
   }
 
-  if (update.message) await handleMessage(update.message);
-  else if (update.callback_query) await handleCallback(update.callback_query);
+  try {
+    if (update.message) await handleMessage(update.message);
+    else if (update.callback_query) await handleCallback(update.callback_query);
+  } catch (err) {
+    console.error("[admin handler] fatal", err);
+    const cb = update.callback_query;
+    const fallbackChat = chat_id ?? cb?.from.id ?? null;
+    if (cb?.id) {
+      answerCallbackQuery("admin", cb.id, "Error temporal. Toca de nuevo.", true).catch(() => {});
+    }
+    if (fallbackChat) {
+      await sendMessage(
+        fallbackChat,
+        `El bot admin está activo. Esa acción tuvo un error temporal; intenta nuevamente.`,
+        { reply_markup: adminBottomKeyboard() },
+      ).catch(() => {});
+    }
+  }
 }
 
 async function ensureAdminBar(chat_id: number, admin_id: number) {
@@ -183,6 +199,21 @@ async function adminPendientes(chat_id: number) {
           .from("receipts")
           .update({ admin_message_id: sent.result.message_id })
           .eq("order_id", o.id);
+      } else {
+        await sendMessage(chat_id, caption, {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
+                { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
+              ],
+              [
+                { text: "🚫 Bloquear", callback_data: `ord:block:${o.telegram_id}` },
+                { text: "🔑 Enviar key", callback_data: `ord:sendkey:${o.id}` },
+              ],
+            ],
+          },
+        });
       }
     } else {
       await sendMessage(chat_id, caption, {
@@ -901,6 +932,12 @@ async function handleCallback(cb: TgCallback) {
         .eq("id", order_id);
     }
     return;
+  }
+
+  if (chat_id) {
+    await sendMessage(chat_id, `Esa opción ya no está disponible. Usa la barra inferior para continuar.`, {
+      reply_markup: adminBottomKeyboard(),
+    });
   }
 }
 
