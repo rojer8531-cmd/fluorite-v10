@@ -1912,6 +1912,54 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
 
+  // ===== Envío de key manual (redirigido desde el shop cuando no hay stock) =====
+  if (data.startsWith("alm:sendkey:")) {
+    if (!chat_id) return;
+    const order_id = data.slice("alm:sendkey:".length);
+    const { data: ord } = await sb
+      .from("orders")
+      .select("id, telegram_id, products(name), product_prices(duration_label)")
+      .eq("id", order_id)
+      .maybeSingle();
+    if (!ord) {
+      await sendMessage("warehouse", chat_id, `Orden no encontrada.`);
+      return;
+    }
+    const name = (ord as { products: { name: string } | null }).products?.name ?? "—";
+    const dur = (ord as { product_prices: { duration_label: string } | null }).product_prices?.duration_label ?? "—";
+    const sent = await sendMessage(
+      "warehouse",
+      chat_id,
+      `<b>ALMSENDKEY:${order_id}</b>\n\n` +
+        `Producto  ${name}\n` +
+        `Duración  ${dur}\n` +
+        `Usuario   <code>${ord.telegram_id}</code>\n\n` +
+        `Respondé a este mensaje pegando la key. Se enviará solo a este usuario.`,
+      { reply_markup: { force_reply: true, selective: true } },
+    );
+    if (sent.ok && sent.result) {
+      await sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id);
+    }
+    return;
+  }
+
+  // ===== Pegar Método (rápido) =====
+  if (data === "pm:paste") {
+    if (chat_id) {
+      await sendMessage(
+        "warehouse",
+        chat_id,
+        `<b>PMPASTE</b>\n\n` +
+          `Respondé a este mensaje pegando el método de pago con este formato:\n\n` +
+          `<code>💳 Métodos De Pago - Argentina 🇦🇷\n\n🆔 Recarga: TP...\n💰 Monto: 10.00 USD\n🧾 Pagas: 16,000.00 ARS\n\n🏦 ✅ MERCADO PAGO\n🪪 Nombre: Jeremías Velozo\n📋 Alias: jerevelozo\n💵 Total: 16,000.00 ARS</code>\n\n` +
+          `Detecto país, banco, titular, cuenta, moneda y tasa automáticamente. Reemplaza al método anterior del país.`,
+        { reply_markup: { force_reply: true, selective: true } },
+      );
+    }
+    return;
+  }
+
+
   if (data.startsWith("akprod:")) {
     if (chat_id) await adminListDurations(chat_id, data.slice(7));
     return;
