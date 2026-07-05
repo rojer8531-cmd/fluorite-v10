@@ -1022,12 +1022,12 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     return;
   }
 
-  // Sin stock → entrega manual: notificar al admin con botón "Enviar Key"
-  const adminChat = getAdminChatId();
-  if (adminChat) {
-    const sentAdmin = await sendMessage(
-      "admin",
-      adminChat,
+  // Sin stock → entrega manual: notificar al ALMACÉN (no al admin) con botón "Enviar Key"
+  const warehouseChat = getWarehouseChatId();
+  if (warehouseChat) {
+    const sentWh = await sendMessage(
+      "warehouse",
+      warehouseChat,
       `<b>Nueva compra · entrega manual</b>\n\n` +
         `Producto  ${(price as { products: { name: string } }).products.name}\n` +
         `Duración  ${price.duration_label}\n` +
@@ -1038,18 +1038,19 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
       {
         reply_markup: {
           inline_keyboard: [
-            [{ text: "Enviar Key", callback_data: `adm:sendkey:${order.id}` }],
+            [{ text: "Enviar Key", callback_data: `alm:sendkey:${order.id}` }],
           ],
         },
       },
     );
-    if (sentAdmin.ok && sentAdmin.result) {
+    if (sentWh.ok && sentWh.result) {
       await sb
         .from("orders")
-        .update({ admin_message_id: sentAdmin.result.message_id })
+        .update({ admin_message_id: sentWh.result.message_id })
         .eq("id", order.id);
     }
   }
+
 
   await screen(
     telegram_id,
