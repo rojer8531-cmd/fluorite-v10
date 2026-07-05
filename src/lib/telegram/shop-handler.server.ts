@@ -1734,6 +1734,9 @@ async function handleCallback(cb: TgCallback) {
     await patchContext(telegram_id, { price_id: data.slice(4), qty: 1 });
     return payWithBalance(telegram_id, chat_id);
   }
+  if (data.startsWith("qty:")) return showCountries(telegram_id, chat_id, Number(data.slice(4)) || 1);
+  if (data === "pay:balance") return payWithBalance(telegram_id, chat_id);
+  if (data.startsWith("pm:")) return showPaymentInstructions(telegram_id, chat_id, data.slice(3));
   if (data.startsWith("rcc:")) return askRechargeAmount(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("rcpay:")) return startRechargeReceipt(telegram_id, chat_id, data.slice(6));
 
