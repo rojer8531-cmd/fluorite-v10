@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHash, timingSafeEqual } from "crypto";
+import { answerCallbackQuery } from "@/lib/telegram/api.server";
 import { handleAdminUpdate } from "@/lib/telegram/admin-handler.server";
 import { runTelegramWebhook } from "@/lib/telegram/webhook-runner.server";
 
@@ -22,6 +23,9 @@ export const Route = createFileRoute("/api/public/telegram/admin")({
         const got = request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
         if (!safeEq(got, expected)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
+        if (update?.callback_query?.id) {
+          answerCallbackQuery("admin", update.callback_query.id).catch(() => {});
+        }
         await runTelegramWebhook("admin", () => handleAdminUpdate(update));
         return Response.json({ ok: true });
       },
