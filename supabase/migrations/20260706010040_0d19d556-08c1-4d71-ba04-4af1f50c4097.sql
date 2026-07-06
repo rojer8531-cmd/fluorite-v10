@@ -1,0 +1,10 @@
+CREATE INDEX IF NOT EXISTS idx_products_active_sort ON public.products (active, sort_order);
+CREATE INDEX IF NOT EXISTS idx_product_prices_active_sort ON public.product_prices (active, sort_order);
+CREATE INDEX IF NOT EXISTS idx_payment_methods_active_country_sort ON public.payment_methods (active, country_code, sort_order);
+CREATE INDEX IF NOT EXISTS idx_payment_methods_active_country_name ON public.payment_methods (active, country_name);
+CREATE INDEX IF NOT EXISTS idx_stock_keys_available_price ON public.product_stock_keys (price_id) WHERE used = false;
+CREATE INDEX IF NOT EXISTS idx_stock_keys_available_product_price_created ON public.product_stock_keys (product_id, price_id, created_at) WHERE used = false;
+CREATE INDEX IF NOT EXISTS idx_orders_telegram_created ON public.orders (telegram_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_user_status ON public.orders (user_id, status);
+CREATE INDEX IF NOT EXISTS idx_receipts_status_order ON public.receipts (status, order_id);
+CREATE INDEX IF NOT EXISTS idx_receipt_fingerprints_unique_created ON public.receipt_fingerprints (file_unique_id, created_at DESC);
