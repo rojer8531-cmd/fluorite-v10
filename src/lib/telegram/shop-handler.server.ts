@@ -671,10 +671,11 @@ const COUNTRY_NAMES: Record<string, string> = {
 };
 
 async function askRechargeAmount(telegram_id: number, chat_id: number, country_code: string) {
-  // Set state y pantalla EN PARALELO; no esperamos al DB para resolver el nombre.
   const cc = country_code.toUpperCase();
   const countryName = COUNTRY_NAMES[cc] ?? cc;
-  setState(telegram_id, "recharge_amount", { country_code: cc }).catch(() => {});
+  // Este estado es crítico para la siguiente respuesta del usuario; debe quedar
+  // persistido antes de devolver 200 al webhook.
+  await setState(telegram_id, "recharge_amount", { country_code: cc });
   const min = await getMinRecharge();
   await screen(
     telegram_id,

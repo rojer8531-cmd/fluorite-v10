@@ -4,6 +4,14 @@ import { answerCallbackQuery } from "@/lib/telegram/api.server";
 import { handleAdminUpdate } from "@/lib/telegram/admin-handler.server";
 import { runTelegramWebhook } from "@/lib/telegram/webhook-runner.server";
 
+async function quickAck(callbackId?: string) {
+  if (!callbackId) return;
+  await Promise.race([
+    answerCallbackQuery("admin", callbackId),
+    new Promise<void>((resolve) => setTimeout(resolve, 700)),
+  ]).catch(() => {});
+}
+
 function deriveSecret(token: string) {
   return createHash("sha256").update(`tg-webhook:${token}`).digest("base64url");
 }
@@ -23,9 +31,7 @@ export const Route = createFileRoute("/api/public/telegram/admin")({
         const got = request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
         if (!safeEq(got, expected)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
-        if (update?.callback_query?.id) {
-          answerCallbackQuery("admin", update.callback_query.id).catch(() => {});
-        }
+        await quickAck(update?.callback_query?.id);
         await runTelegramWebhook("admin", () => handleAdminUpdate(update));
         return Response.json({ ok: true });
       },

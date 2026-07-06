@@ -1,10 +1,9 @@
-// Ejecuta el trabajo del webhook sin dejar a Telegram esperando.
-// El bot debe contestar rápido incluso si una consulta/acción tarda.
+// Ejecuta el trabajo del webhook de forma confiable.
+// Importante: en producción el runtime puede cancelar tareas "en background"
+// cuando la ruta HTTP responde. Por eso NO soltamos el trabajo a medias: cada
+// update debe terminar su primera respuesta/estado antes de devolver 200.
 const inflightByLabel = new Map<string, Set<Promise<void>>>();
 
-// Espera mínima para permitir que callbacks manden el ACK inmediato y luego
-// devolvemos 200 a Telegram. El trabajo sigue referenciado en background.
-const ACK_WAIT_MS = 2_000;
 const SLOW_LOG_MS = 2_500;
 const MAX_INFLIGHT_JOBS = 500;
 
@@ -44,10 +43,7 @@ export async function runTelegramWebhook(
   });
   inflight.add(job);
 
-  // La ruta HTTP no debe esperar todo el flujo del bot. Si una función tarda,
-  // Telegram igual recibe OK rápido y no reintenta ni deja botones colgados.
-  await Promise.race([
-    job,
-    new Promise<void>((resolve) => setTimeout(resolve, ACK_WAIT_MS)),
-  ]);
+  // Esperamos el trabajo real para que /start, callbacks y cambios de estado
+  // no se pierdan por tareas canceladas después del Response.
+  await job;
 }
