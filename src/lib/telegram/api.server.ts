@@ -126,6 +126,7 @@ export async function tg<T = unknown>(
     return { ok: false, description: `Missing token for ${bot}` };
   }
   const url = `https://api.telegram.org/bot${token}/${method}`;
+  const maxAttempts = method === "answerCallbackQuery" || method.startsWith("editMessage") ? 1 : MAX_ATTEMPTS;
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TG_TIMEOUT_MS);
   try {
@@ -143,7 +144,7 @@ export async function tg<T = unknown>(
       // 429: respeta retry_after si es razonable
       if (data.error_code === 429) {
         const ra = data.parameters?.retry_after ?? 1;
-        if (ra <= MAX_RETRY_AFTER_SEC && attempt < MAX_ATTEMPTS - 1) {
+          if (ra <= MAX_RETRY_AFTER_SEC && attempt < maxAttempts - 1) {
           await sleep((ra + 1) * 1000);
           return tg<T>(bot, method, payload, attempt + 1);
         }
@@ -161,7 +162,7 @@ export async function tg<T = unknown>(
         return data;
       }
       // 5xx u otros: exponential backoff
-      if (attempt < MAX_ATTEMPTS - 1) {
+      if (attempt < maxAttempts - 1) {
         const delay = Math.min(3000, 250 * Math.pow(2, attempt));
         await sleep(delay);
         return tg<T>(bot, method, payload, attempt + 1);
@@ -171,7 +172,7 @@ export async function tg<T = unknown>(
     }
     return data;
   } catch (err) {
-    if (attempt < MAX_ATTEMPTS - 1) {
+    if (attempt < maxAttempts - 1) {
       const delay = Math.min(3000, 250 * Math.pow(2, attempt));
       await sleep(delay);
       return tg<T>(bot, method, payload, attempt + 1);

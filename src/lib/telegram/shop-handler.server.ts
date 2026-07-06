@@ -921,141 +921,59 @@ async function routeBottomMenu(
 // ===== Pago con saldo (entrega automática si hay stock) =====
 async function payWithBalance(telegram_id: number, chat_id: number) {
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
-  const { data: price } = await sb
-    .from("product_prices")
-    .select("*, products(name)")
-    .eq("id", ctx.price_id as string)
-    .single();
-  if (!price) return;
   const qty = Number(ctx.qty ?? 1);
-  const { data: shareU } = await sb
-    .from("bot_users")
-    .select("shares_count")
-    .eq("telegram_id", telegram_id)
-    .single();
-  const hasReferralDiscount = Number(shareU?.shares_count ?? 0) >= REFERRAL_GOAL;
-  const basePrice = await getUserPriceForId(telegram_id, ctx.price_id as string, Number(price.price_usd));
-  const unit_price = Math.max(
-    0,
-    basePrice - (hasReferralDiscount ? REFERRAL_DISCOUNT_USD : 0),
-  );
-
-  const total_usd = unit_price * qty;
-
-  const { data: user } = await sb
-    .from("bot_users")
-    .select("*")
-    .eq("telegram_id", telegram_id)
-    .single();
-  if (!user || Number(user.balance) < total_usd) {
-    await screen(telegram_id, chat_id, `Saldo insuficiente.`, [BACK_BUTTON]);
+  if (!ctx.price_id) {
+    await screen(telegram_id, chat_id, `Esa compra expiró. Elegí el producto nuevamente.`, [BACK_BUTTON]);
     return;
   }
 
-  const { data: avail } = await sb
-    .from("product_stock_keys")
-    .select("*")
-    .eq("product_id", ctx.product_id as string)
-    .eq("price_id", ctx.price_id as string)
-    .eq("used", false)
-    .limit(qty);
+  if (qty !== 1) {
+    await screen(telegram_id, chat_id, `Por estabilidad, comprá las keys de una en una.`, [BACK_BUTTON]);
+    return;
+  }
 
-  const hasStock = (avail?.length ?? 0) >= qty;
+  const { data: result, error } = await sb.rpc("purchase_key_atomic", {
+    _telegram_id: telegram_id,
+    _price_id: ctx.price_id as string,
+  });
 
-  const { data: order } = await sb
-    .from("orders")
-    .insert({
-      user_id: user.id,
-      telegram_id,
-      product_id: ctx.product_id as string,
-      price_id: ctx.price_id as string,
-      keys_qty: qty,
-      total_usd,
-      status: hasStock ? "delivered" : "pending_approval",
-      paid_with_balance: true,
-    })
-    .select()
-    .single();
-  if (!order) return;
+  if (error) {
+    console.error("[payWithBalance] atomic purchase", error);
+    await screen(telegram_id, chat_id, `No se pudo completar la compra. Tocá de nuevo en unos segundos.`, [BACK_BUTTON]);
+    return;
+  }
 
-  await sb
-    .from("bot_users")
-    .update({ balance: Number(user.balance) - total_usd })
-    .eq("id", user.id);
+  const purchase = result as {
+    ok?: boolean;
+    reason?: string;
+    key_value?: string;
+    unit_usd?: number;
+    product_name?: string;
+    duration_label?: string;
+  } | null;
 
-  if (hasStock && avail) {
-    await Promise.all([
-      sb
-        .from("product_stock_keys")
-        .update({
-          used: true,
-          used_at: new Date().toISOString(),
-          used_by_user_id: user.id,
-          used_by_order_id: order.id,
-        })
-        .in("id", avail.map((k) => k.id)),
-      sb.from("order_keys").insert(
-        avail.map((k) => ({
-          order_id: order.id,
-          user_id: user.id,
-          key_value: k.key_value,
-        })),
-      ),
-    ]);
-    invalidateCatalogCache();
+  if (!purchase?.ok) {
+    const reason = purchase?.reason;
+    const text = reason === "insufficient_balance"
+      ? `Saldo insuficiente.`
+      : reason === "out_of_stock"
+        ? `Sin stock automático disponible en este momento.`
+        : `Producto no disponible. Elegí otro producto.`;
+    await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
+    return;
+  }
 
-    const keysText = avail.map((k) => `<code>${k.key_value}</code>`).join("\n");
+  invalidateCatalogCache();
+
+  const keyText = `<code>${escapeHtml(String(purchase.key_value ?? ""))}</code>`;
     await screen(
-    telegram_id,
+      telegram_id,
       chat_id,
-      `✅ <b>Compra completada</b>\n\nProducto  ${(price as { products: { name: string } }).products.name}\nDuración  ${price.duration_label}\nCantidad  ${qty}\n\n<b>Tus keys</b>\n${keysText}`,
+      `✅ <b>Compra completada</b>\n\nProducto  ${escapeHtml(String(purchase.product_name ?? "Producto"))}\nDuración  ${escapeHtml(String(purchase.duration_label ?? ""))}\nCantidad  1\n\n<b>Tu key</b>\n${keyText}`,
       [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
       { final: true },
     );
     return;
-  }
-
-  // Sin stock → entrega manual: notificar al ALMACÉN (no al admin) con botón "Enviar Key"
-  const warehouseChat = getWarehouseChatId();
-  if (warehouseChat) {
-    const sentWh = await sendMessage(
-      "warehouse",
-      warehouseChat,
-      `<b>Nueva compra · entrega manual</b>\n\n` +
-        `Producto  ${(price as { products: { name: string } }).products.name}\n` +
-        `Duración  ${price.duration_label}\n` +
-        `Cantidad  ${qty}\n` +
-        `Cobrado   <b>$${total_usd.toFixed(2)} USD</b>\n` +
-        `Usuario   <code>${telegram_id}</code>\n` +
-        `Orden     <code>${order.id.slice(0, 8)}</code>`,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "Enviar Key", callback_data: `alm:sendkey:${order.id}` }],
-          ],
-        },
-      },
-    );
-    if (sentWh.ok && sentWh.result) {
-      await sb
-        .from("orders")
-        .update({ admin_message_id: sentWh.result.message_id })
-        .eq("id", order.id);
-    }
-  }
-
-
-  await screen(
-    telegram_id,
-    chat_id,
-    `✅ <b>Pago con saldo recibido</b>\n\n` +
-      `Producto  ${(price as { products: { name: string } }).products.name}\n` +
-      `Duración  ${price.duration_label}\n` +
-      `Cantidad  ${qty}\n\n` +
-      `Sin stock automático. El admin entregará la key en breve.`,
-    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
-    { final: true },
-  );
 }
 
 // ===== Comprobante (foto) =====
