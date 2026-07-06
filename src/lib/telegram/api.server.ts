@@ -29,11 +29,11 @@ export interface TgResult<T = unknown> {
   parameters?: { retry_after?: number };
 }
 
-// Timeout por request a Telegram. 5s es más que suficiente y evita que
-// una llamada colgada bloquee todo el handler.
-const TG_TIMEOUT_MS = 5_000;
-const MAX_ATTEMPTS = 3;
-const MAX_RETRY_AFTER_SEC = 10;
+// Timeout corto por request a Telegram. Un bot profesional debe fallar rápido
+// y dejar lista la siguiente interacción; no puede esperar 15s por retries.
+const TG_TIMEOUT_MS = 2_500;
+const MAX_ATTEMPTS = 1;
+const MAX_RETRY_AFTER_SEC = 1;
 const MAX_MESSAGE_TEXT = 3900;
 const MAX_CAPTION_TEXT = 1000;
 
@@ -393,7 +393,9 @@ export async function setWebhook(bot: BotKind, url: string, secret_token: string
     // varios updates en paralelo en lugar de encolarlos, así distintos
     // usuarios no se bloquean entre sí.
     max_connections: 100,
-    drop_pending_updates: false,
+    // Al reconfigurar limpiamos taps viejos acumulados que son los que dejan
+    // al usuario viendo "conectando" aunque el bot ya esté sano.
+    drop_pending_updates: true,
   });
 }
 
