@@ -11,7 +11,7 @@ async function quickAck(callbackId?: string, data?: string) {
   keepTelegramPromiseAlive(ack);
   await Promise.race([
     ack,
-    new Promise<void>((resolve) => setTimeout(resolve, 250)),
+    new Promise<void>((resolve) => setTimeout(resolve, 900)),
   ]).catch(() => {});
 }
 
@@ -40,7 +40,8 @@ export const Route = createFileRoute("/api/public/telegram/shop")({
         if (!isValidWebhookSecret(got, token)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
         await quickAck(update?.callback_query?.id, update?.callback_query?.data);
-        await runTelegramWebhook("shop", () => handleShopUpdate(update));
+        const job = runTelegramWebhook("shop", () => handleShopUpdate(update));
+        keepTelegramPromiseAlive(job);
         return Response.json({ ok: true });
       },
     },

@@ -1448,9 +1448,6 @@ export async function handleShopUpdate(update: Update): Promise<void> {
     console.error("[shop handler] fatal", err);
     const cb = update.callback_query;
     const chat_id = update.message?.chat.id ?? cb?.message?.chat.id ?? cb?.from.id;
-    if (cb?.id) {
-      answerCallbackQuery("shop", cb.id, "Procesando. Intenta de nuevo en unos segundos.", true).catch(() => {});
-    }
     if (chat_id) {
       await sendMessage(
         "shop",
@@ -1689,7 +1686,6 @@ async function handleCallback(cb: TgCallback) {
     answerCallbackQuery("shop", cb.id, link || "No disponible", true).catch(() => {});
     return;
   }
-  answerCallbackQuery("shop", cb.id).catch(() => {});
 
   // No bloqueamos la navegación con queries de seguridad; corren en segundo plano.
   const cachedBlock = blockCache.get(telegram_id);
