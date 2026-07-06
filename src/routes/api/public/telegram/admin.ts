@@ -2,13 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createHash, timingSafeEqual } from "crypto";
 import { answerCallbackQuery } from "@/lib/telegram/api.server";
 import { handleAdminUpdate } from "@/lib/telegram/admin-handler.server";
-import { runTelegramWebhook } from "@/lib/telegram/webhook-runner.server";
+import { keepTelegramPromiseAlive, runTelegramWebhook } from "@/lib/telegram/webhook-runner.server";
 
 async function quickAck(callbackId?: string) {
   if (!callbackId) return;
+  const ack = answerCallbackQuery("admin", callbackId);
+  keepTelegramPromiseAlive(ack);
   await Promise.race([
-    answerCallbackQuery("admin", callbackId),
-    new Promise<void>((resolve) => setTimeout(resolve, 700)),
+    ack,
+    new Promise<void>((resolve) => setTimeout(resolve, 250)),
   ]).catch(() => {});
 }
 

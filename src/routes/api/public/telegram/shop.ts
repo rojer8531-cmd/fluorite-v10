@@ -2,13 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createHash, timingSafeEqual } from "crypto";
 import { answerCallbackQuery } from "@/lib/telegram/api.server";
 import { handleShopUpdate } from "@/lib/telegram/shop-handler.server";
-import { runTelegramWebhook } from "@/lib/telegram/webhook-runner.server";
+import { keepTelegramPromiseAlive, runTelegramWebhook } from "@/lib/telegram/webhook-runner.server";
 
-async function quickAck(callbackId?: string) {
+async function quickAck(callbackId?: string, data?: string) {
   if (!callbackId) return;
+  if (data?.startsWith("shlink:")) return;
+  const ack = answerCallbackQuery("shop", callbackId);
+  keepTelegramPromiseAlive(ack);
   await Promise.race([
-    answerCallbackQuery("shop", callbackId),
-    new Promise<void>((resolve) => setTimeout(resolve, 700)),
+    ack,
+    new Promise<void>((resolve) => setTimeout(resolve, 250)),
   ]).catch(() => {});
 }
 
@@ -31,7 +34,7 @@ export const Route = createFileRoute("/api/public/telegram/shop")({
         const got = request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
         if (!safeEq(got, expected)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
-        await quickAck(update?.callback_query?.id);
+        await quickAck(update?.callback_query?.id, update?.callback_query?.data);
         await runTelegramWebhook("shop", () => handleShopUpdate(update));
         return Response.json({ ok: true });
       },

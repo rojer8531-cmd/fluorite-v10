@@ -7,6 +7,17 @@ type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
 
+type ExecutionContextLike = {
+  waitUntil?: (promise: Promise<unknown>) => void;
+};
+
+declare global {
+  // Disponible para rutas que deben responder HTTP de inmediato pero mantener
+  // vivo el trabajo real del webhook hasta terminar.
+  // eslint-disable-next-line no-var
+  var __lovableWaitUntil: ((promise: Promise<unknown>) => void) | undefined;
+}
+
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
 async function getServerEntry(): Promise<ServerEntry> {
@@ -39,6 +50,11 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const previousWaitUntil = globalThis.__lovableWaitUntil;
+    const waitUntil = (ctx as ExecutionContextLike | undefined)?.waitUntil;
+    if (typeof waitUntil === "function") {
+      globalThis.__lovableWaitUntil = waitUntil.bind(ctx);
+    }
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
@@ -49,6 +65,8 @@ export default {
         status: 500,
         headers: { "content-type": "text/html; charset=utf-8" },
       });
+    } finally {
+      globalThis.__lovableWaitUntil = previousWaitUntil;
     }
   },
 };
