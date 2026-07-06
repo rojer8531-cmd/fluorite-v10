@@ -1497,17 +1497,8 @@ async function handleMessage(msg: TgMessage) {
   if (msg.reply_to_message) {
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
 
-    // ===== Pegar Precios en bulk =====
-    if (replySource.includes("PASTEPRICES")) {
-      await bulkUpdatePrices(msg.chat.id, msg.from.id, text);
-      return;
-    }
 
-    // ===== Pegar Keys en bulk =====
-    if (replySource.includes("PASTEKEYS")) {
-      await bulkAddKeys(msg.chat.id, msg.from.id, text);
-      return;
-    }
+
 
     // ===== Envío de key manual desde el almacén =====
     const almSendMatch = replySource.match(/ALMSENDKEY:([a-f0-9-]{36})/);
