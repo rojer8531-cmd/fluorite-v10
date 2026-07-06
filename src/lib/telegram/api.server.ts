@@ -34,6 +34,31 @@ export interface TgResult<T = unknown> {
 const TG_TIMEOUT_MS = 5_000;
 const MAX_ATTEMPTS = 3;
 const MAX_RETRY_AFTER_SEC = 10;
+const MAX_MESSAGE_TEXT = 3900;
+const MAX_CAPTION_TEXT = 1000;
+
+function limitTelegramText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 80)).trimEnd()}\n\n…Mensaje recortado para que Telegram lo acepte.`;
+}
+
+function plainTextFromHtml(text: string): string {
+  return text
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?(?:b|strong|i|em|u|s|strike|del|ins|code|pre)>/gi, "")
+    .replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, "$2 ($1)")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function isParseModeError(data: TgResult<unknown>): boolean {
+  const d = (data.description ?? "").toLowerCase();
+  return d.includes("can't parse entities") || d.includes("can't parse message text");
+}
 
 // Errores que indican usuario inalcanzable: NO reintentar.
 function isUnreachableUserError(desc?: string, code?: number): boolean {
@@ -161,13 +186,25 @@ export async function sendMessage(
   text: string,
   extra: Record<string, unknown> = {},
 ) {
-  return tg<{ message_id: number; chat: { id: number } }>(bot, "sendMessage", {
+  const safeText = limitTelegramText(text, MAX_MESSAGE_TEXT);
+  const res = await tg<{ message_id: number; chat: { id: number } }>(bot, "sendMessage", {
     chat_id,
-    text,
+    text: safeText,
     parse_mode: "HTML",
     disable_web_page_preview: true,
     ...extra,
   });
+  if (!res.ok && isParseModeError(res)) {
+    const fallbackExtra = { ...extra };
+    delete fallbackExtra.parse_mode;
+    return tg<{ message_id: number; chat: { id: number } }>(bot, "sendMessage", {
+      chat_id,
+      text: limitTelegramText(plainTextFromHtml(text), MAX_MESSAGE_TEXT),
+      disable_web_page_preview: true,
+      ...fallbackExtra,
+    });
+  }
+  return res;
 }
 
 export async function editMessageText(
@@ -177,14 +214,27 @@ export async function editMessageText(
   text: string,
   extra: Record<string, unknown> = {},
 ) {
-  return tg(bot, "editMessageText", {
+  const safeText = limitTelegramText(text, MAX_MESSAGE_TEXT);
+  const res = await tg(bot, "editMessageText", {
     chat_id,
     message_id,
-    text,
+    text: safeText,
     parse_mode: "HTML",
     disable_web_page_preview: true,
     ...extra,
   });
+  if (!res.ok && isParseModeError(res)) {
+    const fallbackExtra = { ...extra };
+    delete fallbackExtra.parse_mode;
+    return tg(bot, "editMessageText", {
+      chat_id,
+      message_id,
+      text: limitTelegramText(plainTextFromHtml(text), MAX_MESSAGE_TEXT),
+      disable_web_page_preview: true,
+      ...fallbackExtra,
+    });
+  }
+  return res;
 }
 
 export async function deleteMessage(
@@ -240,13 +290,25 @@ export async function sendPhoto(
   caption: string,
   extra: Record<string, unknown> = {},
 ) {
-  return tg<{ message_id: number }>(bot, "sendPhoto", {
+  const safeCaption = limitTelegramText(caption, MAX_CAPTION_TEXT);
+  const res = await tg<{ message_id: number }>(bot, "sendPhoto", {
     chat_id,
     photo,
-    caption,
+    caption: safeCaption,
     parse_mode: "HTML",
     ...extra,
   });
+  if (!res.ok && isParseModeError(res)) {
+    const fallbackExtra = { ...extra };
+    delete fallbackExtra.parse_mode;
+    return tg<{ message_id: number }>(bot, "sendPhoto", {
+      chat_id,
+      photo,
+      caption: limitTelegramText(plainTextFromHtml(caption), MAX_CAPTION_TEXT),
+      ...fallbackExtra,
+    });
+  }
+  return res;
 }
 
 export async function sendPhotoMultipart(
@@ -259,7 +321,7 @@ export async function sendPhotoMultipart(
 ) {
   const fd = new FormData();
   fd.append("chat_id", String(chat_id));
-  fd.append("caption", caption);
+  fd.append("caption", limitTelegramText(caption, MAX_CAPTION_TEXT));
   fd.append("parse_mode", "HTML");
   for (const [k, v] of Object.entries(extra)) {
     fd.append(k, typeof v === "string" ? v : JSON.stringify(v));

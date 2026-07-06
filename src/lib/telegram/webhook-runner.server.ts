@@ -4,7 +4,7 @@ const inflight = new Set<Promise<void>>();
 
 // Espera mínima para permitir que callbacks manden el ACK inmediato y luego
 // devolvemos 200 a Telegram. El trabajo sigue referenciado en background.
-const ACK_WAIT_MS = 350;
+const ACK_WAIT_MS = 2_000;
 const SLOW_LOG_MS = 2_500;
 const MAX_INFLIGHT_JOBS = 500;
 
