@@ -84,7 +84,6 @@ async function screen(
   return null;
 }
 import { getVisibleCatalog, invalidateCatalogCache } from "./catalog.server";
-import { ocrReceipt, formatOcrSummary } from "./ocr.server";
 
 // Mínimo de recarga: se lee desde telegram_bot_settings.min_recharge_usd con
 // caché de 30s para no consultar la DB en cada interacción.
@@ -1306,63 +1305,10 @@ async function processReceiptPhotoReview(opts: {
   };
   const pid = tpId(o.created_at);
 
-  // OCR (best-effort, no bloquea)
-  const ocr = await ocrReceipt(bytes).catch(() => null);
-  const ocrSummary = formatOcrSummary(
-    ocr,
-    Number(o.total_usd),
-    o.total_local ? Number(o.total_local) : null,
-  );
-
-  // IA: si la imagen no parece un pago, bloqueo automático 24h por spam.
-  if (ocr?.is_payment === false) {
-    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-    await sb.from("receipts").delete().eq("id", receipt_id);
-    await blockSpamReceipt(telegram_id).catch(() => {});
-    blockCache.delete(telegram_id);
-    await notifySpamBlock(chat_id);
-    return;
-  }
-
-  // IA: verificar destinatario contra titular/cuenta del método de pago
-  if (ocr?.recipient && o.payment_methods?.holder_name) {
-    if (!recipientMatches(ocr.recipient, o.payment_methods.holder_name, o.payment_methods.account_info)) {
-      await notifyUserInvalidReceipt(chat_id, {
-        reason: "el destinatario del pago no coincide con la cuenta indicada.",
-        holder: o.payment_methods.holder_name,
-        account: o.payment_methods.account_info,
-      });
-      await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-      await sb.from("receipts").delete().eq("id", receipt_id);
-      await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
-      return;
-    }
-  }
-
-  // IA: verificar monto contra total esperado (USD o moneda local).
-  // Solo bloqueamos cuando la IA leyó un monto claro y está fuera de tolerancia.
-  if (ocr && typeof ocr.amount === "number" && Number.isFinite(ocr.amount)) {
-    const expectedUsd = Number(o.total_usd);
-    const expectedLocal = o.total_local ? Number(o.total_local) : null;
-    const tolUsd = Math.max(1, expectedUsd * 0.05);
-    const tolLocal = expectedLocal ? Math.max(2, expectedLocal * 0.05) : 0;
-    const matchesUsd = Math.abs(ocr.amount - expectedUsd) <= tolUsd;
-    const matchesLocal = expectedLocal ? Math.abs(ocr.amount - expectedLocal) <= tolLocal : false;
-    if (!matchesUsd && !matchesLocal) {
-      const expectedTxt = expectedLocal
-        ? `$${expectedUsd.toFixed(2)} USD (${expectedLocal.toLocaleString("es-AR")} ${o.currency ?? ""})`
-        : `$${expectedUsd.toFixed(2)} USD`;
-      await notifyUserInvalidReceipt(chat_id, {
-        reason: `el monto del comprobante (${ocr.amount}) no coincide con el total a pagar (${expectedTxt}).`,
-        holder: o.payment_methods?.holder_name ?? null,
-        account: o.payment_methods?.account_info ?? null,
-      });
-      await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-      await sb.from("receipts").delete().eq("id", receipt_id);
-      await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
-      return;
-    }
-  }
+  // Rendimiento: el OCR con IA tarda varios segundos y era el principal
+  // causante de congelamientos. El comprobante pasa directo al admin para
+  // revisión humana y el bot no queda esperando una llamada externa lenta.
+  const ocrSummary = `\n<i>Revisión manual rápida</i>`;
 
 
 
