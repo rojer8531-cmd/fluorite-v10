@@ -17,10 +17,16 @@ async function quickAck(callbackId?: string) {
 function deriveSecret(token: string) {
   return createHash("sha256").update(`tg-webhook:${token}`).digest("base64url");
 }
+function deriveLegacySecret(token: string) {
+  return createHash("sha256").update(`telegram-webhook:${token}`).digest("base64url");
+}
 function safeEq(a: string, b: string) {
   const A = Buffer.from(a);
   const B = Buffer.from(b);
   return A.length === B.length && timingSafeEqual(A, B);
+}
+function isValidWebhookSecret(got: string, token: string) {
+  return safeEq(got, deriveSecret(token)) || safeEq(got, deriveLegacySecret(token));
 }
 
 export const Route = createFileRoute("/api/public/telegram/warehouse")({
@@ -29,9 +35,8 @@ export const Route = createFileRoute("/api/public/telegram/warehouse")({
       POST: async ({ request }) => {
         const token = process.env.TELEGRAM_WAREHOUSE_BOT_TOKEN;
         if (!token) return new Response("Missing token", { status: 500 });
-        const expected = deriveSecret(token);
         const got = request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
-        if (!safeEq(got, expected)) return new Response("Unauthorized", { status: 401 });
+        if (!isValidWebhookSecret(got, token)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
         await quickAck(update?.callback_query?.id);
         await runTelegramWebhook("warehouse", () => handleWarehouseUpdate(update));
