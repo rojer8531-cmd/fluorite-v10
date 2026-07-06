@@ -772,6 +772,55 @@ async function askRechargeAmount(telegram_id: number, chat_id: number, country_c
   );
 }
 
+// Reemplaza los valores dinámicos de la plantilla pegada por el admin
+// manteniendo intactos banco, titular, alias, notas, emojis y estructura.
+// Sólo tocamos las líneas cuyo prefijo identifica un valor variable.
+function renderPaymentTemplate(
+  raw: string,
+  method: { country_name: string; currency: string; usd_rate: number | string; method_name?: string | null },
+  dyn: {
+    countryName: string;
+    flag: string;
+    rechargeId: string;
+    amountUsd: number;
+    localTotal: number;
+    currency: string;
+    fmtLocal: (n: number) => string;
+  },
+): string {
+  const usdStr = `${dyn.amountUsd.toFixed(2)} USD`;
+  const methodLocal = dyn.amountUsd * Number(method.usd_rate || dyn.localTotal / dyn.amountUsd || 1);
+  const methodLocalStr = `${dyn.fmtLocal(methodLocal)} ${method.currency || dyn.currency}`;
+  const pagasStr = `${dyn.fmtLocal(dyn.localTotal)} ${dyn.currency}`;
+
+  return raw
+    .split(/\r?\n/)
+    .map((line) => {
+      // Header: "💳 ... Métodos De Pago ..."
+      if (/💳[\s\S]*M[eé]todos\s*De\s*Pago/i.test(line)) {
+        return `💳 <b>Métodos De Pago - ${dyn.countryName}</b> ${dyn.flag}`.trim();
+      }
+      // ID de recarga
+      if (/^\s*🆔\s*Recarga/i.test(line)) {
+        return `🆔 Recarga: <code>${dyn.rechargeId}</code>`;
+      }
+      // Monto USD ingresado por el usuario
+      if (/^\s*💰\s*Monto/i.test(line)) {
+        return `💰 Monto: <b>${usdStr}</b>`;
+      }
+      // Conversión "Pagas" (usa la tasa del método principal del país)
+      if (/^\s*🧾\s*Pagas/i.test(line)) {
+        return `🧾 Pagas: <b>${pagasStr}</b>`;
+      }
+      // Total por método (usa la tasa del método específico)
+      if (/^\s*💵\s*Total/i.test(line)) {
+        return `💵 Total: <b>${methodLocalStr}</b>`;
+      }
+      return line;
+    })
+    .join("\n");
+}
+
 
 async function showRechargeMethods(
   telegram_id: number,
