@@ -7,7 +7,6 @@ import {
   answerCallbackQuery,
   editMessageText,
   getAdminChatId,
-  getWarehouseChatId,
   tg,
 } from "./api.server";
 
