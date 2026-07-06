@@ -12,6 +12,7 @@ import {
 } from "./api.server";
 
 import {
+  type BotUser,
   getOrCreateUser,
   updateUser,
   getState,
@@ -20,7 +21,6 @@ import {
   checkRateLimit,
   isBlocked,
   autoBlock,
-  blockSpamReceipt,
   getActiveMessage,
   setActiveMessage,
   sb,
@@ -83,7 +83,6 @@ async function screen(
   return null;
 }
 import { getVisibleCatalog, invalidateCatalogCache } from "./catalog.server";
-import { ocrReceipt, formatOcrSummary } from "./ocr.server";
 
 // Mínimo de recarga: se lee desde telegram_bot_settings.min_recharge_usd con
 // caché de 30s para no consultar la DB en cada interacción.
@@ -107,45 +106,6 @@ export function invalidateMinRechargeCache() {
 function tpId(createdAt: string | Date) {
   const t = typeof createdAt === "string" ? new Date(createdAt).getTime() : createdAt.getTime();
   return `TP${t}`;
-}
-
-/** Normaliza string para comparación: minúsculas, sin acentos, sin signos. */
-function normTxt(s: string) {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
- * ¿El destinatario detectado por la IA coincide con el titular o la cuenta del método?
- * Tolerante: basta con que UN token significativo (>=3 chars) coincida,
- * o que la cuenta/alias aparezca como substring del recipient.
- */
-function recipientMatches(recipient: string, holder: string, account: string | null): boolean {
-  const r = normTxt(recipient);
-  if (!r) return true; // sin datos: no bloquear
-  const h = normTxt(holder);
-  if (h && r.includes(h)) return true;
-  if (h) {
-    const tokens = h.split(" ").filter((t) => t.length >= 3);
-    let hits = 0;
-    for (const t of tokens) if (r.includes(t)) hits++;
-    if (hits >= 1) return true;
-  }
-  if (account) {
-    const a = normTxt(account);
-    if (a && a.length >= 4 && r.includes(a)) return true;
-    // si el alias/cuenta tiene tokens largos, también permitir
-    if (a) {
-      const at = a.split(" ").filter((t) => t.length >= 4);
-      for (const t of at) if (r.includes(t)) return true;
-    }
-  }
-  return false;
 }
 
 // ===== Precios personalizados por usuario =====
@@ -323,50 +283,6 @@ async function notifyUser(chat_id: number, text: string) {
   });
 }
 
-async function notifyUserInvalidReceipt(
-  chat_id: number,
-  opts?: { reason?: string; holder?: string | null; account?: string | null },
-) {
-  const parts: string[] = [`⚠️ <b>Tu comprobante no ha sido válido.</b>`];
-  if (opts?.reason) parts.push(`Motivo: ${opts.reason}`);
-  if (opts?.holder || opts?.account) {
-    parts.push(
-      `\n📌 <b>Vuelve a enviar el comprobante</b> asegurándote de mandar el dinero a:\n` +
-        `🪪 <code>${opts.holder ?? "—"}</code>\n` +
-        `📋 <code>${opts.account ?? "—"}</code>`,
-    );
-  } else {
-    parts.push(`\n📌 Vuelve a enviar el comprobante correcto.`);
-  }
-  parts.push(`\nSi crees que es un error, contacta al soporte.`);
-  await sendMessage("shop", chat_id, parts.join("\n"), {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
-        [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
-      ],
-    },
-  });
-}
-
-/** Notifica el bloqueo de 24h por spam de comprobantes. */
-async function notifySpamBlock(chat_id: number) {
-  const text =
-    `🚫 <b>Tu cuenta ha sido bloqueada temporalmente por 24 horas.</b>\n\n` +
-    `<b>Motivo:</b> Spam de comprobantes.\n\n` +
-    `Si consideras que se trata de un error, contacta al soporte.\n\n` +
-    `⏳ <b>Tiempo restante:</b> 24 horas.`;
-  await sendMessage("shop", chat_id, text, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
-      ],
-    },
-  }).catch(() => {});
-}
-
-
-
 async function showShareBot(telegram_id: number, chat_id: number) {
   const username = await getShopBotUsername();
   if (!username) {
@@ -503,9 +419,10 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
 }
 
 async function showDurations(telegram_id: number, chat_id: number, product_id: string) {
-  const [{ data: u }, catalog] = await Promise.all([
-    sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
+  const [{ data: u }, catalog, overrides] = await Promise.all([
+    sb.from("bot_users").select("balance, rank").eq("telegram_id", telegram_id).single(),
     getVisibleCatalog(),
+    getUserPriceOverrides(telegram_id),
   ]);
   const balance = Number(u?.balance ?? 0);
   const product = catalog.grouped.flatMap((s) => s.products).find((p) => p.id === product_id);
@@ -523,8 +440,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     return;
   }
   // Aplicar precios personalizados por usuario (si existen) + descuento por rango
-  const overrides = await getUserPriceOverrides(telegram_id);
-  const rank = normalizeRank(await getUserRank(telegram_id));
+  const rank = normalizeRank((u as { rank?: string } | null)?.rank ?? "gold");
   const prices = rawPrices.map((p) => {
     const base = overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd);
     const price_usd = applyRankDiscount(base, rank);
@@ -1237,14 +1153,52 @@ async function handleReceiptPhoto(msg: TgMessage) {
     .update({ status: "pending_approval", receipt_id: receipt?.id })
     .eq("id", order_id);
 
+  await setState(telegram_id, "menu", {});
+  await screen(
+    telegram_id,
+    chat_id,
+    `⏳ <b>Comprobante recibido</b>\n\nLo estamos revisando. Te avisaremos apenas sea procesado.`,
+    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    { final: true },
+  );
+
+  processReceiptPhotoReview({
+    telegram_id,
+    chat_id,
+    photo,
+    receipt_id: receipt!.id,
+    order_id,
+    isRecharge,
+    user,
+  }).catch((err) => console.error("[receipt photo background]", err));
+  return;
+}
+
+async function processReceiptPhotoReview(opts: {
+  telegram_id: number;
+  chat_id: number;
+  photo: { file_id: string; file_unique_id: string; width: number; height: number; file_size?: number };
+  receipt_id: string;
+  order_id: string;
+  isRecharge: boolean;
+  user: BotUser;
+}) {
+  const { telegram_id, chat_id, photo, receipt_id, order_id, isRecharge, user } = opts;
+
   const fileInfo = await getFile("shop", photo.file_id);
   if (!fileInfo.ok || !fileInfo.result) {
-    await notifyUser(chat_id, `⚠️ Error procesando imagen. Intentá de nuevo.`);
+    await notifyUser(chat_id, `⚠️ Error procesando imagen. Intentá enviar el comprobante nuevamente.`);
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt_id);
+    await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
     return;
   }
   const bytes = await downloadFile("shop", fileInfo.result.file_path);
   if (!bytes) {
-    await notifyUser(chat_id, `⚠️ Error descargando imagen.`);
+    await notifyUser(chat_id, `⚠️ Error descargando imagen. Intentá enviar el comprobante nuevamente.`);
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt_id);
+    await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
     return;
   }
 
@@ -1267,63 +1221,10 @@ async function handleReceiptPhoto(msg: TgMessage) {
   };
   const pid = tpId(o.created_at);
 
-  // OCR (best-effort, no bloquea)
-  const ocr = await ocrReceipt(bytes).catch(() => null);
-  const ocrSummary = formatOcrSummary(
-    ocr,
-    Number(o.total_usd),
-    o.total_local ? Number(o.total_local) : null,
-  );
-
-  // IA: si la imagen no parece un pago, bloqueo automático 24h por spam.
-  if (ocr?.is_payment === false) {
-    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-    await sb.from("receipts").delete().eq("id", receipt!.id);
-    await blockSpamReceipt(telegram_id).catch(() => {});
-    blockCache.delete(telegram_id);
-    await notifySpamBlock(chat_id);
-    return;
-  }
-
-  // IA: verificar destinatario contra titular/cuenta del método de pago
-  if (ocr?.recipient && o.payment_methods?.holder_name) {
-    if (!recipientMatches(ocr.recipient, o.payment_methods.holder_name, o.payment_methods.account_info)) {
-      await notifyUserInvalidReceipt(chat_id, {
-        reason: "el destinatario del pago no coincide con la cuenta indicada.",
-        holder: o.payment_methods.holder_name,
-        account: o.payment_methods.account_info,
-      });
-      await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-      await sb.from("receipts").delete().eq("id", receipt!.id);
-      await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
-      return;
-    }
-  }
-
-  // IA: verificar monto contra total esperado (USD o moneda local).
-  // Solo bloqueamos cuando la IA leyó un monto claro y está fuera de tolerancia.
-  if (ocr && typeof ocr.amount === "number" && Number.isFinite(ocr.amount)) {
-    const expectedUsd = Number(o.total_usd);
-    const expectedLocal = o.total_local ? Number(o.total_local) : null;
-    const tolUsd = Math.max(1, expectedUsd * 0.05);
-    const tolLocal = expectedLocal ? Math.max(2, expectedLocal * 0.05) : 0;
-    const matchesUsd = Math.abs(ocr.amount - expectedUsd) <= tolUsd;
-    const matchesLocal = expectedLocal ? Math.abs(ocr.amount - expectedLocal) <= tolLocal : false;
-    if (!matchesUsd && !matchesLocal) {
-      const expectedTxt = expectedLocal
-        ? `$${expectedUsd.toFixed(2)} USD (${expectedLocal.toLocaleString("es-AR")} ${o.currency ?? ""})`
-        : `$${expectedUsd.toFixed(2)} USD`;
-      await notifyUserInvalidReceipt(chat_id, {
-        reason: `el monto del comprobante (${ocr.amount}) no coincide con el total a pagar (${expectedTxt}).`,
-        holder: o.payment_methods?.holder_name ?? null,
-        account: o.payment_methods?.account_info ?? null,
-      });
-      await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-      await sb.from("receipts").delete().eq("id", receipt!.id);
-      await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
-      return;
-    }
-  }
+  // Rendimiento: el OCR con IA tarda varios segundos y era el principal
+  // causante de congelamientos. El comprobante pasa directo al admin para
+  // revisión humana y el bot no queda esperando una llamada externa lenta.
+  const ocrSummary = `\n<i>Revisión manual rápida</i>`;
 
 
 
@@ -1384,24 +1285,10 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   if (sent.ok && sent.result) {
     await Promise.all([
-      sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt!.id),
+      sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt_id),
       sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id),
     ]);
   }
-
-  await setState(telegram_id, "menu", {});
-  const reviewText =
-    `⏳ <b>Comprobante En Revisión</b>\n\n` +
-    (isRecharge ? `Pending: <code>${pid}</code>\n\n` : "") +
-    `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
-    `Se Paciente Y Espera.`;
-  await screen(
-    telegram_id,
-    chat_id,
-    reviewText,
-    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
-    { final: true },
-  );
 }
 
 // ===== Comprobante (documento) =====

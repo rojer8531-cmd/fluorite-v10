@@ -1,6 +1,6 @@
 // Ejecuta el trabajo del webhook sin dejar a Telegram esperando.
 // El bot debe contestar rápido incluso si una consulta/acción tarda.
-const inflight = new Set<Promise<void>>();
+const inflightByLabel = new Map<string, Set<Promise<void>>>();
 
 // Espera mínima para permitir que callbacks manden el ACK inmediato y luego
 // devolvemos 200 a Telegram. El trabajo sigue referenciado en background.
@@ -8,14 +8,25 @@ const ACK_WAIT_MS = 2_000;
 const SLOW_LOG_MS = 2_500;
 const MAX_INFLIGHT_JOBS = 500;
 
+function getInflight(label: string) {
+  let set = inflightByLabel.get(label);
+  if (!set) {
+    set = new Set<Promise<void>>();
+    inflightByLabel.set(label, set);
+  }
+  return set;
+}
+
 export async function runTelegramWebhook(
   label: string,
   work: () => Promise<void>,
 ) {
   const startedAt = Date.now();
+  const inflight = getInflight(label);
 
   if (inflight.size > MAX_INFLIGHT_JOBS) {
     console.warn(`[${label} webhook] too many inflight jobs: ${inflight.size}`);
+    return;
   }
 
   const job = (async () => {
