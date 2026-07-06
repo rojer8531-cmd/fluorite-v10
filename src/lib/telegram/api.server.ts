@@ -29,11 +29,11 @@ export interface TgResult<T = unknown> {
   parameters?: { retry_after?: number };
 }
 
-// Timeout corto por request a Telegram. Un bot profesional debe fallar rápido
-// y dejar lista la siguiente interacción; no puede esperar 15s por retries.
-const TG_TIMEOUT_MS = 2_500;
-const MAX_ATTEMPTS = 1;
-const MAX_RETRY_AFTER_SEC = 1;
+// Timeouts razonables: dejamos que la request a Telegram complete sin fallar
+// por microcortes, pero con retry acotado para no bloquear al usuario.
+const TG_TIMEOUT_MS = 10_000;
+const MAX_ATTEMPTS = 3;
+const MAX_RETRY_AFTER_SEC = 2;
 const MAX_MESSAGE_TEXT = 3900;
 const MAX_CAPTION_TEXT = 1000;
 
