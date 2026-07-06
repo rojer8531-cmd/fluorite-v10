@@ -1237,14 +1237,52 @@ async function handleReceiptPhoto(msg: TgMessage) {
     .update({ status: "pending_approval", receipt_id: receipt?.id })
     .eq("id", order_id);
 
+  await setState(telegram_id, "menu", {});
+  await screen(
+    telegram_id,
+    chat_id,
+    `⏳ <b>Comprobante recibido</b>\n\nLo estamos revisando. Te avisaremos apenas sea procesado.`,
+    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    { final: true },
+  );
+
+  processReceiptPhotoReview({
+    telegram_id,
+    chat_id,
+    photo,
+    receipt_id: receipt!.id,
+    order_id,
+    isRecharge,
+    user,
+  }).catch((err) => console.error("[receipt photo background]", err));
+  return;
+}
+
+async function processReceiptPhotoReview(opts: {
+  telegram_id: number;
+  chat_id: number;
+  photo: { file_id: string; file_unique_id: string; width: number; height: number; file_size?: number };
+  receipt_id: string;
+  order_id: string;
+  isRecharge: boolean;
+  user: BotUser;
+}) {
+  const { telegram_id, chat_id, photo, receipt_id, order_id, isRecharge, user } = opts;
+
   const fileInfo = await getFile("shop", photo.file_id);
   if (!fileInfo.ok || !fileInfo.result) {
-    await notifyUser(chat_id, `⚠️ Error procesando imagen. Intentá de nuevo.`);
+    await notifyUser(chat_id, `⚠️ Error procesando imagen. Intentá enviar el comprobante nuevamente.`);
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt_id);
+    await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
     return;
   }
   const bytes = await downloadFile("shop", fileInfo.result.file_path);
   if (!bytes) {
-    await notifyUser(chat_id, `⚠️ Error descargando imagen.`);
+    await notifyUser(chat_id, `⚠️ Error descargando imagen. Intentá enviar el comprobante nuevamente.`);
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt_id);
+    await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
     return;
   }
 
@@ -1278,7 +1316,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
   // IA: si la imagen no parece un pago, bloqueo automático 24h por spam.
   if (ocr?.is_payment === false) {
     await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-    await sb.from("receipts").delete().eq("id", receipt!.id);
+    await sb.from("receipts").delete().eq("id", receipt_id);
     await blockSpamReceipt(telegram_id).catch(() => {});
     blockCache.delete(telegram_id);
     await notifySpamBlock(chat_id);
@@ -1294,7 +1332,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
         account: o.payment_methods.account_info,
       });
       await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-      await sb.from("receipts").delete().eq("id", receipt!.id);
+      await sb.from("receipts").delete().eq("id", receipt_id);
       await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
       return;
     }
@@ -1319,7 +1357,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
         account: o.payment_methods?.account_info ?? null,
       });
       await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-      await sb.from("receipts").delete().eq("id", receipt!.id);
+      await sb.from("receipts").delete().eq("id", receipt_id);
       await sb.from("receipt_fingerprints").delete().eq("file_unique_id", photo.file_unique_id);
       return;
     }
@@ -1384,24 +1422,10 @@ async function handleReceiptPhoto(msg: TgMessage) {
 
   if (sent.ok && sent.result) {
     await Promise.all([
-      sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt!.id),
+      sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt_id),
       sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id),
     ]);
   }
-
-  await setState(telegram_id, "menu", {});
-  const reviewText =
-    `⏳ <b>Comprobante En Revisión</b>\n\n` +
-    (isRecharge ? `Pending: <code>${pid}</code>\n\n` : "") +
-    `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
-    `Se Paciente Y Espera.`;
-  await screen(
-    telegram_id,
-    chat_id,
-    reviewText,
-    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
-    { final: true },
-  );
 }
 
 // ===== Comprobante (documento) =====
