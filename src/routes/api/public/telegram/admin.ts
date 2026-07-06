@@ -23,7 +23,7 @@ export const Route = createFileRoute("/api/public/telegram/admin")({
         if (!safeEq(got, expected)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
         const startLike = typeof update?.message?.text === "string" && ["/start", "/help", "/panel"].includes(update.message.text.trim());
-        await runTelegramWebhook("admin", () => handleAdminUpdate(update), startLike ? 9_000 : undefined);
+        await runTelegramWebhook("admin", () => handleAdminUpdate(update));
         return Response.json({ ok: true });
       },
     },
