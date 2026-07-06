@@ -12,6 +12,7 @@ import {
 } from "./api.server";
 
 import {
+  type BotUser,
   getOrCreateUser,
   updateUser,
   getState,
