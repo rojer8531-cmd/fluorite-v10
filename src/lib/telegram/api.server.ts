@@ -29,9 +29,11 @@ export interface TgResult<T = unknown> {
   parameters?: { retry_after?: number };
 }
 
-const TG_TIMEOUT_MS = 8_000;
-const MAX_ATTEMPTS = 4;
-const MAX_RETRY_AFTER_SEC = 20;
+// Timeout por request a Telegram. 5s es más que suficiente y evita que
+// una llamada colgada bloquee todo el handler.
+const TG_TIMEOUT_MS = 5_000;
+const MAX_ATTEMPTS = 3;
+const MAX_RETRY_AFTER_SEC = 10;
 
 // Errores que indican usuario inalcanzable: NO reintentar.
 function isUnreachableUserError(desc?: string, code?: number): boolean {
@@ -315,7 +317,11 @@ export async function setWebhook(bot: BotKind, url: string, secret_token: string
     url,
     secret_token,
     allowed_updates: ["message", "callback_query"],
-    drop_pending_updates: true,
+    // Permite hasta 100 entregas concurrentes por bot: Telegram enviará
+    // varios updates en paralelo en lugar de encolarlos, así distintos
+    // usuarios no se bloquean entre sí.
+    max_connections: 100,
+    drop_pending_updates: false,
   });
 }
 
