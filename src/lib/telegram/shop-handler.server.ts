@@ -503,9 +503,10 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
 }
 
 async function showDurations(telegram_id: number, chat_id: number, product_id: string) {
-  const [{ data: u }, catalog] = await Promise.all([
-    sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
+  const [{ data: u }, catalog, overrides] = await Promise.all([
+    sb.from("bot_users").select("balance, rank").eq("telegram_id", telegram_id).single(),
     getVisibleCatalog(),
+    getUserPriceOverrides(telegram_id),
   ]);
   const balance = Number(u?.balance ?? 0);
   const product = catalog.grouped.flatMap((s) => s.products).find((p) => p.id === product_id);
@@ -523,8 +524,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     return;
   }
   // Aplicar precios personalizados por usuario (si existen) + descuento por rango
-  const overrides = await getUserPriceOverrides(telegram_id);
-  const rank = normalizeRank(await getUserRank(telegram_id));
+  const rank = normalizeRank((u as { rank?: string } | null)?.rank ?? "gold");
   const prices = rawPrices.map((p) => {
     const base = overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd);
     const price_usd = applyRankDiscount(base, rank);

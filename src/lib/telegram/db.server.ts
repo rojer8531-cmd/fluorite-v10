@@ -13,6 +13,15 @@ const stateCache = new Map<number, { value: UserState | null; expiresAt: number 
 const activeMessageCache = new Map<number, { value: { telegram_id: number; chat_id: number; message_id: number } | null; expiresAt: number }>();
 const rateLimitCache = new Map<string, { count: number; windowStart: number }>();
 
+function pruneExpiredCaches() {
+  const now = Date.now();
+  if (userCache.size > 5_000) for (const [k, v] of userCache) if (v.expiresAt <= now) userCache.delete(k);
+  if (stateCache.size > 5_000) for (const [k, v] of stateCache) if (v.expiresAt <= now) stateCache.delete(k);
+  if (activeMessageCache.size > 5_000) for (const [k, v] of activeMessageCache) if (v.expiresAt <= now) activeMessageCache.delete(k);
+  if (lastSeenWrites.size > 5_000) for (const [k, v] of lastSeenWrites) if (now - v > LAST_SEEN_WRITE_MS * 3) lastSeenWrites.delete(k);
+  if (rateLimitCache.size > 10_000) for (const [k, v] of rateLimitCache) if (now - v.windowStart > 86_400_000) rateLimitCache.delete(k);
+}
+
 export interface BotUser {
   id: string;
   telegram_id: number;
@@ -32,6 +41,7 @@ export async function getOrCreateUser(opts: {
   chat_id: number;
   username?: string;
 }): Promise<BotUser> {
+  pruneExpiredCaches();
   const cached = userCache.get(opts.telegram_id);
   const now = Date.now();
   if (cached && cached.expiresAt > now) {
@@ -127,6 +137,7 @@ export interface UserState {
 }
 
 export async function getState(telegram_id: number): Promise<UserState | null> {
+  pruneExpiredCaches();
   const cached = stateCache.get(telegram_id);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   const { data } = await sb
@@ -210,6 +221,7 @@ export async function checkRateLimit(
   max: number,
   windowSec: number,
 ): Promise<boolean> {
+  pruneExpiredCaches();
   const key = `${telegram_id}:${bucket}`;
   const now = Date.now();
   const existing = rateLimitCache.get(key);
