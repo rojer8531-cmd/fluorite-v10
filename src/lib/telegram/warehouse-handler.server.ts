@@ -1528,159 +1528,107 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
-    // ===== Pegar Método (parser rápido con formato de recarga) =====
-    if (replySource.includes("PMPASTE")) {
-      const parsed = parsePaymentMethodPaste(text);
-      if (!parsed) {
-        await sendMessage(
-          "warehouse",
-          msg.chat.id,
-          `No pude leer el método. Verificá que incluya país, banco, titular y cuenta/alias.`,
-        );
+    // ===== Editar método pegando contenido verbatim (por país) =====
+    const pmBodyMatch = replySource.match(/PMBODY:([A-Za-z0-9_-]+)/);
+    if (pmBodyMatch) {
+      const cc = pmBodyMatch[1].toUpperCase();
+      const body = text; // verbatim, incluye saltos de línea
+      if (!body.trim()) {
+        await sendMessage("warehouse", msg.chat.id, `El contenido está vacío.`);
         return;
       }
-      // Reemplaza cualquier método existente para ese país (mismo criterio que PMSETCC)
-      await sb.from("payment_methods").delete().eq("country_code", parsed.country_code);
+      const { data: prev } = await sb
+        .from("payment_methods")
+        .select("country_name, currency, usd_rate")
+        .eq("country_code", cc)
+        .limit(1)
+        .maybeSingle();
+      const meta = extractPmMetadata(body);
+      // Borra TODO lo anterior del país (evita duplicados/mezclas)
+      await sb.from("payment_methods").delete().eq("country_code", cc);
       const { data: inserted, error } = await sb.from("payment_methods").insert({
-        country_code: parsed.country_code,
-        country_name: parsed.country_name,
-        method_name: parsed.method_name,
-        holder_name: parsed.holder_name,
-        account_info: parsed.account_info,
+        country_code: cc,
+        country_name: prev?.country_name ?? cc,
+        method_name: meta.method_name ?? "Pago",
+        holder_name: meta.holder_name,
+        account_info: meta.account_info,
         extra_info: null,
-        currency: parsed.currency,
-        usd_rate: parsed.usd_rate,
+        currency: prev?.currency ?? "USD",
+        usd_rate: Number(prev?.usd_rate ?? 1),
+        body_raw: body,
         active: true,
-      }).select().single();
+      } as never).select().single();
       if (error || !inserted) {
         await sendMessage("warehouse", msg.chat.id, `Error guardando: ${error?.message ?? "desconocido"}`);
         return;
       }
       await sb.from("admin_logs").insert({
         admin_telegram_id: msg.from.id,
-        action: "pm_paste",
+        action: "pm_body_replace",
         target_type: "payment_method",
-        target_id: inserted.id,
-        details: parsed as never,
+        target_id: (inserted as { id: string }).id,
+        details: { country_code: cc } as never,
       });
       await sendMessage(
         "warehouse",
         msg.chat.id,
-        `✅ <b>Método actualizado para ${parsed.country_name}</b>\n\n` +
-          `🏦 ${parsed.method_name}\n🪪 ${parsed.holder_name}\n📋 <code>${parsed.account_info}</code>\n💱 ${parsed.currency} · rate ${parsed.usd_rate}\n\n` +
-          `La información anterior del país fue reemplazada.`,
+        `✅ Método de <b>${escapeHtml(prev?.country_name ?? cc)}</b> reemplazado.\n\n` +
+          `Así lo verá el usuario:\n\n${body}`,
       );
       return;
     }
 
-
-
-
-
-
-
-    // ===== Editar método de pago =====
-    const pmEditMatch = replySource.match(/PMEDIT:([a-f0-9-]{36}):(\w+)/);
-    if (pmEditMatch) {
-      const [, pmId, field] = pmEditMatch;
-      const allowed = ["country_code", "country_name", "method_name", "holder_name", "account_info", "extra_info", "currency", "usd_rate"];
-      if (!allowed.includes(field)) {
-        await sendMessage("warehouse", msg.chat.id, `Campo no permitido.`);
-        return;
-      }
-      let value: string | number = text;
-      if (field === "usd_rate") {
-        const n = Number(text.replace(",", "."));
-        if (!Number.isFinite(n) || n <= 0) { await sendMessage("warehouse", msg.chat.id, `Rate inválido.`); return; }
-        value = n;
-      }
-      const patch: Record<string, string | number | null> = { [field]: field === "extra_info" && !text ? null : value };
-      const { error } = await sb.from("payment_methods").update(patch as never).eq("id", pmId);
-      if (error) { await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`); return; }
-      await sb.from("admin_logs").insert({ admin_telegram_id: msg.from.id, action: "pm_edit", target_type: "payment_method", target_id: pmId, details: { field, value } as never });
-      await sendMessage("warehouse", msg.chat.id, `Campo <b>${field}</b> actualizado.`);
-      await pmEditMenu(msg.chat.id, pmId);
-      return;
-    }
-
-    // ===== Agregar método de pago =====
-    if (replySource.includes("PMADD")) {
-      const lines = text.split(/\r?\n/).map((l) => l.trim());
-      if (lines.length < 5) {
-        await sendMessage("warehouse", msg.chat.id, `Faltan campos. Mínimo 5 líneas.`);
-        return;
-      }
-      const [country_code, country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate] = lines;
-      const rate = Number((usd_rate ?? "1").replace(",", "."));
-      const { data, error } = await sb.from("payment_methods").insert({
-        country_code,
-        country_name,
-        method_name,
-        holder_name,
-        account_info,
-        extra_info: extra_info || null,
-        currency: currency || "USD",
-        usd_rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
-        active: true,
-      }).select().single();
-      if (error || !data) { await sendMessage("warehouse", msg.chat.id, `Error: ${error?.message ?? "desconocido"}`); return; }
-      await sb.from("admin_logs").insert({ admin_telegram_id: msg.from.id, action: "pm_add", target_type: "payment_method", target_id: data.id });
-      await sendMessage("warehouse", msg.chat.id, `Método agregado para ${country_name}.`);
-      return;
-    }
-
-    // ===== Reemplazar TODO el método de un país en un solo mensaje =====
-    const pmSetCcMatch = replySource.match(/PMSETCC:([A-Za-z0-9_-]+)/);
-    if (pmSetCcMatch) {
-      const oldCc = pmSetCcMatch[1].toUpperCase();
-      const lines = text.split(/\r?\n/).map((l) => l.trim());
-      if (lines.length < 5) {
+    // ===== Agregar país nuevo (primera línea = header, resto = body) =====
+    if (replySource.includes("PMNEW")) {
+      const allLines = text.split(/\r?\n/);
+      const headerLine = allLines.shift() ?? "";
+      const body = allLines.join("\n").trim();
+      const parts = headerLine.split("|").map((s) => s.trim());
+      if (parts.length < 2 || !parts[0] || !parts[1] || !body) {
         await sendMessage(
           "warehouse",
           msg.chat.id,
-          `Faltan campos. Mínimo 5 líneas (country_code, country_name, method_name, holder_name, account_info).`,
+          `Formato inválido. Primera línea: <code>CÓDIGO | Nombre País | MONEDA | Tasa</code> y luego el contenido.`,
         );
         return;
       }
-      const [country_code, country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate] = lines;
-      const rate = Number((usd_rate ?? "1").replace(",", "."));
-      // Borrar info anterior del país (tanto el cc antiguo como el nuevo)
-      const ccNew = country_code.toUpperCase();
-      await sb.from("payment_methods").delete().eq("country_code", oldCc);
-      if (ccNew !== oldCc) {
-        await sb.from("payment_methods").delete().eq("country_code", ccNew);
-      }
-      const { data, error } = await sb.from("payment_methods").insert({
-        country_code: ccNew,
+      const cc = parts[0].toUpperCase();
+      const country_name = parts[1];
+      const currency = (parts[2] || "USD").toUpperCase();
+      const rate = Number((parts[3] ?? "1").replace(",", "."));
+      const meta = extractPmMetadata(body);
+      await sb.from("payment_methods").delete().eq("country_code", cc);
+      const { data: inserted, error } = await sb.from("payment_methods").insert({
+        country_code: cc,
         country_name,
-        method_name,
-        holder_name,
-        account_info,
-        extra_info: extra_info || null,
-        currency: currency || "USD",
+        method_name: meta.method_name ?? "Pago",
+        holder_name: meta.holder_name,
+        account_info: meta.account_info,
+        extra_info: null,
+        currency,
         usd_rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+        body_raw: body,
         active: true,
-      }).select().single();
-      if (error || !data) {
-        await sendMessage("warehouse", msg.chat.id, `Error: ${error?.message ?? "desconocido"}`);
+      } as never).select().single();
+      if (error || !inserted) {
+        await sendMessage("warehouse", msg.chat.id, `Error guardando: ${error?.message ?? "desconocido"}`);
         return;
       }
       await sb.from("admin_logs").insert({
         admin_telegram_id: msg.from.id,
-        action: "pm_replace_country",
+        action: "pm_new_country",
         target_type: "payment_method",
-        target_id: data.id,
-        details: { old_country_code: oldCc, new_country_code: ccNew } as never,
+        target_id: (inserted as { id: string }).id,
+        details: { country_code: cc } as never,
       });
       await sendMessage(
         "warehouse",
         msg.chat.id,
-        `✅ <b>Método actualizado para ${country_name}</b>\n\n` +
-          `🏦 ${method_name}\n🪪 ${holder_name}\n📋 <code>${account_info}</code>\n💱 ${currency || "USD"} · rate ${Number.isFinite(rate) && rate > 0 ? rate : 1}\n\n` +
-          `La información anterior fue eliminada.`,
+        `✅ País <b>${escapeHtml(country_name)}</b> agregado (moneda ${currency}, tasa ${Number.isFinite(rate) && rate > 0 ? rate : 1}).\n\n${body}`,
       );
       return;
     }
+
 
     // ===== Renombrar producto =====
     const prodRenameMatch = replySource.match(/PRODRENAME:([a-f0-9-]{36})/);
