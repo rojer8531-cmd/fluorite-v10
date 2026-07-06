@@ -1,19 +1,9 @@
-// Ejecuta el trabajo del webhook sin bloquear la siguiente interacción.
-// La ruta HTTP debe responder rápido a Telegram; el trabajo real queda
-// sostenido por waitUntil cuando el runtime lo ofrece.
-const inflightByLabel = new Map<string, Set<Promise<void>>>();
+// Ejecuta el trabajo del webhook. Volvemos al comportamiento original:
+// esperamos a que la acción termine antes de responder 200 a Telegram.
+// Telegram permite múltiples conexiones concurrentes (max_connections=100),
+// así que distintos taps del mismo o de otros usuarios no se bloquean entre sí.
 
-const SLOW_LOG_MS = 2_500;
-const MAX_INFLIGHT_JOBS = 500;
-
-function getInflight(label: string) {
-  let set = inflightByLabel.get(label);
-  if (!set) {
-    set = new Set<Promise<void>>();
-    inflightByLabel.set(label, set);
-  }
-  return set;
-}
+const SLOW_LOG_MS = 5_000;
 
 export function keepTelegramPromiseAlive(promise: Promise<unknown>) {
   const g = globalThis as typeof globalThis & {
@@ -22,7 +12,11 @@ export function keepTelegramPromiseAlive(promise: Promise<unknown>) {
   };
   const waitUntil = g.__lovableWaitUntil ?? g.EdgeRuntime?.waitUntil;
   if (typeof waitUntil === "function") {
-    waitUntil(promise);
+    try {
+      waitUntil(promise);
+    } catch {
+      /* noop */
+    }
   }
 }
 
@@ -31,29 +25,14 @@ export async function runTelegramWebhook(
   work: () => Promise<void>,
 ) {
   const startedAt = Date.now();
-  const inflight = getInflight(label);
-
-  if (inflight.size > MAX_INFLIGHT_JOBS) {
-    console.warn(`[${label} webhook] too many inflight jobs: ${inflight.size}`);
-    return;
-  }
-
-  const job = (async () => {
-    try {
-      await work();
-    } catch (err) {
-      console.error(`[${label} webhook] error`, err);
-    }
-  })().finally(() => {
-    inflight.delete(job);
+  try {
+    await work();
+  } catch (err) {
+    console.error(`[${label} webhook] error`, err);
+  } finally {
     const elapsed = Date.now() - startedAt;
     if (elapsed > SLOW_LOG_MS) {
       console.warn(`[${label} webhook] slow handler ${elapsed}ms`);
     }
-  });
-  inflight.add(job);
-  keepTelegramPromiseAlive(job);
-
-  // No esperamos todo el flujo: así Telegram puede entregar el siguiente tap
-  // inmediatamente aunque la acción anterior todavía esté editando/enviando.
+  }
 }
