@@ -562,66 +562,33 @@ async function pmCountriesView(chat_id: number) {
   await sendMessage("warehouse", chat_id, `<b>Países disponibles</b>\n\n${lines || "Sin datos."}`);
 }
 
-async function pmEditMenu(chat_id: number, pm_id: string) {
-  const { data: m } = await sb.from("payment_methods").select("*").eq("id", pm_id).maybeSingle();
-  if (!m) {
-    await sendMessage("warehouse", chat_id, `Método no encontrado.`);
-    return;
+// Best-effort para extraer metadatos del texto pegado (para OCR y totales).
+// Si no encuentra algo, deja null y no rompe nada.
+function extractPmMetadata(raw: string): {
+  method_name: string | null;
+  holder_name: string | null;
+  account_info: string | null;
+} {
+  const lines = raw.split(/\r?\n/).map((l) => l.trim());
+  let method_name: string | null = null;
+  let holder_name: string | null = null;
+  let account_info: string | null = null;
+  for (const l of lines) {
+    if (!method_name && l.includes("🏦")) {
+      method_name = l.replace(/🏦|✅|❌/g, "").trim();
+    }
+    if (!holder_name) {
+      const m = l.match(/🪪\s*(?:Nombre|Titular)\s*:\s*(.+)/i) ?? l.match(/(?:Nombre|Titular)\s*:\s*(.+)/i);
+      if (m) holder_name = m[1].trim();
+    }
+    if (!account_info) {
+      const m = l.match(/📋\s*[^:]*:\s*(.+)/) ?? l.match(/(?:Alias|CBU|CVU|Cuenta|N[uú]mero|Cta)\s*:\s*(.+)/i);
+      if (m) account_info = m[1].trim();
+    }
   }
-  const text =
-    `<b>${m.country_name} · ${m.method_name}</b>\n` +
-    `Titular  <code>${m.holder_name}</code>\n` +
-    `Cuenta   <code>${m.account_info}</code>\n` +
-    `Nota     ${m.extra_info ?? "—"}\n` +
-    `Moneda   ${m.currency}\n` +
-    `Rate USD ${Number(m.usd_rate)}\n` +
-    `Estado   ${m.active ? "Activo" : "Inactivo"}\n`;
-  await sendMessage("warehouse", chat_id, text, {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "Método", callback_data: `pmf:method_name:${pm_id}` },
-          { text: "Titular", callback_data: `pmf:holder_name:${pm_id}` },
-        ],
-        [
-          { text: "Cuenta", callback_data: `pmf:account_info:${pm_id}` },
-          { text: "Nota", callback_data: `pmf:extra_info:${pm_id}` },
-        ],
-        [
-          { text: "País (nombre)", callback_data: `pmf:country_name:${pm_id}` },
-          { text: "País (código)", callback_data: `pmf:country_code:${pm_id}` },
-        ],
-        [
-          { text: "Moneda", callback_data: `pmf:currency:${pm_id}` },
-          { text: "Rate USD", callback_data: `pmf:usd_rate:${pm_id}` },
-        ],
-        [
-          { text: m.active ? "Desactivar" : "Activar", callback_data: `pmtog:${pm_id}` },
-        ],
-        [{ text: "Volver", callback_data: "pm:editlist" }],
-      ],
-    },
-  });
+  return { method_name, holder_name, account_info };
 }
 
-async function pmPromptField(chat_id: number, pm_id: string, field: string) {
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>PMEDIT:${pm_id}:${field}</b>\n\nRespondé a este mensaje con el nuevo valor para <b>${field}</b>.`,
-    { reply_markup: { force_reply: true, selective: true } },
-  );
-}
-
-async function pmPromptAdd(chat_id: number) {
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>PMADD</b>\n\nRespondé a este mensaje con los datos del nuevo método, una línea por campo en este orden:\n\n` +
-      `<code>country_code\ncountry_name\nmethod_name\nholder_name\naccount_info\nextra_info (opcional)\ncurrency (default USD)\nusd_rate (default 1)</code>`,
-    { reply_markup: { force_reply: true, selective: true } },
-  );
-}
 
 async function pmConfirmDelete(chat_id: number, pm_id: string) {
   const { data: m } = await sb.from("payment_methods").select("country_name, method_name").eq("id", pm_id).maybeSingle();
