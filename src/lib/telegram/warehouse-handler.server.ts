@@ -121,6 +121,8 @@ const ADMIN_BOTTOM = {
   anuncio: "📣 Anuncio",
   metodos: "💳 Métodos",
   borrar: "🗑 Borrar",
+  paste_prices: "⚡ Pegar Precios",
+  paste_keys: "⚡ Pegar Keys",
 };
 
 function adminBottomKeyboard() {
@@ -128,6 +130,7 @@ function adminBottomKeyboard() {
     keyboard: [
       [{ text: ADMIN_BOTTOM.inicio }],
       [{ text: ADMIN_BOTTOM.stock }, { text: ADMIN_BOTTOM.usuarios }],
+      [{ text: ADMIN_BOTTOM.paste_keys }, { text: ADMIN_BOTTOM.paste_prices }],
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.precios }],
       [{ text: ADMIN_BOTTOM.productos }, { text: ADMIN_BOTTOM.minrecharge }],
       [{ text: ADMIN_BOTTOM.anuncio }, { text: ADMIN_BOTTOM.metodos }],
