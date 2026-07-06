@@ -1,23 +1,22 @@
-// Ejecuta el trabajo del webhook garantizando que Telegram reciba una
-// respuesta 200 y que ningún handler quede colgado. Estrategia:
-//  - Se corre el trabajo con un timeout duro (HARD_TIMEOUT_MS): si algo
-//    se cuelga, no bloquea la respuesta a Telegram.
-//  - Los errores nunca se propagan al cliente HTTP: se loguean y punto.
-//  - Se mantiene una referencia (inflight) para que el runtime no
-//    descarte la promesa mientras aún trabaja en background.
+// Ejecuta el trabajo del webhook sin dejar a Telegram esperando.
+// El bot debe contestar rápido incluso si una consulta/acción tarda.
 const inflight = new Set<Promise<void>>();
 
-// Timeout máximo total del handler. Telegram deja de esperar a los ~60s
-// y reintenta; queremos responder mucho antes. 10s es un balance:
-// suficiente para operaciones normales (DB + 1-2 sendMessage) sin que
-// un handler patológico congele al bot para otros usuarios.
-const HARD_TIMEOUT_MS = 10_000;
+// Espera mínima para permitir que callbacks manden el ACK inmediato y luego
+// devolvemos 200 a Telegram. El trabajo sigue referenciado en background.
+const ACK_WAIT_MS = 2_000;
+const SLOW_LOG_MS = 2_500;
+const MAX_INFLIGHT_JOBS = 500;
 
 export async function runTelegramWebhook(
   label: string,
   work: () => Promise<void>,
 ) {
   const startedAt = Date.now();
+
+  if (inflight.size > MAX_INFLIGHT_JOBS) {
+    console.warn(`[${label} webhook] too many inflight jobs: ${inflight.size}`);
+  }
 
   const job = (async () => {
     try {
@@ -28,17 +27,16 @@ export async function runTelegramWebhook(
   })().finally(() => {
     inflight.delete(job);
     const elapsed = Date.now() - startedAt;
-    if (elapsed > 8_000) {
+    if (elapsed > SLOW_LOG_MS) {
       console.warn(`[${label} webhook] slow handler ${elapsed}ms`);
     }
   });
   inflight.add(job);
 
-  // Devolvemos el control al route handler apenas termine el trabajo o
-  // se cumpla el timeout duro. Si vence el timeout, el job sigue vivo
-  // en background (referenciado en inflight) para no perder envíos.
+  // La ruta HTTP no debe esperar todo el flujo del bot. Si una función tarda,
+  // Telegram igual recibe OK rápido y no reintenta ni deja botones colgados.
   await Promise.race([
     job,
-    new Promise<void>((resolve) => setTimeout(resolve, HARD_TIMEOUT_MS)),
+    new Promise<void>((resolve) => setTimeout(resolve, ACK_WAIT_MS)),
   ]);
 }
