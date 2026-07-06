@@ -112,35 +112,52 @@ function isAdmin(telegram_id: number) {
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
   inicio: "🏠 Inicio",
-  stock: "Stock",
-  usuarios: "Usuarios",
   addkeys: "Agregar Keys",
-  precios: "Precios",
   productos: "📦 Productos",
-  minrecharge: "💵 Recarga Mín.",
-  anuncio: "📣 Anuncio",
   metodos: "💳 Métodos",
-  borrar: "🗑 Borrar",
-  paste_prices: "⚡ Pegar Precios",
-  paste_keys: "⚡ Pegar Keys",
+  todo: "⚙️ Todo",
+};
+
+// Opciones agrupadas dentro del menú "Todo"
+const ADMIN_TODO = {
+  stock: "Stock",
+  anuncio: "Anuncio",
+  minrecharge: "Recarga Mínima",
+  usuarios: "Usuarios",
+  precios: "Precios",
+  borrar: "Borrar",
 };
 
 function adminBottomKeyboard() {
   return {
     keyboard: [
       [{ text: ADMIN_BOTTOM.inicio }],
-      [{ text: ADMIN_BOTTOM.stock }, { text: ADMIN_BOTTOM.usuarios }],
-      [{ text: ADMIN_BOTTOM.paste_keys }, { text: ADMIN_BOTTOM.paste_prices }],
-      [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.precios }],
-      [{ text: ADMIN_BOTTOM.productos }, { text: ADMIN_BOTTOM.minrecharge }],
-      [{ text: ADMIN_BOTTOM.anuncio }, { text: ADMIN_BOTTOM.metodos }],
-      [{ text: ADMIN_BOTTOM.borrar }],
+      [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.productos }],
+      [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_BOTTOM.todo }],
     ],
     resize_keyboard: true,
     is_persistent: true,
     one_time_keyboard: false,
   };
 }
+
+async function showTodoMenu(chat_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>Todo</b>\n\nElegí una opción:`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: ADMIN_TODO.stock, callback_data: "akp:stock" }, { text: ADMIN_TODO.usuarios, callback_data: "akp:users" }],
+          [{ text: ADMIN_TODO.precios, callback_data: "akp:prlist" }, { text: ADMIN_TODO.minrecharge, callback_data: "akp:minrec" }],
+          [{ text: ADMIN_TODO.anuncio, callback_data: "akp:anuncio" }, { text: ADMIN_TODO.borrar, callback_data: "akp:borrar" }],
+        ],
+      },
+    },
+  );
+}
+
 
 async function resolvePriceId(rawId: string) {
   const normalized = rawId.trim();
