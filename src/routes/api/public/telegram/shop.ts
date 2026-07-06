@@ -30,6 +30,10 @@ function isValidWebhookSecret(got: string, token: string) {
   return safeEq(got, deriveSecret(token)) || safeEq(got, deriveLegacySecret(token));
 }
 
+function getQueueKey(update: any) {
+  return update?.callback_query?.from?.id ?? update?.message?.from?.id ?? update?.message?.chat?.id;
+}
+
 export const Route = createFileRoute("/api/public/telegram/shop")({
   server: {
     handlers: {
@@ -40,7 +44,7 @@ export const Route = createFileRoute("/api/public/telegram/shop")({
         if (!isValidWebhookSecret(got, token)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
         await quickAck(update?.callback_query?.id, update?.callback_query?.data);
-        const job = runTelegramWebhook("shop", () => handleShopUpdate(update));
+        const job = runTelegramWebhook("shop", () => handleShopUpdate(update), getQueueKey(update));
         keepTelegramPromiseAlive(job);
         return Response.json({ ok: true });
       },

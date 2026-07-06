@@ -5,6 +5,7 @@
 
 const SLOW_LOG_MS = 5_000;
 const HARD_TIMEOUT_MS = 28_000;
+const userQueues = new Map<string, Promise<void>>();
 
 export function keepTelegramPromiseAlive(promise: Promise<unknown>) {
   const g = globalThis as typeof globalThis & {
@@ -26,13 +27,22 @@ export function keepTelegramPromiseAlive(promise: Promise<unknown>) {
 export async function runTelegramWebhook(
   label: string,
   work: () => Promise<void>,
+  queueKey?: string | number,
 ) {
   const startedAt = Date.now();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => reject(new Error(`handler timed out after ${HARD_TIMEOUT_MS}ms`)), HARD_TIMEOUT_MS);
   });
-  const workPromise = work();
+  const key = queueKey == null ? null : `${label}:${queueKey}`;
+  const previous = key ? userQueues.get(key) : undefined;
+  const workPromise = (previous ?? Promise.resolve())
+    .catch(() => {})
+    .then(work)
+    .finally(() => {
+      if (key && userQueues.get(key) === workPromise) userQueues.delete(key);
+    });
+  if (key) userQueues.set(key, workPromise);
   workPromise.catch((err) => {
     console.error(`[${label} webhook] late error`, err);
   });
