@@ -2137,38 +2137,35 @@ async function handleMessage(msg: TgMessage) {
       );
       await patchContext(msg.from.id, { bar_shown: true });
       return;
-    case ADMIN_BOTTOM.stock:
+    case ADMIN_TODO.stock:
       await adminStockView(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.usuarios:
+    case ADMIN_TODO.usuarios:
       await adminUsuarios(msg.chat.id);
       return;
     case ADMIN_BOTTOM.addkeys:
       await adminListProducts(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.precios:
+    case ADMIN_TODO.precios:
       await adminListaPrecios(msg.chat.id);
       return;
     case ADMIN_BOTTOM.productos:
       await adminProductsList(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.minrecharge:
+    case ADMIN_TODO.minrecharge:
       await adminPromptMinRecharge(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.anuncio:
+    case ADMIN_TODO.anuncio:
       await adminPromptAnuncio(msg.chat.id);
       return;
     case ADMIN_BOTTOM.metodos:
       await pmMenu(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.borrar:
+    case ADMIN_TODO.borrar:
       await cleanAdminChat(msg.chat.id, msg.from.id);
       return;
-    case ADMIN_BOTTOM.paste_prices:
-      await adminPromptPastePrices(msg.chat.id);
-      return;
-    case ADMIN_BOTTOM.paste_keys:
-      await adminPromptPasteKeys(msg.chat.id);
+    case ADMIN_BOTTOM.todo:
+      await showTodoMenu(msg.chat.id);
       return;
   }
 
