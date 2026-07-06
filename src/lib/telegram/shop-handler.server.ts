@@ -820,19 +820,26 @@ async function showRechargeMethods(
   const currency = methods[0].currency;
   const fmtLocal = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const lines: string[] = [
-    `💳 <b>Métodos De Pago - ${methods[0].country_name}</b> ${flag}`,
-    ``,
-    `🆔 Recarga: <code>${pid}</code>`,
-    `💰 Monto: <b>${amount.toFixed(2)} USD</b>`,
-    `🧾 Pagas: <b>${fmtLocal(localTotal)} ${currency}</b>`,
-    ``,
-  ];
+  const dyn = {
+    countryName: methods[0].country_name,
+    flag,
+    rechargeId: pid,
+    amountUsd: amount,
+    localTotal,
+    currency,
+    fmtLocal,
+  };
+
+  const lines: string[] = [];
+  let anyTemplate = false;
   for (const m of methods) {
     const raw = (m as { body_raw?: string | null }).body_raw;
     if (raw && raw.trim().length > 0) {
-      // Contenido pegado por el admin, verbatim (respeta saltos de línea y formato).
-      lines.push(raw);
+      // El admin pegó una plantilla. Reemplazamos los valores dinámicos
+      // (país, ID de recarga, monto USD, conversión local y total) pero
+      // mantenemos exactamente la estructura, banco, titular, alias, etc.
+      lines.push(renderPaymentTemplate(raw, m, dyn));
+      anyTemplate = true;
     } else {
       const local = amount * Number(m.usd_rate);
       lines.push(`🏦 <b>${m.method_name}</b>`);
@@ -843,6 +850,20 @@ async function showRechargeMethods(
     }
     lines.push(``);
   }
+
+  // Si NO hay plantilla, prepend el header dinámico. Si sí hay plantilla,
+  // la plantilla ya contiene su propio header — evitamos duplicarlo.
+  if (!anyTemplate) {
+    lines.unshift(
+      `💳 <b>Métodos De Pago - ${methods[0].country_name}</b> ${flag}`,
+      ``,
+      `🆔 Recarga: <code>${pid}</code>`,
+      `💰 Monto: <b>${amount.toFixed(2)} USD</b>`,
+      `🧾 Pagas: <b>${fmtLocal(localTotal)} ${currency}</b>`,
+      ``,
+    );
+  }
+
 
   await screen(telegram_id, chat_id, lines.join("\n"), [
     [{ text: "✅ Ya Pagué", callback_data: `rcpay:${order.id}` }],
