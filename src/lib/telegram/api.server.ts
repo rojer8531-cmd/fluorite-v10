@@ -317,7 +317,11 @@ export async function setWebhook(bot: BotKind, url: string, secret_token: string
     url,
     secret_token,
     allowed_updates: ["message", "callback_query"],
-    drop_pending_updates: true,
+    // Permite hasta 100 entregas concurrentes por bot: Telegram enviará
+    // varios updates en paralelo en lugar de encolarlos, así distintos
+    // usuarios no se bloquean entre sí.
+    max_connections: 100,
+    drop_pending_updates: false,
   });
 }
 
