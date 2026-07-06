@@ -121,6 +121,8 @@ const ADMIN_BOTTOM = {
   anuncio: "📣 Anuncio",
   metodos: "💳 Métodos",
   borrar: "🗑 Borrar",
+  paste_prices: "⚡ Pegar Precios",
+  paste_keys: "⚡ Pegar Keys",
 };
 
 function adminBottomKeyboard() {
@@ -128,6 +130,7 @@ function adminBottomKeyboard() {
     keyboard: [
       [{ text: ADMIN_BOTTOM.inicio }],
       [{ text: ADMIN_BOTTOM.stock }, { text: ADMIN_BOTTOM.usuarios }],
+      [{ text: ADMIN_BOTTOM.paste_keys }, { text: ADMIN_BOTTOM.paste_prices }],
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.precios }],
       [{ text: ADMIN_BOTTOM.productos }, { text: ADMIN_BOTTOM.minrecharge }],
       [{ text: ADMIN_BOTTOM.anuncio }, { text: ADMIN_BOTTOM.metodos }],
@@ -1426,6 +1429,167 @@ async function handleBroadcast(msg: TgMessage) {
   );
 }
 
+// ===== Pegar Precios / Keys en bulk =====
+async function adminPromptPastePrices(chat_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PASTEPRICES</b>\n\n` +
+      `Respondé a este mensaje pegando uno o varios precios, un por línea.\n\n` +
+      `Formato: <code>Producto | Duración | Precio</code>\n\n` +
+      `Ejemplo:\n<code>Netflix | 1 mes | 3.50\nNetflix | 3 meses | 9.00\nDisney+ | 1 mes | 2.00</code>\n\n` +
+      `Se buscan por nombre exacto (sin distinguir mayúsculas). Los no encontrados se listan al final.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function adminPromptPasteKeys(chat_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PASTEKEYS</b>\n\n` +
+      `Respondé a este mensaje pegando keys en bloques. Cada bloque empieza con un encabezado.\n\n` +
+      `Formato de encabezado: <code>== Producto | Duración ==</code>\n\n` +
+      `Ejemplo:\n<code>== Netflix | 1 mes ==\nKEY-AAA\nKEY-BBB\n\n== Disney+ | 1 mes ==\nKEY-CCC</code>\n\n` +
+      `Duplicadas se omiten. Los bloques no encontrados se listan al final.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function bulkUpdatePrices(chat_id: number, admin_id: number, raw: string) {
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    await sendMessage("warehouse", chat_id, `No detecté precios.`);
+    return;
+  }
+  const { data: prices } = await sb
+    .from("product_prices")
+    .select("id, duration_label, product_id, products(name)")
+    .eq("active", true);
+  const catalog = (prices ?? []).map((p) => ({
+    id: p.id as string,
+    duration: String(p.duration_label).toLowerCase().trim(),
+    name: String((p as { products: { name: string } }).products.name).toLowerCase().trim(),
+  }));
+  const okList: string[] = [];
+  const failList: string[] = [];
+  for (const line of lines) {
+    const parts = line.split("|").map((s) => s.trim());
+    if (parts.length < 3) { failList.push(line); continue; }
+    const [pname, pdur, praw] = parts;
+    const price = Number(praw.replace(/[^0-9.,-]/g, "").replace(",", "."));
+    if (!Number.isFinite(price) || price <= 0) { failList.push(line); continue; }
+    const match = catalog.find(
+      (c) => c.name === pname.toLowerCase() && c.duration === pdur.toLowerCase(),
+    );
+    if (!match) { failList.push(line); continue; }
+    const { error } = await sb.from("product_prices").update({ price_usd: price }).eq("id", match.id);
+    if (error) { failList.push(`${line}  (error: ${error.message})`); continue; }
+    okList.push(`${pname} · ${pdur} → $${price.toFixed(2)}`);
+  }
+  if (okList.length > 0) {
+    invalidateCatalogCache();
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: admin_id,
+      action: "bulk_price_update",
+      target_type: "product_prices",
+      target_id: "bulk",
+      details: { count: okList.length } as never,
+    });
+  }
+  const msgOut =
+    `<b>Precios actualizados</b>  ${okList.length}\n` +
+    (okList.length ? okList.map((l) => `✅ ${l}`).join("\n") + "\n" : "") +
+    (failList.length ? `\n<b>No aplicados</b>  ${failList.length}\n` + failList.map((l) => `⚠️ ${escapeHtml(l)}`).join("\n") : "");
+  await sendMessage("warehouse", chat_id, msgOut);
+}
+
+async function bulkAddKeys(chat_id: number, admin_id: number, raw: string) {
+  const { data: prices } = await sb
+    .from("product_prices")
+    .select("id, product_id, duration_label, products(name)")
+    .eq("active", true);
+  const catalog = (prices ?? []).map((p) => ({
+    id: p.id as string,
+    product_id: p.product_id as string,
+    duration: String(p.duration_label).toLowerCase().trim(),
+    name: String((p as { products: { name: string } }).products.name).toLowerCase().trim(),
+    label: `${(p as { products: { name: string } }).products.name} · ${p.duration_label}`,
+  }));
+  const lines = raw.split(/\r?\n/);
+  type Block = { header: string; priceId: string | null; product_id: string | null; label: string; keys: string[] };
+  const blocks: Block[] = [];
+  let current: Block | null = null;
+  const headerRe = /^={2,}\s*(.+?)\s*={2,}$/;
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const hm = line.match(headerRe);
+    if (hm) {
+      const parts = hm[1].split("|").map((s) => s.trim());
+      if (parts.length < 2) {
+        current = { header: line, priceId: null, product_id: null, label: hm[1], keys: [] };
+      } else {
+        const [pname, pdur] = parts;
+        const match = catalog.find(
+          (c) => c.name === pname.toLowerCase() && c.duration === pdur.toLowerCase(),
+        );
+        current = match
+          ? { header: line, priceId: match.id, product_id: match.product_id, label: match.label, keys: [] }
+          : { header: line, priceId: null, product_id: null, label: `${pname} · ${pdur}`, keys: [] };
+      }
+      blocks.push(current);
+      continue;
+    }
+    if (current) current.keys.push(line);
+  }
+  if (blocks.length === 0) {
+    await sendMessage("warehouse", chat_id, `No detecté encabezados. Usá <code>== Producto | Duración ==</code>.`);
+    return;
+  }
+  const summary: string[] = [];
+  let totalNew = 0;
+  for (const b of blocks) {
+    if (!b.priceId || !b.product_id) {
+      summary.push(`⚠️ ${escapeHtml(b.label)}  (no encontrado)`);
+      continue;
+    }
+    const uniq = [...new Set(b.keys.filter(Boolean))];
+    if (uniq.length === 0) {
+      summary.push(`⚠️ ${escapeHtml(b.label)}  (sin keys)`);
+      continue;
+    }
+    const { data: existing } = await sb
+      .from("product_stock_keys")
+      .select("key_value")
+      .in("key_value", uniq);
+    const existSet = new Set((existing ?? []).map((r) => r.key_value));
+    const fresh = uniq.filter((k) => !existSet.has(k));
+    if (fresh.length > 0) {
+      await sb.from("product_stock_keys").insert(
+        fresh.map((key_value) => ({ product_id: b.product_id!, price_id: b.priceId!, key_value })),
+      );
+      totalNew += fresh.length;
+    }
+    summary.push(`✅ ${escapeHtml(b.label)}  nuevas ${fresh.length}  duplicadas ${uniq.length - fresh.length}`);
+  }
+  if (totalNew > 0) {
+    invalidateCatalogCache();
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: admin_id,
+      action: "bulk_keys_upload",
+      target_type: "product_stock_keys",
+      target_id: "bulk",
+      details: { total_new: totalNew, blocks: blocks.length } as never,
+    });
+  }
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>Keys cargadas</b>\nTotal nuevas  <b>${totalNew}</b>\n\n${summary.join("\n")}`,
+  );
+}
+
 
 // ===== Mensajes =====
 async function handleMessage(msg: TgMessage) {
@@ -1473,6 +1637,18 @@ async function handleMessage(msg: TgMessage) {
   // ===== respuestas (reply) =====
   if (msg.reply_to_message) {
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
+
+    // ===== Pegar Precios en bulk =====
+    if (replySource.includes("PASTEPRICES")) {
+      await bulkUpdatePrices(msg.chat.id, msg.from.id, text);
+      return;
+    }
+
+    // ===== Pegar Keys en bulk =====
+    if (replySource.includes("PASTEKEYS")) {
+      await bulkAddKeys(msg.chat.id, msg.from.id, text);
+      return;
+    }
 
     // ===== Envío de key manual desde el almacén =====
     const almSendMatch = replySource.match(/ALMSENDKEY:([a-f0-9-]{36})/);
@@ -1970,6 +2146,12 @@ async function handleMessage(msg: TgMessage) {
       return;
     case ADMIN_BOTTOM.borrar:
       await cleanAdminChat(msg.chat.id, msg.from.id);
+      return;
+    case ADMIN_BOTTOM.paste_prices:
+      await adminPromptPastePrices(msg.chat.id);
+      return;
+    case ADMIN_BOTTOM.paste_keys:
+      await adminPromptPasteKeys(msg.chat.id);
       return;
   }
 
