@@ -2086,21 +2086,7 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
 
-  // ===== Pegar Método (rápido) =====
-  if (data === "pm:paste") {
-    if (chat_id) {
-      await sendMessage(
-        "warehouse",
-        chat_id,
-        `<b>PMPASTE</b>\n\n` +
-          `Respondé a este mensaje pegando el método de pago con este formato:\n\n` +
-          `<code>💳 Métodos De Pago - Argentina 🇦🇷\n\n🆔 Recarga: TP...\n💰 Monto: 10.00 USD\n🧾 Pagas: 16,000.00 ARS\n\n🏦 ✅ MERCADO PAGO\n🪪 Nombre: Jeremías Velozo\n📋 Alias: jerevelozo\n💵 Total: 16,000.00 ARS</code>\n\n` +
-          `Detecto país, banco, titular, cuenta, moneda y tasa automáticamente. Reemplaza al método anterior del país.`,
-        { reply_markup: { force_reply: true, selective: true } },
-      );
-    }
-    return;
-  }
+
 
 
   if (data.startsWith("akprod:")) {
