@@ -1974,6 +1974,12 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_BOTTOM.borrar:
       await cleanAdminChat(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_BOTTOM.paste_prices:
+      await adminPromptPastePrices(msg.chat.id);
+      return;
+    case ADMIN_BOTTOM.paste_keys:
+      await adminPromptPasteKeys(msg.chat.id);
+      return;
   }
 
   if (text === "/delete" || text === "/borrar") {
