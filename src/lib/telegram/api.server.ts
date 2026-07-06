@@ -79,6 +79,15 @@ function isClientPayloadError(code?: number): boolean {
   return code === 400 || code === 401 || code === 404;
 }
 
+function isBenignTelegramError(method: string, data: TgResult<unknown>): boolean {
+  const d = (data.description ?? "").toLowerCase();
+  return (
+    (method === "deleteMessage" && d.includes("message to delete not found")) ||
+    (method === "answerCallbackQuery" && d.includes("query is too old")) ||
+    (method === "answerCallbackQuery" && d.includes("query id is invalid"))
+  );
+}
+
 async function logTelegramError(
   bot: BotKind,
   method: string,
@@ -130,6 +139,7 @@ export async function tg<T = unknown>(
     const res = await fetch(url, init);
     const data = (await res.json()) as TgResult<T>;
     if (!data.ok) {
+      if (isBenignTelegramError(method, data)) return data;
       // 429: respeta retry_after si es razonable
       if (data.error_code === 429) {
         const ra = data.parameters?.retry_after ?? 1;

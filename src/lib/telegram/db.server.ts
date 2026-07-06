@@ -42,7 +42,15 @@ export async function getOrCreateUser(opts: {
     })
     .select("*")
     .single();
-  if (error) throw error;
+  if (error) {
+    const { data: recovered } = await sb
+      .from("bot_users")
+      .select("*")
+      .eq("telegram_id", opts.telegram_id)
+      .maybeSingle();
+    if (recovered) return recovered as BotUser;
+    throw error;
+  }
   return created as BotUser;
 }
 
