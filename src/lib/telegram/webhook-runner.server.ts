@@ -1,7 +1,6 @@
-// Ejecuta el trabajo del webhook de forma confiable.
-// Importante: en producción el runtime puede cancelar tareas "en background"
-// cuando la ruta HTTP responde. Por eso NO soltamos el trabajo a medias: cada
-// update debe terminar su primera respuesta/estado antes de devolver 200.
+// Ejecuta el trabajo del webhook sin bloquear la siguiente interacción.
+// La ruta HTTP debe responder rápido a Telegram; el trabajo real queda
+// sostenido por waitUntil cuando el runtime lo ofrece.
 const inflightByLabel = new Map<string, Set<Promise<void>>>();
 
 const SLOW_LOG_MS = 2_500;
@@ -14,6 +13,17 @@ function getInflight(label: string) {
     inflightByLabel.set(label, set);
   }
   return set;
+}
+
+export function keepTelegramPromiseAlive(promise: Promise<unknown>) {
+  const g = globalThis as typeof globalThis & {
+    __lovableWaitUntil?: (promise: Promise<unknown>) => void;
+    EdgeRuntime?: { waitUntil?: (promise: Promise<unknown>) => void };
+  };
+  const waitUntil = g.__lovableWaitUntil ?? g.EdgeRuntime?.waitUntil;
+  if (typeof waitUntil === "function") {
+    waitUntil(promise);
+  }
 }
 
 export async function runTelegramWebhook(
@@ -42,8 +52,8 @@ export async function runTelegramWebhook(
     }
   });
   inflight.add(job);
+  keepTelegramPromiseAlive(job);
 
-  // Esperamos el trabajo real para que /start, callbacks y cambios de estado
-  // no se pierdan por tareas canceladas después del Response.
-  await job;
+  // No esperamos todo el flujo: así Telegram puede entregar el siguiente tap
+  // inmediatamente aunque la acción anterior todavía esté editando/enviando.
 }
