@@ -21,7 +21,6 @@ import {
   checkRateLimit,
   isBlocked,
   autoBlock,
-  blockSpamReceipt,
   getActiveMessage,
   setActiveMessage,
   sb,
@@ -107,45 +106,6 @@ export function invalidateMinRechargeCache() {
 function tpId(createdAt: string | Date) {
   const t = typeof createdAt === "string" ? new Date(createdAt).getTime() : createdAt.getTime();
   return `TP${t}`;
-}
-
-/** Normaliza string para comparación: minúsculas, sin acentos, sin signos. */
-function normTxt(s: string) {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
- * ¿El destinatario detectado por la IA coincide con el titular o la cuenta del método?
- * Tolerante: basta con que UN token significativo (>=3 chars) coincida,
- * o que la cuenta/alias aparezca como substring del recipient.
- */
-function recipientMatches(recipient: string, holder: string, account: string | null): boolean {
-  const r = normTxt(recipient);
-  if (!r) return true; // sin datos: no bloquear
-  const h = normTxt(holder);
-  if (h && r.includes(h)) return true;
-  if (h) {
-    const tokens = h.split(" ").filter((t) => t.length >= 3);
-    let hits = 0;
-    for (const t of tokens) if (r.includes(t)) hits++;
-    if (hits >= 1) return true;
-  }
-  if (account) {
-    const a = normTxt(account);
-    if (a && a.length >= 4 && r.includes(a)) return true;
-    // si el alias/cuenta tiene tokens largos, también permitir
-    if (a) {
-      const at = a.split(" ").filter((t) => t.length >= 4);
-      for (const t of at) if (r.includes(t)) return true;
-    }
-  }
-  return false;
 }
 
 // ===== Precios personalizados por usuario =====
@@ -322,50 +282,6 @@ async function notifyUser(chat_id: number, text: string) {
     },
   });
 }
-
-async function notifyUserInvalidReceipt(
-  chat_id: number,
-  opts?: { reason?: string; holder?: string | null; account?: string | null },
-) {
-  const parts: string[] = [`⚠️ <b>Tu comprobante no ha sido válido.</b>`];
-  if (opts?.reason) parts.push(`Motivo: ${opts.reason}`);
-  if (opts?.holder || opts?.account) {
-    parts.push(
-      `\n📌 <b>Vuelve a enviar el comprobante</b> asegurándote de mandar el dinero a:\n` +
-        `🪪 <code>${opts.holder ?? "—"}</code>\n` +
-        `📋 <code>${opts.account ?? "—"}</code>`,
-    );
-  } else {
-    parts.push(`\n📌 Vuelve a enviar el comprobante correcto.`);
-  }
-  parts.push(`\nSi crees que es un error, contacta al soporte.`);
-  await sendMessage("shop", chat_id, parts.join("\n"), {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
-        [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
-      ],
-    },
-  });
-}
-
-/** Notifica el bloqueo de 24h por spam de comprobantes. */
-async function notifySpamBlock(chat_id: number) {
-  const text =
-    `🚫 <b>Tu cuenta ha sido bloqueada temporalmente por 24 horas.</b>\n\n` +
-    `<b>Motivo:</b> Spam de comprobantes.\n\n` +
-    `Si consideras que se trata de un error, contacta al soporte.\n\n` +
-    `⏳ <b>Tiempo restante:</b> 24 horas.`;
-  await sendMessage("shop", chat_id, text, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "💬 Contactar soporte", url: `https://t.me/${SUPPORT_USERNAME.replace(/^@/, "")}` }],
-      ],
-    },
-  }).catch(() => {});
-}
-
-
 
 async function showShareBot(telegram_id: number, chat_id: number) {
   const username = await getShopBotUsername();
