@@ -403,6 +403,7 @@ export type Database = {
         Row: {
           account_info: string
           active: boolean
+          body_raw: string | null
           country_code: string
           country_name: string
           created_at: string
@@ -418,6 +419,7 @@ export type Database = {
         Insert: {
           account_info: string
           active?: boolean
+          body_raw?: string | null
           country_code: string
           country_name: string
           created_at?: string
@@ -433,6 +435,7 @@ export type Database = {
         Update: {
           account_info?: string
           active?: boolean
+          body_raw?: string | null
           country_code?: string
           country_name?: string
           created_at?: string

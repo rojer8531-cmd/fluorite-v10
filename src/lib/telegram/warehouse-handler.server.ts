@@ -112,35 +112,52 @@ function isAdmin(telegram_id: number) {
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
   inicio: "🏠 Inicio",
-  stock: "Stock",
-  usuarios: "Usuarios",
   addkeys: "Agregar Keys",
-  precios: "Precios",
   productos: "📦 Productos",
-  minrecharge: "💵 Recarga Mín.",
-  anuncio: "📣 Anuncio",
   metodos: "💳 Métodos",
-  borrar: "🗑 Borrar",
-  paste_prices: "⚡ Pegar Precios",
-  paste_keys: "⚡ Pegar Keys",
+  todo: "⚙️ Todo",
+};
+
+// Opciones agrupadas dentro del menú "Todo"
+const ADMIN_TODO = {
+  stock: "Stock",
+  anuncio: "Anuncio",
+  minrecharge: "Recarga Mínima",
+  usuarios: "Usuarios",
+  precios: "Precios",
+  borrar: "Borrar",
 };
 
 function adminBottomKeyboard() {
   return {
     keyboard: [
       [{ text: ADMIN_BOTTOM.inicio }],
-      [{ text: ADMIN_BOTTOM.stock }, { text: ADMIN_BOTTOM.usuarios }],
-      [{ text: ADMIN_BOTTOM.paste_keys }, { text: ADMIN_BOTTOM.paste_prices }],
-      [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.precios }],
-      [{ text: ADMIN_BOTTOM.productos }, { text: ADMIN_BOTTOM.minrecharge }],
-      [{ text: ADMIN_BOTTOM.anuncio }, { text: ADMIN_BOTTOM.metodos }],
-      [{ text: ADMIN_BOTTOM.borrar }],
+      [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.productos }],
+      [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_BOTTOM.todo }],
     ],
     resize_keyboard: true,
     is_persistent: true,
     one_time_keyboard: false,
   };
 }
+
+async function showTodoMenu(chat_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>Todo</b>\n\nElegí una opción:`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: ADMIN_TODO.stock, callback_data: "akp:stock" }, { text: ADMIN_TODO.usuarios, callback_data: "akp:users" }],
+          [{ text: ADMIN_TODO.precios, callback_data: "akp:prlist" }, { text: ADMIN_TODO.minrecharge, callback_data: "akp:minrec" }],
+          [{ text: ADMIN_TODO.anuncio, callback_data: "akp:anuncio" }, { text: ADMIN_TODO.borrar, callback_data: "akp:borrar" }],
+        ],
+      },
+    },
+  );
+}
+
 
 async function resolvePriceId(rawId: string) {
   const normalized = rawId.trim();
@@ -336,107 +353,17 @@ const COUNTRY_MAP: Record<string, string> = {
   nicaragua: "NI", cuba: "CU", "puerto rico": "PR",
 };
 
-interface ParsedPaymentMethod {
-  country_code: string;
-  country_name: string;
-  method_name: string;
-  holder_name: string;
-  account_info: string;
-  currency: string;
-  usd_rate: number;
-}
+// (Parser antiguo eliminado — el flujo actual guarda el contenido verbatim.)
 
-function parsePaymentMethodPaste(raw: string): ParsedPaymentMethod | null {
-  if (!raw) return null;
-  // Eliminar emojis para trabajar con texto plano; guardamos original para líneas específicas.
-  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length < 3) return null;
-
-  // Buscar línea del país: "Métodos De Pago - <País>"
-  let country_name = "";
-  for (const l of lines) {
-    const m = l.match(/M[eé]todos?\s+De?\s+Pago\s*-\s*([^\n]+)$/i);
-    if (m) {
-      country_name = m[1].replace(/[^\p{L}\s.]/gu, "").trim();
-      break;
-    }
-  }
-  if (!country_name) return null;
-  const cc = COUNTRY_MAP[country_name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")];
-  if (!cc) return null;
-
-  // Banco/método: línea con 🏦
-  let method_name = "";
-  for (const l of lines) {
-    if (l.includes("🏦")) {
-      method_name = l.replace(/🏦|✅|❌/g, "").trim();
-      break;
-    }
-  }
-  if (!method_name) return null;
-
-  // Titular: 🪪 Nombre: ...
-  let holder_name = "";
-  for (const l of lines) {
-    const m = l.match(/🪪\s*(?:Nombre|Titular)\s*:\s*(.+)/i) ?? l.match(/(?:Nombre|Titular)\s*:\s*(.+)/i);
-    if (m) { holder_name = m[1].trim(); break; }
-  }
-  if (!holder_name) return null;
-
-  // Cuenta / alias / CBU / número: 📋 <cualquier etiqueta>: valor
-  let account_info = "";
-  for (const l of lines) {
-    const m = l.match(/📋\s*[^:]*:\s*(.+)/) ?? l.match(/(?:Alias|CBU|CVU|Cuenta|N[uú]mero|Cta)\s*:\s*(.+)/i);
-    if (m) { account_info = m[1].trim(); break; }
-  }
-  if (!account_info) return null;
-
-  // Monto USD y monto local para calcular la tasa
-  let amount_usd: number | null = null;
-  let amount_local: number | null = null;
-  let currency = "USD";
-  for (const l of lines) {
-    const usdM = l.match(/(?:Monto|USD)\s*:?\s*([\d.,]+)\s*USD/i);
-    if (usdM) amount_usd = parseNumberLoose(usdM[1]);
-    const localM = l.match(/(?:Pagas|Total)\s*:?\s*([\d.,]+)\s*([A-Z]{3})/);
-    if (localM) {
-      amount_local = parseNumberLoose(localM[1]);
-      currency = localM[2].toUpperCase();
-    }
-  }
-  let usd_rate = 1;
-  if (amount_usd && amount_local && amount_usd > 0) {
-    usd_rate = Math.round((amount_local / amount_usd) * 100) / 100;
-  }
-  if (currency === "USD") usd_rate = 1;
-
-  return {
-    country_code: cc,
-    country_name,
-    method_name,
-    holder_name,
-    account_info,
-    currency,
-    usd_rate: Number.isFinite(usd_rate) && usd_rate > 0 ? usd_rate : 1,
-  };
-}
-
-function parseNumberLoose(s: string): number | null {
-  if (!s) return null;
-  const cleaned = s.replace(/[^\d.,-]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".");
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
-}
 
 // ===== Gestión de métodos de pago =====
 
 async function pmMenu(chat_id: number) {
-  await sendMessage("warehouse", chat_id, `<b>Gestión de Métodos de Pago</b>`, {
+  await sendMessage("warehouse", chat_id, `<b>Métodos de Pago</b>\n\nSeleccioná una opción:`, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Pegar Método (rápido)", callback_data: "pm:paste" }],
-        [{ text: "Agregar Método", callback_data: "pm:add" }],
-        [{ text: "Editar Método", callback_data: "pm:editlist" }],
+        [{ text: "Editar Método (Pegar Contenido)", callback_data: "pm:editlist" }],
+        [{ text: "Agregar País Nuevo", callback_data: "pm:addnew" }],
         [{ text: "Eliminar Método", callback_data: "pm:dellist" }],
         [{ text: "Países Disponibles", callback_data: "pm:countries" }],
       ],
@@ -446,17 +373,17 @@ async function pmMenu(chat_id: number) {
 
 
 async function pmListAll(chat_id: number, mode: "edit" | "del") {
+  const { data: methods } = await sb
+    .from("payment_methods")
+    .select("id, country_code, country_name, method_name, active")
+    .order("country_name");
+  if (!methods || methods.length === 0) {
+    await sendMessage("warehouse", chat_id, `No hay métodos cargados.`);
+    return;
+  }
+
   if (mode === "edit") {
-    // Para editar mostramos por PAÍS (no por método). Cambiar un país
-    // reemplaza toda su info anterior con la nueva.
-    const { data: methods } = await sb
-      .from("payment_methods")
-      .select("country_code, country_name")
-      .order("country_name");
-    if (!methods || methods.length === 0) {
-      await sendMessage("warehouse", chat_id, `No hay métodos cargados.`);
-      return;
-    }
+    // Uno por país. Al elegir, se pega el contenido y reemplaza TODO lo del país.
     const seen = new Set<string>();
     const countries: Array<{ code: string; name: string }> = [];
     for (const m of methods) {
@@ -473,19 +400,12 @@ async function pmListAll(chat_id: number, mode: "edit" | "del") {
     await sendMessage(
       "warehouse",
       chat_id,
-      `<b>Editar Método</b>\n\nElegí el país. Al actualizar se elimina la info anterior y se reemplaza por la nueva.`,
+      `<b>Editar Método</b>\n\nElegí el país. Al pegar el contenido nuevo, el anterior se elimina y queda exactamente lo que pegues.`,
       { reply_markup: { inline_keyboard: kb } },
     );
     return;
   }
-  const { data: methods } = await sb
-    .from("payment_methods")
-    .select("id, country_code, country_name, method_name, active")
-    .order("country_name");
-  if (!methods || methods.length === 0) {
-    await sendMessage("warehouse", chat_id, `No hay métodos cargados.`);
-    return;
-  }
+
   const kb = methods.map((m) => [
     {
       text: `${m.country_name} · ${m.method_name}${m.active ? "" : " (off)"}`,
@@ -503,23 +423,37 @@ async function pmListAll(chat_id: number, mode: "edit" | "del") {
 async function pmPromptCountryReplace(chat_id: number, country_code: string) {
   const { data: existing } = await sb
     .from("payment_methods")
-    .select("country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate")
+    .select("country_name, body_raw")
     .eq("country_code", country_code)
     .limit(1)
     .maybeSingle();
   const cn = existing?.country_name ?? country_code;
-  const sample = existing
-    ? `<code>${country_code}\n${existing.country_name}\n${existing.method_name}\n${existing.holder_name ?? ""}\n${existing.account_info ?? ""}\n${existing.extra_info ?? ""}\n${existing.currency ?? "USD"}\n${existing.usd_rate ?? 1}</code>`
-    : `<code>${country_code}\nNombre país\nMétodo (ej Nequi)\nTitular\nNúmero de cuenta\nNota (opcional)\nMoneda (ej COP)\nTasa USD (ej 4000)</code>`;
+  const current = existing?.body_raw
+    ? `\n<b>Contenido actual:</b>\n<code>${escapeHtml(existing.body_raw)}</code>\n`
+    : "";
   await sendMessage(
     "warehouse",
     chat_id,
-    `<b>PMSETCC:${country_code}</b>\n\nRespondé a este mensaje con TODOS los datos del nuevo método para <b>${cn}</b>, una línea por campo en este orden:\n\n` +
-      `1️⃣ country_code\n2️⃣ country_name\n3️⃣ method_name\n4️⃣ holder_name\n5️⃣ account_info\n6️⃣ extra_info (opcional)\n7️⃣ currency (default USD)\n8️⃣ usd_rate (default 1)\n\n` +
-      `Ejemplo:\n${sample}\n\n<i>⚠️ Esto borra la info anterior del país y la reemplaza.</i>`,
+    `<b>PMBODY:${country_code}</b>\n\n` +
+      `Respondé a este mensaje pegando el contenido nuevo para <b>${cn}</b>.\n` +
+      `Se guarda tal cual lo pegues (respeta saltos de línea y formato) y reemplaza por completo lo anterior.\n` +
+      current,
     { reply_markup: { force_reply: true, selective: true } },
   );
 }
+
+async function pmPromptAddCountry(chat_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PMNEW</b>\n\nRespondé a este mensaje con el país en la primera línea y el contenido debajo.\n\n` +
+      `<b>Primera línea:</b> <code>CÓDIGO | Nombre País | MONEDA | Tasa</code>\n` +
+      `Ejemplo: <code>AR | Argentina | ARS | 1350</code>\n\n` +
+      `Debajo pegá el contenido tal cual querés que lo vea el cliente.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
 
 async function pmCountriesView(chat_id: number) {
   const { data: methods } = await sb
@@ -539,66 +473,33 @@ async function pmCountriesView(chat_id: number) {
   await sendMessage("warehouse", chat_id, `<b>Países disponibles</b>\n\n${lines || "Sin datos."}`);
 }
 
-async function pmEditMenu(chat_id: number, pm_id: string) {
-  const { data: m } = await sb.from("payment_methods").select("*").eq("id", pm_id).maybeSingle();
-  if (!m) {
-    await sendMessage("warehouse", chat_id, `Método no encontrado.`);
-    return;
+// Best-effort para extraer metadatos del texto pegado (para OCR y totales).
+// Si no encuentra algo, deja null y no rompe nada.
+function extractPmMetadata(raw: string): {
+  method_name: string | null;
+  holder_name: string | null;
+  account_info: string | null;
+} {
+  const lines = raw.split(/\r?\n/).map((l) => l.trim());
+  let method_name: string | null = null;
+  let holder_name: string | null = null;
+  let account_info: string | null = null;
+  for (const l of lines) {
+    if (!method_name && l.includes("🏦")) {
+      method_name = l.replace(/🏦|✅|❌/g, "").trim();
+    }
+    if (!holder_name) {
+      const m = l.match(/🪪\s*(?:Nombre|Titular)\s*:\s*(.+)/i) ?? l.match(/(?:Nombre|Titular)\s*:\s*(.+)/i);
+      if (m) holder_name = m[1].trim();
+    }
+    if (!account_info) {
+      const m = l.match(/📋\s*[^:]*:\s*(.+)/) ?? l.match(/(?:Alias|CBU|CVU|Cuenta|N[uú]mero|Cta)\s*:\s*(.+)/i);
+      if (m) account_info = m[1].trim();
+    }
   }
-  const text =
-    `<b>${m.country_name} · ${m.method_name}</b>\n` +
-    `Titular  <code>${m.holder_name}</code>\n` +
-    `Cuenta   <code>${m.account_info}</code>\n` +
-    `Nota     ${m.extra_info ?? "—"}\n` +
-    `Moneda   ${m.currency}\n` +
-    `Rate USD ${Number(m.usd_rate)}\n` +
-    `Estado   ${m.active ? "Activo" : "Inactivo"}\n`;
-  await sendMessage("warehouse", chat_id, text, {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "Método", callback_data: `pmf:method_name:${pm_id}` },
-          { text: "Titular", callback_data: `pmf:holder_name:${pm_id}` },
-        ],
-        [
-          { text: "Cuenta", callback_data: `pmf:account_info:${pm_id}` },
-          { text: "Nota", callback_data: `pmf:extra_info:${pm_id}` },
-        ],
-        [
-          { text: "País (nombre)", callback_data: `pmf:country_name:${pm_id}` },
-          { text: "País (código)", callback_data: `pmf:country_code:${pm_id}` },
-        ],
-        [
-          { text: "Moneda", callback_data: `pmf:currency:${pm_id}` },
-          { text: "Rate USD", callback_data: `pmf:usd_rate:${pm_id}` },
-        ],
-        [
-          { text: m.active ? "Desactivar" : "Activar", callback_data: `pmtog:${pm_id}` },
-        ],
-        [{ text: "Volver", callback_data: "pm:editlist" }],
-      ],
-    },
-  });
+  return { method_name, holder_name, account_info };
 }
 
-async function pmPromptField(chat_id: number, pm_id: string, field: string) {
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>PMEDIT:${pm_id}:${field}</b>\n\nRespondé a este mensaje con el nuevo valor para <b>${field}</b>.`,
-    { reply_markup: { force_reply: true, selective: true } },
-  );
-}
-
-async function pmPromptAdd(chat_id: number) {
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>PMADD</b>\n\nRespondé a este mensaje con los datos del nuevo método, una línea por campo en este orden:\n\n` +
-      `<code>country_code\ncountry_name\nmethod_name\nholder_name\naccount_info\nextra_info (opcional)\ncurrency (default USD)\nusd_rate (default 1)</code>`,
-    { reply_markup: { force_reply: true, selective: true } },
-  );
-}
 
 async function pmConfirmDelete(chat_id: number, pm_id: string) {
   const { data: m } = await sb.from("payment_methods").select("country_name, method_name").eq("id", pm_id).maybeSingle();
@@ -1429,166 +1330,8 @@ async function handleBroadcast(msg: TgMessage) {
   );
 }
 
-// ===== Pegar Precios / Keys en bulk =====
-async function adminPromptPastePrices(chat_id: number) {
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>PASTEPRICES</b>\n\n` +
-      `Respondé a este mensaje pegando uno o varios precios, un por línea.\n\n` +
-      `Formato: <code>Producto | Duración | Precio</code>\n\n` +
-      `Ejemplo:\n<code>Netflix | 1 mes | 3.50\nNetflix | 3 meses | 9.00\nDisney+ | 1 mes | 2.00</code>\n\n` +
-      `Se buscan por nombre exacto (sin distinguir mayúsculas). Los no encontrados se listan al final.`,
-    { reply_markup: { force_reply: true, selective: true } },
-  );
-}
 
-async function adminPromptPasteKeys(chat_id: number) {
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>PASTEKEYS</b>\n\n` +
-      `Respondé a este mensaje pegando keys en bloques. Cada bloque empieza con un encabezado.\n\n` +
-      `Formato de encabezado: <code>== Producto | Duración ==</code>\n\n` +
-      `Ejemplo:\n<code>== Netflix | 1 mes ==\nKEY-AAA\nKEY-BBB\n\n== Disney+ | 1 mes ==\nKEY-CCC</code>\n\n` +
-      `Duplicadas se omiten. Los bloques no encontrados se listan al final.`,
-    { reply_markup: { force_reply: true, selective: true } },
-  );
-}
 
-async function bulkUpdatePrices(chat_id: number, admin_id: number, raw: string) {
-  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 0) {
-    await sendMessage("warehouse", chat_id, `No detecté precios.`);
-    return;
-  }
-  const { data: prices } = await sb
-    .from("product_prices")
-    .select("id, duration_label, product_id, products(name)")
-    .eq("active", true);
-  const catalog = (prices ?? []).map((p) => ({
-    id: p.id as string,
-    duration: String(p.duration_label).toLowerCase().trim(),
-    name: String((p as { products: { name: string } }).products.name).toLowerCase().trim(),
-  }));
-  const okList: string[] = [];
-  const failList: string[] = [];
-  for (const line of lines) {
-    const parts = line.split("|").map((s) => s.trim());
-    if (parts.length < 3) { failList.push(line); continue; }
-    const [pname, pdur, praw] = parts;
-    const price = Number(praw.replace(/[^0-9.,-]/g, "").replace(",", "."));
-    if (!Number.isFinite(price) || price <= 0) { failList.push(line); continue; }
-    const match = catalog.find(
-      (c) => c.name === pname.toLowerCase() && c.duration === pdur.toLowerCase(),
-    );
-    if (!match) { failList.push(line); continue; }
-    const { error } = await sb.from("product_prices").update({ price_usd: price }).eq("id", match.id);
-    if (error) { failList.push(`${line}  (error: ${error.message})`); continue; }
-    okList.push(`${pname} · ${pdur} → $${price.toFixed(2)}`);
-  }
-  if (okList.length > 0) {
-    invalidateCatalogCache();
-    await sb.from("admin_logs").insert({
-      admin_telegram_id: admin_id,
-      action: "bulk_price_update",
-      target_type: "product_prices",
-      target_id: "bulk",
-      details: { count: okList.length } as never,
-    });
-  }
-  const msgOut =
-    `<b>Precios actualizados</b>  ${okList.length}\n` +
-    (okList.length ? okList.map((l) => `✅ ${l}`).join("\n") + "\n" : "") +
-    (failList.length ? `\n<b>No aplicados</b>  ${failList.length}\n` + failList.map((l) => `⚠️ ${escapeHtml(l)}`).join("\n") : "");
-  await sendMessage("warehouse", chat_id, msgOut);
-}
-
-async function bulkAddKeys(chat_id: number, admin_id: number, raw: string) {
-  const { data: prices } = await sb
-    .from("product_prices")
-    .select("id, product_id, duration_label, products(name)")
-    .eq("active", true);
-  const catalog = (prices ?? []).map((p) => ({
-    id: p.id as string,
-    product_id: p.product_id as string,
-    duration: String(p.duration_label).toLowerCase().trim(),
-    name: String((p as { products: { name: string } }).products.name).toLowerCase().trim(),
-    label: `${(p as { products: { name: string } }).products.name} · ${p.duration_label}`,
-  }));
-  const lines = raw.split(/\r?\n/);
-  type Block = { header: string; priceId: string | null; product_id: string | null; label: string; keys: string[] };
-  const blocks: Block[] = [];
-  let current: Block | null = null;
-  const headerRe = /^={2,}\s*(.+?)\s*={2,}$/;
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    const hm = line.match(headerRe);
-    if (hm) {
-      const parts = hm[1].split("|").map((s) => s.trim());
-      if (parts.length < 2) {
-        current = { header: line, priceId: null, product_id: null, label: hm[1], keys: [] };
-      } else {
-        const [pname, pdur] = parts;
-        const match = catalog.find(
-          (c) => c.name === pname.toLowerCase() && c.duration === pdur.toLowerCase(),
-        );
-        current = match
-          ? { header: line, priceId: match.id, product_id: match.product_id, label: match.label, keys: [] }
-          : { header: line, priceId: null, product_id: null, label: `${pname} · ${pdur}`, keys: [] };
-      }
-      blocks.push(current);
-      continue;
-    }
-    if (current) current.keys.push(line);
-  }
-  if (blocks.length === 0) {
-    await sendMessage("warehouse", chat_id, `No detecté encabezados. Usá <code>== Producto | Duración ==</code>.`);
-    return;
-  }
-  const summary: string[] = [];
-  let totalNew = 0;
-  for (const b of blocks) {
-    if (!b.priceId || !b.product_id) {
-      summary.push(`⚠️ ${escapeHtml(b.label)}  (no encontrado)`);
-      continue;
-    }
-    const uniq = [...new Set(b.keys.filter(Boolean))];
-    if (uniq.length === 0) {
-      summary.push(`⚠️ ${escapeHtml(b.label)}  (sin keys)`);
-      continue;
-    }
-    const { data: existing } = await sb
-      .from("product_stock_keys")
-      .select("key_value")
-      .in("key_value", uniq);
-    const existSet = new Set((existing ?? []).map((r) => r.key_value));
-    const fresh = uniq.filter((k) => !existSet.has(k));
-    if (fresh.length > 0) {
-      await sb.from("product_stock_keys").insert(
-        fresh.map((key_value) => ({ product_id: b.product_id!, price_id: b.priceId!, key_value })),
-      );
-      totalNew += fresh.length;
-    }
-    summary.push(`✅ ${escapeHtml(b.label)}  nuevas ${fresh.length}  duplicadas ${uniq.length - fresh.length}`);
-  }
-  if (totalNew > 0) {
-    invalidateCatalogCache();
-    await sb.from("admin_logs").insert({
-      admin_telegram_id: admin_id,
-      action: "bulk_keys_upload",
-      target_type: "product_stock_keys",
-      target_id: "bulk",
-      details: { total_new: totalNew, blocks: blocks.length } as never,
-    });
-  }
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>Keys cargadas</b>\nTotal nuevas  <b>${totalNew}</b>\n\n${summary.join("\n")}`,
-  );
-}
 
 
 // ===== Mensajes =====
@@ -1638,17 +1381,8 @@ async function handleMessage(msg: TgMessage) {
   if (msg.reply_to_message) {
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
 
-    // ===== Pegar Precios en bulk =====
-    if (replySource.includes("PASTEPRICES")) {
-      await bulkUpdatePrices(msg.chat.id, msg.from.id, text);
-      return;
-    }
 
-    // ===== Pegar Keys en bulk =====
-    if (replySource.includes("PASTEKEYS")) {
-      await bulkAddKeys(msg.chat.id, msg.from.id, text);
-      return;
-    }
+
 
     // ===== Envío de key manual desde el almacén =====
     const almSendMatch = replySource.match(/ALMSENDKEY:([a-f0-9-]{36})/);
@@ -1705,159 +1439,107 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
-    // ===== Pegar Método (parser rápido con formato de recarga) =====
-    if (replySource.includes("PMPASTE")) {
-      const parsed = parsePaymentMethodPaste(text);
-      if (!parsed) {
-        await sendMessage(
-          "warehouse",
-          msg.chat.id,
-          `No pude leer el método. Verificá que incluya país, banco, titular y cuenta/alias.`,
-        );
+    // ===== Editar método pegando contenido verbatim (por país) =====
+    const pmBodyMatch = replySource.match(/PMBODY:([A-Za-z0-9_-]+)/);
+    if (pmBodyMatch) {
+      const cc = pmBodyMatch[1].toUpperCase();
+      const body = text; // verbatim, incluye saltos de línea
+      if (!body.trim()) {
+        await sendMessage("warehouse", msg.chat.id, `El contenido está vacío.`);
         return;
       }
-      // Reemplaza cualquier método existente para ese país (mismo criterio que PMSETCC)
-      await sb.from("payment_methods").delete().eq("country_code", parsed.country_code);
+      const { data: prev } = await sb
+        .from("payment_methods")
+        .select("country_name, currency, usd_rate")
+        .eq("country_code", cc)
+        .limit(1)
+        .maybeSingle();
+      const meta = extractPmMetadata(body);
+      // Borra TODO lo anterior del país (evita duplicados/mezclas)
+      await sb.from("payment_methods").delete().eq("country_code", cc);
       const { data: inserted, error } = await sb.from("payment_methods").insert({
-        country_code: parsed.country_code,
-        country_name: parsed.country_name,
-        method_name: parsed.method_name,
-        holder_name: parsed.holder_name,
-        account_info: parsed.account_info,
+        country_code: cc,
+        country_name: prev?.country_name ?? cc,
+        method_name: meta.method_name ?? "Pago",
+        holder_name: meta.holder_name,
+        account_info: meta.account_info,
         extra_info: null,
-        currency: parsed.currency,
-        usd_rate: parsed.usd_rate,
+        currency: prev?.currency ?? "USD",
+        usd_rate: Number(prev?.usd_rate ?? 1),
+        body_raw: body,
         active: true,
-      }).select().single();
+      } as never).select().single();
       if (error || !inserted) {
         await sendMessage("warehouse", msg.chat.id, `Error guardando: ${error?.message ?? "desconocido"}`);
         return;
       }
       await sb.from("admin_logs").insert({
         admin_telegram_id: msg.from.id,
-        action: "pm_paste",
+        action: "pm_body_replace",
         target_type: "payment_method",
-        target_id: inserted.id,
-        details: parsed as never,
+        target_id: (inserted as { id: string }).id,
+        details: { country_code: cc } as never,
       });
       await sendMessage(
         "warehouse",
         msg.chat.id,
-        `✅ <b>Método actualizado para ${parsed.country_name}</b>\n\n` +
-          `🏦 ${parsed.method_name}\n🪪 ${parsed.holder_name}\n📋 <code>${parsed.account_info}</code>\n💱 ${parsed.currency} · rate ${parsed.usd_rate}\n\n` +
-          `La información anterior del país fue reemplazada.`,
+        `✅ Método de <b>${escapeHtml(prev?.country_name ?? cc)}</b> reemplazado.\n\n` +
+          `Así lo verá el usuario:\n\n${body}`,
       );
       return;
     }
 
-
-
-
-
-
-
-    // ===== Editar método de pago =====
-    const pmEditMatch = replySource.match(/PMEDIT:([a-f0-9-]{36}):(\w+)/);
-    if (pmEditMatch) {
-      const [, pmId, field] = pmEditMatch;
-      const allowed = ["country_code", "country_name", "method_name", "holder_name", "account_info", "extra_info", "currency", "usd_rate"];
-      if (!allowed.includes(field)) {
-        await sendMessage("warehouse", msg.chat.id, `Campo no permitido.`);
-        return;
-      }
-      let value: string | number = text;
-      if (field === "usd_rate") {
-        const n = Number(text.replace(",", "."));
-        if (!Number.isFinite(n) || n <= 0) { await sendMessage("warehouse", msg.chat.id, `Rate inválido.`); return; }
-        value = n;
-      }
-      const patch: Record<string, string | number | null> = { [field]: field === "extra_info" && !text ? null : value };
-      const { error } = await sb.from("payment_methods").update(patch as never).eq("id", pmId);
-      if (error) { await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`); return; }
-      await sb.from("admin_logs").insert({ admin_telegram_id: msg.from.id, action: "pm_edit", target_type: "payment_method", target_id: pmId, details: { field, value } as never });
-      await sendMessage("warehouse", msg.chat.id, `Campo <b>${field}</b> actualizado.`);
-      await pmEditMenu(msg.chat.id, pmId);
-      return;
-    }
-
-    // ===== Agregar método de pago =====
-    if (replySource.includes("PMADD")) {
-      const lines = text.split(/\r?\n/).map((l) => l.trim());
-      if (lines.length < 5) {
-        await sendMessage("warehouse", msg.chat.id, `Faltan campos. Mínimo 5 líneas.`);
-        return;
-      }
-      const [country_code, country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate] = lines;
-      const rate = Number((usd_rate ?? "1").replace(",", "."));
-      const { data, error } = await sb.from("payment_methods").insert({
-        country_code,
-        country_name,
-        method_name,
-        holder_name,
-        account_info,
-        extra_info: extra_info || null,
-        currency: currency || "USD",
-        usd_rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
-        active: true,
-      }).select().single();
-      if (error || !data) { await sendMessage("warehouse", msg.chat.id, `Error: ${error?.message ?? "desconocido"}`); return; }
-      await sb.from("admin_logs").insert({ admin_telegram_id: msg.from.id, action: "pm_add", target_type: "payment_method", target_id: data.id });
-      await sendMessage("warehouse", msg.chat.id, `Método agregado para ${country_name}.`);
-      return;
-    }
-
-    // ===== Reemplazar TODO el método de un país en un solo mensaje =====
-    const pmSetCcMatch = replySource.match(/PMSETCC:([A-Za-z0-9_-]+)/);
-    if (pmSetCcMatch) {
-      const oldCc = pmSetCcMatch[1].toUpperCase();
-      const lines = text.split(/\r?\n/).map((l) => l.trim());
-      if (lines.length < 5) {
+    // ===== Agregar país nuevo (primera línea = header, resto = body) =====
+    if (replySource.includes("PMNEW")) {
+      const allLines = text.split(/\r?\n/);
+      const headerLine = allLines.shift() ?? "";
+      const body = allLines.join("\n").trim();
+      const parts = headerLine.split("|").map((s) => s.trim());
+      if (parts.length < 2 || !parts[0] || !parts[1] || !body) {
         await sendMessage(
           "warehouse",
           msg.chat.id,
-          `Faltan campos. Mínimo 5 líneas (country_code, country_name, method_name, holder_name, account_info).`,
+          `Formato inválido. Primera línea: <code>CÓDIGO | Nombre País | MONEDA | Tasa</code> y luego el contenido.`,
         );
         return;
       }
-      const [country_code, country_name, method_name, holder_name, account_info, extra_info, currency, usd_rate] = lines;
-      const rate = Number((usd_rate ?? "1").replace(",", "."));
-      // Borrar info anterior del país (tanto el cc antiguo como el nuevo)
-      const ccNew = country_code.toUpperCase();
-      await sb.from("payment_methods").delete().eq("country_code", oldCc);
-      if (ccNew !== oldCc) {
-        await sb.from("payment_methods").delete().eq("country_code", ccNew);
-      }
-      const { data, error } = await sb.from("payment_methods").insert({
-        country_code: ccNew,
+      const cc = parts[0].toUpperCase();
+      const country_name = parts[1];
+      const currency = (parts[2] || "USD").toUpperCase();
+      const rate = Number((parts[3] ?? "1").replace(",", "."));
+      const meta = extractPmMetadata(body);
+      await sb.from("payment_methods").delete().eq("country_code", cc);
+      const { data: inserted, error } = await sb.from("payment_methods").insert({
+        country_code: cc,
         country_name,
-        method_name,
-        holder_name,
-        account_info,
-        extra_info: extra_info || null,
-        currency: currency || "USD",
+        method_name: meta.method_name ?? "Pago",
+        holder_name: meta.holder_name,
+        account_info: meta.account_info,
+        extra_info: null,
+        currency,
         usd_rate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+        body_raw: body,
         active: true,
-      }).select().single();
-      if (error || !data) {
-        await sendMessage("warehouse", msg.chat.id, `Error: ${error?.message ?? "desconocido"}`);
+      } as never).select().single();
+      if (error || !inserted) {
+        await sendMessage("warehouse", msg.chat.id, `Error guardando: ${error?.message ?? "desconocido"}`);
         return;
       }
       await sb.from("admin_logs").insert({
         admin_telegram_id: msg.from.id,
-        action: "pm_replace_country",
+        action: "pm_new_country",
         target_type: "payment_method",
-        target_id: data.id,
-        details: { old_country_code: oldCc, new_country_code: ccNew } as never,
+        target_id: (inserted as { id: string }).id,
+        details: { country_code: cc } as never,
       });
       await sendMessage(
         "warehouse",
         msg.chat.id,
-        `✅ <b>Método actualizado para ${country_name}</b>\n\n` +
-          `🏦 ${method_name}\n🪪 ${holder_name}\n📋 <code>${account_info}</code>\n💱 ${currency || "USD"} · rate ${Number.isFinite(rate) && rate > 0 ? rate : 1}\n\n` +
-          `La información anterior fue eliminada.`,
+        `✅ País <b>${escapeHtml(country_name)}</b> agregado (moneda ${currency}, tasa ${Number.isFinite(rate) && rate > 0 ? rate : 1}).\n\n${body}`,
       );
       return;
     }
+
 
     // ===== Renombrar producto =====
     const prodRenameMatch = replySource.match(/PRODRENAME:([a-f0-9-]{36})/);
@@ -2120,38 +1802,35 @@ async function handleMessage(msg: TgMessage) {
       );
       await patchContext(msg.from.id, { bar_shown: true });
       return;
-    case ADMIN_BOTTOM.stock:
+    case ADMIN_TODO.stock:
       await adminStockView(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.usuarios:
+    case ADMIN_TODO.usuarios:
       await adminUsuarios(msg.chat.id);
       return;
     case ADMIN_BOTTOM.addkeys:
       await adminListProducts(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.precios:
+    case ADMIN_TODO.precios:
       await adminListaPrecios(msg.chat.id);
       return;
     case ADMIN_BOTTOM.productos:
       await adminProductsList(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.minrecharge:
+    case ADMIN_TODO.minrecharge:
       await adminPromptMinRecharge(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.anuncio:
+    case ADMIN_TODO.anuncio:
       await adminPromptAnuncio(msg.chat.id);
       return;
     case ADMIN_BOTTOM.metodos:
       await pmMenu(msg.chat.id);
       return;
-    case ADMIN_BOTTOM.borrar:
+    case ADMIN_TODO.borrar:
       await cleanAdminChat(msg.chat.id, msg.from.id);
       return;
-    case ADMIN_BOTTOM.paste_prices:
-      await adminPromptPastePrices(msg.chat.id);
-      return;
-    case ADMIN_BOTTOM.paste_keys:
-      await adminPromptPasteKeys(msg.chat.id);
+    case ADMIN_BOTTOM.todo:
+      await showTodoMenu(msg.chat.id);
       return;
   }
 
@@ -2271,28 +1950,12 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:pm") { if (chat_id) await pmMenu(chat_id); return; }
-  if (data === "pm:add") { if (chat_id) await pmPromptAdd(chat_id); return; }
+  if (data === "pm:addnew") { if (chat_id) await pmPromptAddCountry(chat_id); return; }
   if (data === "pm:editlist") { if (chat_id) await pmListAll(chat_id, "edit"); return; }
   if (data === "pm:dellist") { if (chat_id) await pmListAll(chat_id, "del"); return; }
   if (data === "pm:countries") { if (chat_id) await pmCountriesView(chat_id); return; }
   if (data.startsWith("pmec:")) { if (chat_id) await pmPromptCountryReplace(chat_id, data.slice(5)); return; }
-  if (data.startsWith("pm:edit:")) { if (chat_id) await pmEditMenu(chat_id, data.slice(8)); return; }
   if (data.startsWith("pm:del:")) { if (chat_id) await pmConfirmDelete(chat_id, data.slice(7)); return; }
-  if (data.startsWith("pmf:")) {
-    const [, field, pmId] = data.split(":");
-    if (chat_id) await pmPromptField(chat_id, pmId, field);
-    return;
-  }
-  if (data.startsWith("pmtog:")) {
-    const pmId = data.slice(6);
-    const { data: m } = await sb.from("payment_methods").select("active").eq("id", pmId).maybeSingle();
-    if (m) {
-      await sb.from("payment_methods").update({ active: !m.active }).eq("id", pmId);
-      await sb.from("admin_logs").insert({ admin_telegram_id: cb.from.id, action: "pm_toggle", target_type: "payment_method", target_id: pmId, details: { active: !m.active } as never });
-    }
-    if (chat_id) await pmEditMenu(chat_id, pmId);
-    return;
-  }
   if (data.startsWith("pmdel:")) {
     const pmId = data.slice(6);
     await sb.from("payment_methods").delete().eq("id", pmId);
@@ -2300,6 +1963,8 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await sendMessage("warehouse", chat_id, `Método eliminado.`);
     return;
   }
+  if (data === "akp:minrec") { if (chat_id) await adminPromptMinRecharge(chat_id); return; }
+  if (data === "akp:borrar") { if (chat_id) await cleanAdminChat(chat_id, cb.from.id); return; }
 
   // ===== Envío de key manual (redirigido desde el shop cuando no hay stock) =====
   if (data.startsWith("alm:sendkey:")) {
@@ -2332,21 +1997,7 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
 
-  // ===== Pegar Método (rápido) =====
-  if (data === "pm:paste") {
-    if (chat_id) {
-      await sendMessage(
-        "warehouse",
-        chat_id,
-        `<b>PMPASTE</b>\n\n` +
-          `Respondé a este mensaje pegando el método de pago con este formato:\n\n` +
-          `<code>💳 Métodos De Pago - Argentina 🇦🇷\n\n🆔 Recarga: TP...\n💰 Monto: 10.00 USD\n🧾 Pagas: 16,000.00 ARS\n\n🏦 ✅ MERCADO PAGO\n🪪 Nombre: Jeremías Velozo\n📋 Alias: jerevelozo\n💵 Total: 16,000.00 ARS</code>\n\n` +
-          `Detecto país, banco, titular, cuenta, moneda y tasa automáticamente. Reemplaza al método anterior del país.`,
-        { reply_markup: { force_reply: true, selective: true } },
-      );
-    }
-    return;
-  }
+
 
 
   if (data.startsWith("akprod:")) {

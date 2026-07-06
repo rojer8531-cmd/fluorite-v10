@@ -829,12 +829,18 @@ async function showRechargeMethods(
     ``,
   ];
   for (const m of methods) {
-    const local = amount * Number(m.usd_rate);
-    lines.push(`🏦 <b>${m.method_name}</b>`);
-    if (m.holder_name) lines.push(`🪪 Nombre: <code>${m.holder_name}</code>`);
-    if (m.account_info) lines.push(`📋 Número: <code>${m.account_info}</code>`);
-    if (m.extra_info) lines.push(`📝 Nota: ${m.extra_info}`);
-    lines.push(`💵 Total: <b>${fmtLocal(local)} ${m.currency}</b>`);
+    const raw = (m as { body_raw?: string | null }).body_raw;
+    if (raw && raw.trim().length > 0) {
+      // Contenido pegado por el admin, verbatim (respeta saltos de línea y formato).
+      lines.push(raw);
+    } else {
+      const local = amount * Number(m.usd_rate);
+      lines.push(`🏦 <b>${m.method_name}</b>`);
+      if (m.holder_name) lines.push(`🪪 Nombre: <code>${m.holder_name}</code>`);
+      if (m.account_info) lines.push(`📋 Número: <code>${m.account_info}</code>`);
+      if (m.extra_info) lines.push(`📝 Nota: ${m.extra_info}`);
+      lines.push(`💵 Total: <b>${fmtLocal(local)} ${m.currency}</b>`);
+    }
     lines.push(``);
   }
 
