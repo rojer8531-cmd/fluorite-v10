@@ -17,7 +17,7 @@ function resolveStableBaseUrl(request: Request) {
   const currentHost = forwardedHost || request.headers.get("host") || url.host;
 
   if (envProjectId) {
-    if (currentHost.includes("lovable.app")) {
+    if (currentHost.includes("lovable.app") || currentHost.includes("lovableproject.com")) {
       return `https://project--${envProjectId}-dev.lovable.app`;
     }
     const customHost = currentHost.replace(/^id-preview--[^.]+\./, "");
