@@ -179,9 +179,9 @@ const SUPPORT_USERNAME = "@smallffx7";
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
   products: "🛒 Productos",
-  recharge: "💰 Recargar",
+  recharge: "💰 Recargar Saldo",
   buy: "💳 Comprar",
-  profile: "👤 Cuenta",
+  profile: "👤 Mi Perfil",
   more: "📋 Todo",
   // Opciones extras (solo accesibles vía "Todo" como inline buttons)
   status: "📦 Estado",
@@ -192,10 +192,26 @@ const BOTTOM_MENU = {
   download_panel: "📥 Descargar Panel",
 };
 
+const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
+  "🛒 Productos": "products",
+  "💰 Recargar": "recharge",
+  "💰 Recargar saldo": "recharge",
+  "💰 Recargar Saldo": "recharge",
+  "💳 Comprar": "buy",
+  "🛍 Comprar": "buy",
+  "🛒 Comprar": "buy",
+  "👤 Cuenta": "profile",
+  "👤 Perfil": "profile",
+  "👤 Mi perfil": "profile",
+  "👤 Mi Perfil": "profile",
+  "📋 Todo": "more",
+  "📋 Más": "more",
+};
+
 const DOWNLOAD_PANEL_URL = "https://keymarkethnx7.vercel.app/";
 
 function isBottomMenuText(text: string) {
-  return Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
+  return text in BOTTOM_MENU_ALIASES || Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
 }
 
 function bottomKeyboard() {
@@ -394,7 +410,7 @@ async function showProducts(telegram_id: number, chat_id: number) {
 
 async function showCategory(telegram_id: number, chat_id: number, category: string) {
   const { grouped } = await getVisibleCatalog();
-  const section = grouped.find((s) => s.category === category);
+  const section = grouped.find((s) => s.category.toLowerCase() === category.toLowerCase());
   if (!section || section.products.length === 0) {
     await screen(
     telegram_id,
@@ -404,7 +420,7 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
     );
     return;
   }
-  await setState(telegram_id, "choose_product", { category });
+  await setState(telegram_id, "choose_product", { category: section.category });
   const rows = section.products.map((p) => [
     { text: p.name, callback_data: `prod:${p.id}` },
   ]);
@@ -445,19 +461,18 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     const price_usd = applyRankDiscount(base, rank);
     return { ...p, price_usd, has_override: overrides.has(p.id), rank_discounted: price_usd < base };
   });
-  // Mostramos SIEMPRE los precios. Si el saldo no alcanza, el botón queda
-  // deshabilitado pero el usuario ya ve cuánto cuesta cada key.
+  // Mostramos SIEMPRE los precios. Aunque no tenga saldo, puede elegir país
+  // y pagar por un método externo; si tiene saldo también verá pago con saldo.
   const minPrice = Math.min(...prices.map((p) => Number(p.price_usd)));
   const lowBalance = balance < minPrice;
 
   await patchContext(telegram_id, { product_id });
   const rows = prices.map((p) => {
-    const affordable = balance >= Number(p.price_usd);
     const tag = p.has_override ? "  🎁" : p.rank_discounted ? `  ${RANK_INFO[rank].badge}` : "";
     return [
       {
-        text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}${affordable ? "" : "  ·  sin saldo"}`,
-        callback_data: affordable ? `dur:${p.id}` : `nob:${p.id}`,
+        text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}`,
+        callback_data: `dur:${p.id}`,
       },
     ];
   });
@@ -891,20 +906,21 @@ async function routeBottomMenu(
   chat_id: number,
   message_id: number,
 ): Promise<boolean> {
-  const map: Record<string, (tid: number, cid: number) => Promise<unknown>> = {
-    [BOTTOM_MENU.products]: showProducts,
-    [BOTTOM_MENU.recharge]: startRecharge,
-    [BOTTOM_MENU.buy]: showBuyWithBalance,
-    [BOTTOM_MENU.profile]: showProfile,
-    [BOTTOM_MENU.more]: showMoreOptions,
-    [BOTTOM_MENU.status]: showOrderStatus,
-    [BOTTOM_MENU.keys]: showMyKeys,
-    [BOTTOM_MENU.announcements]: showAnnouncements,
-    [BOTTOM_MENU.share]: showShareBot,
-    [BOTTOM_MENU.support]: showSupport,
-    [BOTTOM_MENU.download_panel]: showDownloadPanel,
+  const map: Record<keyof typeof BOTTOM_MENU, (tid: number, cid: number) => Promise<unknown>> = {
+    products: showProducts,
+    recharge: startRecharge,
+    buy: showBuyWithBalance,
+    profile: showProfile,
+    more: showMoreOptions,
+    status: showOrderStatus,
+    keys: showMyKeys,
+    announcements: showAnnouncements,
+    share: showShareBot,
+    support: showSupport,
+    download_panel: showDownloadPanel,
   };
-  const action = map[text];
+  const key = BOTTOM_MENU_ALIASES[text] ?? (Object.entries(BOTTOM_MENU).find(([, label]) => label === text)?.[0] as keyof typeof BOTTOM_MENU | undefined);
+  const action = key ? map[key] : undefined;
   if (!action) return false;
   // Forzar mensaje NUEVO debajo del tap del usuario (no editar arriba).
   forceNewScreenFor.add(telegram_id);
@@ -1475,7 +1491,7 @@ async function handleMessage(msg: TgMessage) {
       silentDelete("shop", chat_id, msg.message_id).catch(() => {});
       return;
     }
-    getOrCreateUser({ telegram_id, chat_id, username: msg.from.username }).catch(() => {});
+    await getOrCreateUser({ telegram_id, chat_id, username: msg.from.username });
     isBlockedFast(telegram_id).then((blocked) => {
       if (blocked) silentDelete("shop", chat_id, msg.message_id).catch(() => {});
     }).catch(() => {});
@@ -1612,6 +1628,7 @@ async function handleCallback(cb: TgCallback) {
     if (!ok) autoBlock(telegram_id, "spam_cb").catch(() => {});
   }).catch(() => {});
 
+  await getOrCreateUser({ telegram_id, chat_id, username: cb.from.username });
 
   if (data === "menu:main") return showMainMenu(telegram_id, chat_id);
   if (data === "noop") return;
@@ -1639,7 +1656,7 @@ async function handleCallback(cb: TgCallback) {
   if (data.startsWith("prod:")) return showDurations(telegram_id, chat_id, data.slice(5));
   if (data.startsWith("dur:")) {
     await patchContext(telegram_id, { price_id: data.slice(4), qty: 1 });
-    return payWithBalance(telegram_id, chat_id);
+    return showCountries(telegram_id, chat_id, 1);
   }
   if (data.startsWith("qty:")) return showCountries(telegram_id, chat_id, Number(data.slice(4)) || 1);
   if (data === "pay:balance") return payWithBalance(telegram_id, chat_id);
