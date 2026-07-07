@@ -44,8 +44,7 @@ export const Route = createFileRoute("/api/public/telegram/shop")({
         if (!isValidWebhookSecret(got, token)) return new Response("Unauthorized", { status: 401 });
         const update = await request.json();
         await quickAck(update?.callback_query?.id, update?.callback_query?.data);
-        const job = runTelegramWebhook("shop", () => handleShopUpdate(update), getQueueKey(update));
-        keepTelegramPromiseAlive(job);
+        await runTelegramWebhook("shop", () => handleShopUpdate(update), getQueueKey(update));
         return Response.json({ ok: true });
       },
     },
