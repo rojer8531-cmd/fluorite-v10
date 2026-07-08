@@ -510,45 +510,38 @@ async function showQty(telegram_id: number, chat_id: number, price_id: string) {
 async function showCountries(telegram_id: number, chat_id: number, qty: number) {
   await patchContext(telegram_id, { qty });
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
-  const [{ data: price }, { count: availableCount }, { data: u }, { data: countries }] =
-    await Promise.all([
-      sb.from("product_prices").select("*").eq("id", ctx.price_id as string).single(),
-      sb
-        .from("product_stock_keys")
-        .select("id", { count: "exact", head: true })
-        .eq("product_id", ctx.product_id as string)
-        .eq("price_id", ctx.price_id as string)
-        .eq("used", false),
-      sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
-      sb
-        .from("payment_methods")
-        .select("id, country_code, country_name, method_name")
-        .eq("active", true)
-        .order("sort_order"),
-    ]);
+  const [{ data: price }, { data: u }] = await Promise.all([
+    sb.from("product_prices").select("*").eq("id", ctx.price_id as string).single(),
+    sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
+  ]);
   if (!price) return;
   const unit_usd = await getUserPriceForId(telegram_id, ctx.price_id as string, Number(price.price_usd));
   const total_usd = unit_usd * qty;
-
-  const stockNote =
-    (availableCount ?? 0) < qty
-      ? `\n<i>Stock automático ${availableCount ?? 0}. Tu compra quedará en entrega manual por el admin.</i>`
-      : "";
   const balance = Number(u?.balance ?? 0);
 
-  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
-  if (balance >= total_usd) {
-    kb.push([{ text: `Pagar con saldo  ·  $${total_usd.toFixed(2)}`, callback_data: "pay:balance" }]);
+  // Saldo insuficiente → mensaje simple, sin lista de métodos ni notas de stock.
+  if (balance < total_usd) {
+    await screen(
+      telegram_id,
+      chat_id,
+      `💸 <b>Tu saldo es insuficiente.</b>\n\nRecarga saldo para poder realizar la compra.`,
+      [
+        [{ text: "💰 Recargar Saldo", callback_data: "menu:recharge" }],
+        BACK_BUTTON,
+      ],
+    );
+    return;
   }
-  for (const c of countries ?? []) {
-    kb.push([{ text: `${c.country_name}  ·  ${c.method_name}`, callback_data: `pm:${c.id}` }]);
-  }
-  kb.push([{ text: "Volver", callback_data: "menu:products" }]);
+
+  // Con saldo suficiente: pago directo con saldo (sin mostrar el stock).
   await screen(
     telegram_id,
     chat_id,
-    `💳 <b>Método de pago</b>\n\nTotal  <b>$${total_usd.toFixed(2)} USD</b>\nSaldo  $${balance.toFixed(2)}${stockNote}`,
-    kb,
+    `💳 <b>Confirmar compra</b>\n\nTotal  <b>$${total_usd.toFixed(2)} USD</b>\nSaldo  $${balance.toFixed(2)}`,
+    [
+      [{ text: `✅ Pagar con saldo  ·  $${total_usd.toFixed(2)}`, callback_data: "pay:balance" }],
+      [{ text: "Volver", callback_data: "menu:products" }],
+    ],
   );
 }
 
