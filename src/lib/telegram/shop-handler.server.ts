@@ -1250,7 +1250,7 @@ async function processReceiptPhotoReview(opts: {
 
   const { data: order } = await sb
     .from("orders")
-    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, method_name, holder_name, account_info)")
+    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, method_name, holder_name, account_info, usd_rate, currency)")
     .eq("id", order_id)
     .single();
 
@@ -1263,7 +1263,7 @@ async function processReceiptPhotoReview(opts: {
     keys_qty: number;
     products: { name: string } | null;
     product_prices: { duration_label: string } | null;
-    payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null } | null;
+    payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null; usd_rate: number | string | null; currency: string | null } | null;
   };
   const pid = tpId(o.created_at);
 
