@@ -855,6 +855,10 @@ export type Database = {
         Args: { _price_id: string; _telegram_id: number }
         Returns: Json
       }
+      purchase_manual_atomic: {
+        Args: { _price_id: string; _telegram_id: number }
+        Returns: Json
+      }
     }
     Enums: {
       order_status:

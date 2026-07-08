@@ -174,7 +174,7 @@ const RANK_LABEL: Record<string, string> = {
   leyenda: "💎 Diamond",
 };
 
-const SUPPORT_USERNAME = "@smallffx7";
+const SUPPORT_USERNAME = "@ravevq";
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
@@ -510,45 +510,38 @@ async function showQty(telegram_id: number, chat_id: number, price_id: string) {
 async function showCountries(telegram_id: number, chat_id: number, qty: number) {
   await patchContext(telegram_id, { qty });
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
-  const [{ data: price }, { count: availableCount }, { data: u }, { data: countries }] =
-    await Promise.all([
-      sb.from("product_prices").select("*").eq("id", ctx.price_id as string).single(),
-      sb
-        .from("product_stock_keys")
-        .select("id", { count: "exact", head: true })
-        .eq("product_id", ctx.product_id as string)
-        .eq("price_id", ctx.price_id as string)
-        .eq("used", false),
-      sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
-      sb
-        .from("payment_methods")
-        .select("id, country_code, country_name, method_name")
-        .eq("active", true)
-        .order("sort_order"),
-    ]);
+  const [{ data: price }, { data: u }] = await Promise.all([
+    sb.from("product_prices").select("*").eq("id", ctx.price_id as string).single(),
+    sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
+  ]);
   if (!price) return;
   const unit_usd = await getUserPriceForId(telegram_id, ctx.price_id as string, Number(price.price_usd));
   const total_usd = unit_usd * qty;
-
-  const stockNote =
-    (availableCount ?? 0) < qty
-      ? `\n<i>Stock automático ${availableCount ?? 0}. Tu compra quedará en entrega manual por el admin.</i>`
-      : "";
   const balance = Number(u?.balance ?? 0);
 
-  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
-  if (balance >= total_usd) {
-    kb.push([{ text: `Pagar con saldo  ·  $${total_usd.toFixed(2)}`, callback_data: "pay:balance" }]);
+  // Saldo insuficiente → mensaje simple, sin lista de métodos ni notas de stock.
+  if (balance < total_usd) {
+    await screen(
+      telegram_id,
+      chat_id,
+      `💸 <b>Tu saldo es insuficiente.</b>\n\nRecarga saldo para poder realizar la compra.`,
+      [
+        [{ text: "💰 Recargar Saldo", callback_data: "menu:recharge" }],
+        BACK_BUTTON,
+      ],
+    );
+    return;
   }
-  for (const c of countries ?? []) {
-    kb.push([{ text: `${c.country_name}  ·  ${c.method_name}`, callback_data: `pm:${c.id}` }]);
-  }
-  kb.push([{ text: "Volver", callback_data: "menu:products" }]);
+
+  // Con saldo suficiente: pago directo con saldo (sin mostrar el stock).
   await screen(
     telegram_id,
     chat_id,
-    `💳 <b>Método de pago</b>\n\nTotal  <b>$${total_usd.toFixed(2)} USD</b>\nSaldo  $${balance.toFixed(2)}${stockNote}`,
-    kb,
+    `💳 <b>Confirmar compra</b>\n\nTotal  <b>$${total_usd.toFixed(2)} USD</b>\nSaldo  $${balance.toFixed(2)}`,
+    [
+      [{ text: `✅ Pagar con saldo  ·  $${total_usd.toFixed(2)}`, callback_data: "pay:balance" }],
+      [{ text: "Volver", callback_data: "menu:products" }],
+    ],
   );
 }
 
@@ -933,7 +926,10 @@ async function routeBottomMenu(
 }
 
 
-// ===== Pago con saldo (entrega automática si hay stock) =====
+// ===== Pago con saldo =====
+// 1) Si hay stock automático: entrega inmediata (key eliminada del inventario).
+// 2) Si NO hay stock: pide confirmación "Stock no disponible, pedir key manual?"
+//    Aceptar → cobra saldo, crea orden pendiente y avisa al bot Almacén.
 async function payWithBalance(telegram_id: number, chat_id: number) {
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
   const qty = Number(ctx.qty ?? 1);
@@ -941,54 +937,170 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     await screen(telegram_id, chat_id, `Esa compra expiró. Elegí el producto nuevamente.`, [BACK_BUTTON]);
     return;
   }
-
   if (qty !== 1) {
     await screen(telegram_id, chat_id, `Por estabilidad, comprá las keys de una en una.`, [BACK_BUTTON]);
     return;
   }
 
+  // Precheck de stock: si no hay, ofrecemos entrega manual.
+  const { count: stockCount } = await sb
+    .from("product_stock_keys")
+    .select("id", { count: "exact", head: true })
+    .eq("price_id", ctx.price_id as string)
+    .eq("used", false);
+  if ((stockCount ?? 0) < 1) {
+    await screen(
+      telegram_id,
+      chat_id,
+      `⚠️ <b>Stock no disponible</b>\n\n¿Querés pedir la key en modo manual? Un administrador te la enviará apenas esté lista.`,
+      [
+        [{ text: "✅ Aceptar", callback_data: "manukey:accept" }],
+        [{ text: "❌ Rechazar", callback_data: "menu:main" }],
+      ],
+    );
+    return;
+  }
+
+  await deliverAutomaticKey(telegram_id, chat_id, ctx.price_id as string);
+}
+
+async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_id: string) {
   const { data: result, error } = await sb.rpc("purchase_key_atomic", {
     _telegram_id: telegram_id,
-    _price_id: ctx.price_id as string,
+    _price_id: price_id,
   });
-
   if (error) {
     console.error("[payWithBalance] atomic purchase", error);
     await screen(telegram_id, chat_id, `No se pudo completar la compra. Tocá de nuevo en unos segundos.`, [BACK_BUTTON]);
     return;
   }
-
   const purchase = result as {
     ok?: boolean;
     reason?: string;
+    order_id?: string;
     key_value?: string;
     unit_usd?: number;
+    new_balance?: number;
     product_name?: string;
     duration_label?: string;
   } | null;
 
   if (!purchase?.ok) {
-    const reason = purchase?.reason;
-    const text = reason === "insufficient_balance"
-      ? `Saldo insuficiente.`
-      : reason === "out_of_stock"
-        ? `Sin stock automático disponible en este momento.`
-        : `Producto no disponible. Elegí otro producto.`;
+    if (purchase?.reason === "out_of_stock") {
+      // Cambió el stock entre el precheck y la RPC: reintentar en modo manual.
+      await confirmManualPurchase(telegram_id, chat_id, price_id);
+      return;
+    }
+    const text = purchase?.reason === "insufficient_balance"
+      ? `💸 Tu saldo es insuficiente. Recarga saldo para poder realizar la compra.`
+      : `Producto no disponible. Elegí otro producto.`;
     await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
     return;
   }
 
   invalidateCatalogCache();
 
-  const keyText = `<code>${escapeHtml(String(purchase.key_value ?? ""))}</code>`;
-    await screen(
-      telegram_id,
-      chat_id,
-      `✅ <b>Compra completada</b>\n\nProducto  ${escapeHtml(String(purchase.product_name ?? "Producto"))}\nDuración  ${escapeHtml(String(purchase.duration_label ?? ""))}\nCantidad  1\n\n<b>Tu key</b>\n${keyText}`,
-      [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
-      { final: true },
-    );
+  const productName = String(purchase.product_name ?? "Producto");
+  const duration = String(purchase.duration_label ?? "");
+  const total = Number(purchase.unit_usd ?? 0);
+  const balanceLeft = Number(purchase.new_balance ?? 0);
+  const orderId = String(purchase.order_id ?? "").replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
+  const keyVal = String(purchase.key_value ?? "");
+
+  const text =
+    `✅ <b>Compra Realizada</b>\n\n` +
+    `📦 <b>Producto:</b> ${escapeHtml(productName)}\n` +
+    `⏳ <b>Duración:</b> ${escapeHtml(duration)}\n` +
+    `💵 <b>Total:</b> ${total.toFixed(2)} USD\n\n` +
+    `🔑 <b>Tu Key</b>\n<code>${escapeHtml(keyVal)}</code>\n\n` +
+    `🧾 <b>Orden:</b> ${escapeHtml(orderId)}\n` +
+    `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
+    `📂 <b>Descargar Archivo:</b> ${DOWNLOAD_PANEL_URL}\n\n` +
+    `¡Gracias por tu compra! Disfruta tu producto.`;
+
+  await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
+}
+
+async function confirmManualPurchase(telegram_id: number, chat_id: number, price_id: string) {
+  await patchContext(telegram_id, { price_id });
+  await screen(
+    telegram_id,
+    chat_id,
+    `⚠️ <b>Stock no disponible</b>\n\n¿Querés pedir la key en modo manual? Un administrador te la enviará apenas esté lista.`,
+    [
+      [{ text: "✅ Aceptar", callback_data: "manukey:accept" }],
+      [{ text: "❌ Rechazar", callback_data: "menu:main" }],
+    ],
+  );
+}
+
+async function acceptManualKey(telegram_id: number, chat_id: number) {
+  const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
+  if (!ctx?.price_id) {
+    await screen(telegram_id, chat_id, `Esa compra expiró. Elegí el producto nuevamente.`, [BACK_BUTTON]);
     return;
+  }
+  const { data: result, error } = await sb.rpc("purchase_manual_atomic", {
+    _telegram_id: telegram_id,
+    _price_id: ctx.price_id as string,
+  });
+  if (error) {
+    console.error("[acceptManualKey] atomic", error);
+    await screen(telegram_id, chat_id, `No se pudo completar la compra. Tocá de nuevo en unos segundos.`, [BACK_BUTTON]);
+    return;
+  }
+  const purchase = result as {
+    ok?: boolean; reason?: string; order_id?: string; unit_usd?: number;
+    new_balance?: number; product_name?: string; duration_label?: string;
+  } | null;
+
+  if (!purchase?.ok) {
+    const text = purchase?.reason === "insufficient_balance"
+      ? `💸 Tu saldo es insuficiente. Recarga saldo para poder realizar la compra.`
+      : `Producto no disponible. Elegí otro producto.`;
+    await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
+    return;
+  }
+
+  // Notificamos al chat de almacén y al chat de admin para entrega manual.
+  const { data: user } = await sb.from("bot_users").select("username, display_name").eq("telegram_id", telegram_id).single();
+  const userTag = user?.username ? `@${user.username}` : (user?.display_name ?? "—");
+  const productName = String(purchase.product_name ?? "Producto");
+  const duration = String(purchase.duration_label ?? "");
+  const total = Number(purchase.unit_usd ?? 0);
+  const orderId = String(purchase.order_id ?? "");
+
+  const notify =
+    `🛠 <b>Entrega manual pendiente</b>\n\n` +
+    `📦 ${escapeHtml(productName)}  ·  ${escapeHtml(duration)}\n` +
+    `💵 ${total.toFixed(2)} USD (pagado con saldo)\n` +
+    `👤 ${userTag} · <code>${telegram_id}</code>\n` +
+    `🧾 Orden: <code>${orderId.slice(0, 8)}</code>`;
+  const kb = { inline_keyboard: [[{ text: "🔑 Enviar key", callback_data: `adm:sendkey:${orderId}` }]] };
+
+  const { getWarehouseChatId, getAdminChatId: getAdmin } = await import("./api.server");
+  const wh = getWarehouseChatId();
+  const admin = getAdmin();
+  if (wh) {
+    sendMessage("warehouse", wh, notify).catch(() => {});
+  }
+  if (admin) {
+    sendMessage("admin", admin, notify, { reply_markup: kb }).catch(() => {});
+  }
+
+  const balanceLeft = Number(purchase.new_balance ?? 0);
+  const shortId = orderId.replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
+  const text =
+    `✅ <b>Compra Realizada</b>\n\n` +
+    `📦 <b>Producto:</b> ${escapeHtml(productName)}\n` +
+    `⏳ <b>Duración:</b> ${escapeHtml(duration)}\n` +
+    `💵 <b>Total:</b> ${total.toFixed(2)} USD\n\n` +
+    `⏳ Tu key será enviada por un administrador en unos minutos.\n\n` +
+    `🧾 <b>Orden:</b> ${escapeHtml(shortId)}\n` +
+    `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
+    `📂 <b>Descargar Archivo:</b> ${DOWNLOAD_PANEL_URL}\n\n` +
+    `¡Gracias por tu compra!`;
+  await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
 }
 
 // ===== Comprobante (foto) =====
@@ -1138,7 +1250,7 @@ async function processReceiptPhotoReview(opts: {
 
   const { data: order } = await sb
     .from("orders")
-    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, method_name, holder_name, account_info)")
+    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, method_name, holder_name, account_info, usd_rate, currency)")
     .eq("id", order_id)
     .single();
 
@@ -1151,14 +1263,62 @@ async function processReceiptPhotoReview(opts: {
     keys_qty: number;
     products: { name: string } | null;
     product_prices: { duration_label: string } | null;
-    payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null } | null;
+    payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null; usd_rate: number | string | null; currency: string | null } | null;
   };
   const pid = tpId(o.created_at);
 
-  // Rendimiento: el OCR con IA tarda varios segundos y era el principal
-  // causante de congelamientos. El comprobante pasa directo al admin para
-  // revisión humana y el bot no queda esperando una llamada externa lenta.
-  const ocrSummary = `\n<i>Revisión manual rápida</i>`;
+  // Verificación con IA (OCR). Si detecta que la imagen NO es un comprobante,
+  // bloqueamos 24h. Si el monto no coincide con lo esperado, no se envía al
+  // admin: se le explica al usuario y se le vuelven a mostrar los datos.
+  const { ocrReceipt, formatOcrSummary } = await import("./ocr.server");
+  const ocr = await ocrReceipt(bytes, "image/jpeg");
+
+  const expectedUsd = Number(o.total_usd);
+  const rate = o.payment_methods?.usd_rate != null ? Number(o.payment_methods.usd_rate) : null;
+  const expectedLocal = o.total_local != null
+    ? Number(o.total_local)
+    : (rate && rate !== 1 ? expectedUsd * rate : null);
+
+  if (ocr?.is_payment === false) {
+    // No es comprobante — bloqueamos 24h
+    const { blockSpamReceipt } = await import("./db.server");
+    await blockSpamReceipt(telegram_id);
+    blockCache.set(telegram_id, { value: true, expiresAt: Date.now() + 15_000 });
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt_id);
+    await notifyUser(
+      chat_id,
+      `🚫 <b>Cuenta bloqueada por 24 horas</b>\n\nLa imagen que enviaste no es un comprobante de pago válido.\n\nDurante las próximas 24 horas no podrás utilizar ninguna función del bot. El acceso se restaurará automáticamente.`,
+    );
+    return;
+  }
+
+  if (ocr?.amount != null) {
+    const tolUsd = Math.max(2, expectedUsd * 0.05);
+    const tolLocal = expectedLocal ? Math.max(2, expectedLocal * 0.05) : 0;
+    const matchesUsd = Math.abs(ocr.amount - expectedUsd) <= tolUsd;
+    const matchesLocal = expectedLocal != null && Math.abs(ocr.amount - expectedLocal) <= tolLocal;
+    if (!matchesUsd && !matchesLocal) {
+      // Monto no coincide — no lo enviamos al admin.
+      await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+      await sb.from("receipts").delete().eq("id", receipt_id);
+      const pm = o.payment_methods;
+      const expectedText = expectedLocal
+        ? `${expectedUsd.toFixed(2)} USD (aprox. ${expectedLocal.toFixed(2)} ${o.currency ?? ""})`
+        : `${expectedUsd.toFixed(2)} USD`;
+      const detected = ocr.amount.toFixed(2);
+      const pmDetail = pm
+        ? `\n\n💳 <b>${pm.country_name} · ${pm.method_name}</b>\n🪪 ${pm.holder_name ?? "—"}\n📋 <code>${pm.account_info ?? "—"}</code>`
+        : "";
+      await notifyUser(
+        chat_id,
+        `❌ <b>Comprobante rechazado</b>\n\nEl monto detectado (<b>${detected}</b>) no coincide con el esperado (<b>${expectedText}</b>).\n\nRevisá que hayas pagado el monto correcto al método de pago correspondiente y volvé a enviar el comprobante correcto.${pmDetail}`,
+      );
+      return;
+    }
+  }
+
+  const ocrSummary = formatOcrSummary(ocr, expectedUsd, expectedLocal);
 
 
 
@@ -1393,11 +1553,35 @@ export async function handleShopUpdate(update: Update): Promise<void> {
 }
 
 // Oferta promocional: martes (2) y viernes (5), 1 vez cada 24h por usuario.
+// Oferta promocional: máximo 2 veces por semana por usuario, de forma
+// aleatoria (no repetitiva) y SOLO para usuarios desconectados hace días
+// o que no han recargado saldo hace mucho tiempo.
 async function maybeSendWeeklyOffer(telegram_id: number, chat_id: number) {
-  const dow = new Date().getUTCDay();
-  if (dow !== 2 && dow !== 5) return;
-  const ok = await checkRateLimit(telegram_id, "weekly_offer", 1, 86400);
-  if (!ok) return;
+  // 25% de probabilidad → evita spam cuando el usuario está muy activo.
+  if (Math.random() > 0.25) return;
+  // Máximo 2 envíos cada 7 días por usuario.
+  const okWeekly = await checkRateLimit(telegram_id, "weekly_offer", 2, 7 * 86400);
+  if (!okWeekly) return;
+  // No dispararlo más de una vez cada 24h para dar aire.
+  const okDay = await checkRateLimit(telegram_id, "weekly_offer_day", 1, 86400);
+  if (!okDay) return;
+
+  // Filtrar destinatarios: desconectado hace ≥3 días O sin recargar hace mucho.
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("last_seen_at, total_recharged, registered_at")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  if (!u) return;
+  const now = Date.now();
+  const lastSeen = u.last_seen_at ? new Date(u.last_seen_at).getTime() : now;
+  const registeredAt = u.registered_at ? new Date(u.registered_at).getTime() : now;
+  const daysSinceSeen = (now - lastSeen) / 86_400_000;
+  const daysSinceReg = (now - registeredAt) / 86_400_000;
+  const isDisconnected = daysSinceSeen >= 3;
+  const noRecentRecharge = Number(u.total_recharged ?? 0) === 0 && daysSinceReg >= 7;
+  if (!isDisconnected && !noRecentRecharge) return;
+
   await sendMessage(
     "shop",
     chat_id,
@@ -1660,6 +1844,7 @@ async function handleCallback(cb: TgCallback) {
   }
   if (data.startsWith("qty:")) return showCountries(telegram_id, chat_id, Number(data.slice(4)) || 1);
   if (data === "pay:balance") return payWithBalance(telegram_id, chat_id);
+  if (data === "manukey:accept") return acceptManualKey(telegram_id, chat_id);
   if (data.startsWith("pm:")) return showPaymentInstructions(telegram_id, chat_id, data.slice(3));
   if (data.startsWith("rcc:")) return askRechargeAmount(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("rcpay:")) return startRechargeReceipt(telegram_id, chat_id, data.slice(6));
@@ -1711,13 +1896,29 @@ async function showMyKeys(telegram_id: number, chat_id: number) {
   if (!keys || keys.length === 0) {
     return screen(telegram_id, chat_id, `Aún no tenés keys.`, [BACK_BUTTON]);
   }
+  const DAYS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
   const blocks = keys.map((k) => {
     const ord = (k as { orders: { products: { name: string } | null; product_prices: { duration_label: string } | null } | null }).orders;
     const name = ord?.products?.name ?? "Producto";
-    const dur = ord?.product_prices?.duration_label ? ` ${ord.product_prices.duration_label}` : "";
-    return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n<code>${escapeHtml(k.key_value)}</code>`;
+    const dur = ord?.product_prices?.duration_label ?? "—";
+    const d = new Date(k.delivered_at);
+    const day = DAYS[d.getDay()];
+    const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    return (
+      `━━━━━━━━━━━━━━━━━━\n\n` +
+      `📦 ${escapeHtml(name)}\n` +
+      `⏳ Duración: ${escapeHtml(dur)}\n` +
+      `🗓️ Día de compra: ${day}\n` +
+      `🕒 Hora: ${time}\n` +
+      `🔑 Key: <code>${escapeHtml(k.key_value)}</code>`
+    );
   });
-  return screen(telegram_id, chat_id, `🔑 <b>Mis keys</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
+  return screen(
+    telegram_id,
+    chat_id,
+    `🔑 <b>Mis Keys</b>\n\n${blocks.join("\n\n")}\n\n━━━━━━━━━━━━━━━━━━`,
+    [BACK_BUTTON],
+  );
 }
 
 async function showAnnouncements(telegram_id: number, chat_id: number) {
