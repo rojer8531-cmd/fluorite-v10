@@ -926,7 +926,10 @@ async function routeBottomMenu(
 }
 
 
-// ===== Pago con saldo (entrega automática si hay stock) =====
+// ===== Pago con saldo =====
+// 1) Si hay stock automático: entrega inmediata (key eliminada del inventario).
+// 2) Si NO hay stock: pide confirmación "Stock no disponible, pedir key manual?"
+//    Aceptar → cobra saldo, crea orden pendiente y avisa al bot Almacén.
 async function payWithBalance(telegram_id: number, chat_id: number) {
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
   const qty = Number(ctx.qty ?? 1);
@@ -934,54 +937,170 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     await screen(telegram_id, chat_id, `Esa compra expiró. Elegí el producto nuevamente.`, [BACK_BUTTON]);
     return;
   }
-
   if (qty !== 1) {
     await screen(telegram_id, chat_id, `Por estabilidad, comprá las keys de una en una.`, [BACK_BUTTON]);
     return;
   }
 
+  // Precheck de stock: si no hay, ofrecemos entrega manual.
+  const { count: stockCount } = await sb
+    .from("product_stock_keys")
+    .select("id", { count: "exact", head: true })
+    .eq("price_id", ctx.price_id as string)
+    .eq("used", false);
+  if ((stockCount ?? 0) < 1) {
+    await screen(
+      telegram_id,
+      chat_id,
+      `⚠️ <b>Stock no disponible</b>\n\n¿Querés pedir la key en modo manual? Un administrador te la enviará apenas esté lista.`,
+      [
+        [{ text: "✅ Aceptar", callback_data: "manukey:accept" }],
+        [{ text: "❌ Rechazar", callback_data: "menu:main" }],
+      ],
+    );
+    return;
+  }
+
+  await deliverAutomaticKey(telegram_id, chat_id, ctx.price_id as string);
+}
+
+async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_id: string) {
   const { data: result, error } = await sb.rpc("purchase_key_atomic", {
     _telegram_id: telegram_id,
-    _price_id: ctx.price_id as string,
+    _price_id: price_id,
   });
-
   if (error) {
     console.error("[payWithBalance] atomic purchase", error);
     await screen(telegram_id, chat_id, `No se pudo completar la compra. Tocá de nuevo en unos segundos.`, [BACK_BUTTON]);
     return;
   }
-
   const purchase = result as {
     ok?: boolean;
     reason?: string;
+    order_id?: string;
     key_value?: string;
     unit_usd?: number;
+    new_balance?: number;
     product_name?: string;
     duration_label?: string;
   } | null;
 
   if (!purchase?.ok) {
-    const reason = purchase?.reason;
-    const text = reason === "insufficient_balance"
-      ? `Saldo insuficiente.`
-      : reason === "out_of_stock"
-        ? `Sin stock automático disponible en este momento.`
-        : `Producto no disponible. Elegí otro producto.`;
+    if (purchase?.reason === "out_of_stock") {
+      // Cambió el stock entre el precheck y la RPC: reintentar en modo manual.
+      await confirmManualPurchase(telegram_id, chat_id, price_id);
+      return;
+    }
+    const text = purchase?.reason === "insufficient_balance"
+      ? `💸 Tu saldo es insuficiente. Recarga saldo para poder realizar la compra.`
+      : `Producto no disponible. Elegí otro producto.`;
     await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
     return;
   }
 
   invalidateCatalogCache();
 
-  const keyText = `<code>${escapeHtml(String(purchase.key_value ?? ""))}</code>`;
-    await screen(
-      telegram_id,
-      chat_id,
-      `✅ <b>Compra completada</b>\n\nProducto  ${escapeHtml(String(purchase.product_name ?? "Producto"))}\nDuración  ${escapeHtml(String(purchase.duration_label ?? ""))}\nCantidad  1\n\n<b>Tu key</b>\n${keyText}`,
-      [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
-      { final: true },
-    );
+  const productName = String(purchase.product_name ?? "Producto");
+  const duration = String(purchase.duration_label ?? "");
+  const total = Number(purchase.unit_usd ?? 0);
+  const balanceLeft = Number(purchase.new_balance ?? 0);
+  const orderId = String(purchase.order_id ?? "").replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
+  const keyVal = String(purchase.key_value ?? "");
+
+  const text =
+    `✅ <b>Compra Realizada</b>\n\n` +
+    `📦 <b>Producto:</b> ${escapeHtml(productName)}\n` +
+    `⏳ <b>Duración:</b> ${escapeHtml(duration)}\n` +
+    `💵 <b>Total:</b> ${total.toFixed(2)} USD\n\n` +
+    `🔑 <b>Tu Key</b>\n<code>${escapeHtml(keyVal)}</code>\n\n` +
+    `🧾 <b>Orden:</b> ${escapeHtml(orderId)}\n` +
+    `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
+    `📂 <b>Descargar Archivo:</b> ${DOWNLOAD_PANEL_URL}\n\n` +
+    `¡Gracias por tu compra! Disfruta tu producto.`;
+
+  await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
+}
+
+async function confirmManualPurchase(telegram_id: number, chat_id: number, price_id: string) {
+  await patchContext(telegram_id, { price_id });
+  await screen(
+    telegram_id,
+    chat_id,
+    `⚠️ <b>Stock no disponible</b>\n\n¿Querés pedir la key en modo manual? Un administrador te la enviará apenas esté lista.`,
+    [
+      [{ text: "✅ Aceptar", callback_data: "manukey:accept" }],
+      [{ text: "❌ Rechazar", callback_data: "menu:main" }],
+    ],
+  );
+}
+
+async function acceptManualKey(telegram_id: number, chat_id: number) {
+  const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
+  if (!ctx?.price_id) {
+    await screen(telegram_id, chat_id, `Esa compra expiró. Elegí el producto nuevamente.`, [BACK_BUTTON]);
     return;
+  }
+  const { data: result, error } = await sb.rpc("purchase_manual_atomic", {
+    _telegram_id: telegram_id,
+    _price_id: ctx.price_id as string,
+  });
+  if (error) {
+    console.error("[acceptManualKey] atomic", error);
+    await screen(telegram_id, chat_id, `No se pudo completar la compra. Tocá de nuevo en unos segundos.`, [BACK_BUTTON]);
+    return;
+  }
+  const purchase = result as {
+    ok?: boolean; reason?: string; order_id?: string; unit_usd?: number;
+    new_balance?: number; product_name?: string; duration_label?: string;
+  } | null;
+
+  if (!purchase?.ok) {
+    const text = purchase?.reason === "insufficient_balance"
+      ? `💸 Tu saldo es insuficiente. Recarga saldo para poder realizar la compra.`
+      : `Producto no disponible. Elegí otro producto.`;
+    await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
+    return;
+  }
+
+  // Notificamos al chat de almacén y al chat de admin para entrega manual.
+  const { data: user } = await sb.from("bot_users").select("username, display_name").eq("telegram_id", telegram_id).single();
+  const userTag = user?.username ? `@${user.username}` : (user?.display_name ?? "—");
+  const productName = String(purchase.product_name ?? "Producto");
+  const duration = String(purchase.duration_label ?? "");
+  const total = Number(purchase.unit_usd ?? 0);
+  const orderId = String(purchase.order_id ?? "");
+
+  const notify =
+    `🛠 <b>Entrega manual pendiente</b>\n\n` +
+    `📦 ${escapeHtml(productName)}  ·  ${escapeHtml(duration)}\n` +
+    `💵 ${total.toFixed(2)} USD (pagado con saldo)\n` +
+    `👤 ${userTag} · <code>${telegram_id}</code>\n` +
+    `🧾 Orden: <code>${orderId.slice(0, 8)}</code>`;
+  const kb = { inline_keyboard: [[{ text: "🔑 Enviar key", callback_data: `adm:sendkey:${orderId}` }]] };
+
+  const { getWarehouseChatId, getAdminChatId: getAdmin } = await import("./api.server");
+  const wh = getWarehouseChatId();
+  const admin = getAdmin();
+  if (wh) {
+    sendMessage("warehouse", wh, notify).catch(() => {});
+  }
+  if (admin) {
+    sendMessage("admin", admin, notify, { reply_markup: kb }).catch(() => {});
+  }
+
+  const balanceLeft = Number(purchase.new_balance ?? 0);
+  const shortId = orderId.replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
+  const text =
+    `✅ <b>Compra Realizada</b>\n\n` +
+    `📦 <b>Producto:</b> ${escapeHtml(productName)}\n` +
+    `⏳ <b>Duración:</b> ${escapeHtml(duration)}\n` +
+    `💵 <b>Total:</b> ${total.toFixed(2)} USD\n\n` +
+    `⏳ Tu key será enviada por un administrador en unos minutos.\n\n` +
+    `🧾 <b>Orden:</b> ${escapeHtml(shortId)}\n` +
+    `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
+    `📂 <b>Descargar Archivo:</b> ${DOWNLOAD_PANEL_URL}\n\n` +
+    `¡Gracias por tu compra!`;
+  await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
 }
 
 // ===== Comprobante (foto) =====
