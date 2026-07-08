@@ -1553,11 +1553,35 @@ export async function handleShopUpdate(update: Update): Promise<void> {
 }
 
 // Oferta promocional: martes (2) y viernes (5), 1 vez cada 24h por usuario.
+// Oferta promocional: máximo 2 veces por semana por usuario, de forma
+// aleatoria (no repetitiva) y SOLO para usuarios desconectados hace días
+// o que no han recargado saldo hace mucho tiempo.
 async function maybeSendWeeklyOffer(telegram_id: number, chat_id: number) {
-  const dow = new Date().getUTCDay();
-  if (dow !== 2 && dow !== 5) return;
-  const ok = await checkRateLimit(telegram_id, "weekly_offer", 1, 86400);
-  if (!ok) return;
+  // 25% de probabilidad → evita spam cuando el usuario está muy activo.
+  if (Math.random() > 0.25) return;
+  // Máximo 2 envíos cada 7 días por usuario.
+  const okWeekly = await checkRateLimit(telegram_id, "weekly_offer", 2, 7 * 86400);
+  if (!okWeekly) return;
+  // No dispararlo más de una vez cada 24h para dar aire.
+  const okDay = await checkRateLimit(telegram_id, "weekly_offer_day", 1, 86400);
+  if (!okDay) return;
+
+  // Filtrar destinatarios: desconectado hace ≥3 días O sin recargar hace mucho.
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("last_seen_at, total_recharged, registered_at")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  if (!u) return;
+  const now = Date.now();
+  const lastSeen = u.last_seen_at ? new Date(u.last_seen_at).getTime() : now;
+  const registeredAt = u.registered_at ? new Date(u.registered_at).getTime() : now;
+  const daysSinceSeen = (now - lastSeen) / 86_400_000;
+  const daysSinceReg = (now - registeredAt) / 86_400_000;
+  const isDisconnected = daysSinceSeen >= 3;
+  const noRecentRecharge = Number(u.total_recharged ?? 0) === 0 && daysSinceReg >= 7;
+  if (!isDisconnected && !noRecentRecharge) return;
+
   await sendMessage(
     "shop",
     chat_id,
