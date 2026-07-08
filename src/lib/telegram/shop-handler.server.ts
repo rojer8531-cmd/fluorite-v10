@@ -174,7 +174,7 @@ const RANK_LABEL: Record<string, string> = {
   leyenda: "💎 Diamond",
 };
 
-const SUPPORT_USERNAME = "@smallffx7";
+const SUPPORT_USERNAME = "@ravevq";
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
