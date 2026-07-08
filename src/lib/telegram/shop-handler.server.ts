@@ -1274,11 +1274,10 @@ async function processReceiptPhotoReview(opts: {
   const ocr = await ocrReceipt(bytes, "image/jpeg");
 
   const expectedUsd = Number(o.total_usd);
+  const rate = o.payment_methods?.usd_rate != null ? Number(o.payment_methods.usd_rate) : null;
   const expectedLocal = o.total_local != null
     ? Number(o.total_local)
-    : (o.payment_methods && (o as unknown as { payment_methods: { usd_rate?: number } | null }).payment_methods
-        ? null
-        : null);
+    : (rate && rate !== 1 ? expectedUsd * rate : null);
 
   if (ocr?.is_payment === false) {
     // No es comprobante — bloqueamos 24h
