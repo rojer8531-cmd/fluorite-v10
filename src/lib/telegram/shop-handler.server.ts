@@ -1896,13 +1896,29 @@ async function showMyKeys(telegram_id: number, chat_id: number) {
   if (!keys || keys.length === 0) {
     return screen(telegram_id, chat_id, `Aún no tenés keys.`, [BACK_BUTTON]);
   }
+  const DAYS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
   const blocks = keys.map((k) => {
     const ord = (k as { orders: { products: { name: string } | null; product_prices: { duration_label: string } | null } | null }).orders;
     const name = ord?.products?.name ?? "Producto";
-    const dur = ord?.product_prices?.duration_label ? ` ${ord.product_prices.duration_label}` : "";
-    return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n<code>${escapeHtml(k.key_value)}</code>`;
+    const dur = ord?.product_prices?.duration_label ?? "—";
+    const d = new Date(k.delivered_at);
+    const day = DAYS[d.getDay()];
+    const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    return (
+      `━━━━━━━━━━━━━━━━━━\n\n` +
+      `📦 ${escapeHtml(name)}\n` +
+      `⏳ Duración: ${escapeHtml(dur)}\n` +
+      `🗓️ Día de compra: ${day}\n` +
+      `🕒 Hora: ${time}\n` +
+      `🔑 Key: <code>${escapeHtml(k.key_value)}</code>`
+    );
   });
-  return screen(telegram_id, chat_id, `🔑 <b>Mis keys</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
+  return screen(
+    telegram_id,
+    chat_id,
+    `🔑 <b>Mis Keys</b>\n\n${blocks.join("\n\n")}\n\n━━━━━━━━━━━━━━━━━━`,
+    [BACK_BUTTON],
+  );
 }
 
 async function showAnnouncements(telegram_id: number, chat_id: number) {
