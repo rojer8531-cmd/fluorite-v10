@@ -1267,10 +1267,59 @@ async function processReceiptPhotoReview(opts: {
   };
   const pid = tpId(o.created_at);
 
-  // Rendimiento: el OCR con IA tarda varios segundos y era el principal
-  // causante de congelamientos. El comprobante pasa directo al admin para
-  // revisión humana y el bot no queda esperando una llamada externa lenta.
-  const ocrSummary = `\n<i>Revisión manual rápida</i>`;
+  // Verificación con IA (OCR). Si detecta que la imagen NO es un comprobante,
+  // bloqueamos 24h. Si el monto no coincide con lo esperado, no se envía al
+  // admin: se le explica al usuario y se le vuelven a mostrar los datos.
+  const { ocrReceipt, formatOcrSummary } = await import("./ocr.server");
+  const ocr = await ocrReceipt(bytes, "image/jpeg");
+
+  const expectedUsd = Number(o.total_usd);
+  const expectedLocal = o.total_local != null
+    ? Number(o.total_local)
+    : (o.payment_methods && (o as unknown as { payment_methods: { usd_rate?: number } | null }).payment_methods
+        ? null
+        : null);
+
+  if (ocr?.is_payment === false) {
+    // No es comprobante — bloqueamos 24h
+    const { blockSpamReceipt } = await import("./db.server");
+    await blockSpamReceipt(telegram_id);
+    blockCache.set(telegram_id, { value: true, expiresAt: Date.now() + 15_000 });
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt_id);
+    await notifyUser(
+      chat_id,
+      `🚫 <b>Cuenta bloqueada por 24 horas</b>\n\nLa imagen que enviaste no es un comprobante de pago válido.\n\nDurante las próximas 24 horas no podrás utilizar ninguna función del bot. El acceso se restaurará automáticamente.`,
+    );
+    return;
+  }
+
+  if (ocr?.amount != null) {
+    const tolUsd = Math.max(2, expectedUsd * 0.05);
+    const tolLocal = expectedLocal ? Math.max(2, expectedLocal * 0.05) : 0;
+    const matchesUsd = Math.abs(ocr.amount - expectedUsd) <= tolUsd;
+    const matchesLocal = expectedLocal != null && Math.abs(ocr.amount - expectedLocal) <= tolLocal;
+    if (!matchesUsd && !matchesLocal) {
+      // Monto no coincide — no lo enviamos al admin.
+      await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+      await sb.from("receipts").delete().eq("id", receipt_id);
+      const pm = o.payment_methods;
+      const expectedText = expectedLocal
+        ? `${expectedUsd.toFixed(2)} USD (aprox. ${expectedLocal.toFixed(2)} ${o.currency ?? ""})`
+        : `${expectedUsd.toFixed(2)} USD`;
+      const detected = ocr.amount.toFixed(2);
+      const pmDetail = pm
+        ? `\n\n💳 <b>${pm.country_name} · ${pm.method_name}</b>\n🪪 ${pm.holder_name ?? "—"}\n📋 <code>${pm.account_info ?? "—"}</code>`
+        : "";
+      await notifyUser(
+        chat_id,
+        `❌ <b>Comprobante rechazado</b>\n\nEl monto detectado (<b>${detected}</b>) no coincide con el esperado (<b>${expectedText}</b>).\n\nRevisá que hayas pagado el monto correcto al método de pago correspondiente y volvé a enviar el comprobante correcto.${pmDetail}`,
+      );
+      return;
+    }
+  }
+
+  const ocrSummary = formatOcrSummary(ocr, expectedUsd, expectedLocal);
 
 
 
