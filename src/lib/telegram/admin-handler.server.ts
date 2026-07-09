@@ -911,12 +911,10 @@ async function handleCallback(cb: TgCallback) {
       await answerCallbackQuery("admin", cb.id, "Orden no encontrada", true);
       return;
     }
-    const { data: rcpt } = await sb
-      .from("receipts")
-      .select("admin_message_id")
-      .eq("order_id", target)
-      .maybeSingle();
-    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
+    if (order.status !== "pending_approval") {
+      await answerCallbackQuery("admin", cb.id, "Ya procesada.", true);
+      return;
+    }
     await Promise.all([
       sb.from("orders").update({ status: "rejected", admin_note: note }).eq("id", target),
       sb.from("receipts").update({ status: "rejected" }).eq("order_id", target),
@@ -930,10 +928,15 @@ async function handleCallback(cb: TgCallback) {
     ]);
     const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
     await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id, note, pending: tpId(order.created_at) });
-    if (photoMid > 0) {
-      await deleteMessage("admin", chat_id, photoMid).catch(() => {});
-    }
-    await answerCallbackQuery("admin", cb.id, "❌ Rechazado · Falso", true);
+    await finalizeReceiptCaption({
+      cb,
+      order_id: target,
+      status: "RECHAZADO",
+      headerIcon: "❌",
+      headerText: "COMPROBANTE RECHAZADO",
+      statusIcon: "❌",
+    });
+    await answerCallbackQuery("admin", cb.id, "❌ Rechazado", true);
     return;
   }
 
@@ -946,8 +949,31 @@ async function handleCallback(cb: TgCallback) {
       target_type: "telegram_id",
       target_id: target,
     });
+    // Buscar la orden asociada al mensaje (por admin_message_id) para editar
+    // el caption sin perder la imagen del comprobante.
     if (cb.message) {
-      await markReceiptStatus(cb.message.chat.id, cb.message.message_id, `🚫 BLOQUEADO`, String(tgId));
+      const { data: linkedOrder } = await sb
+        .from("orders")
+        .select("id, status")
+        .eq("admin_message_id", cb.message.message_id)
+        .maybeSingle();
+      if (linkedOrder) {
+        if (linkedOrder.status === "pending_approval") {
+          await sb.from("orders").update({ status: "rejected", admin_note: "Bloqueado" }).eq("id", linkedOrder.id);
+          await sb.from("receipts").update({ status: "rejected" }).eq("order_id", linkedOrder.id);
+        }
+        await finalizeReceiptCaption({
+          cb,
+          order_id: linkedOrder.id,
+          status: "BLOQUEADO",
+          headerIcon: "⛔",
+          headerText: "USUARIO BLOQUEADO",
+          statusIcon: "⛔",
+        });
+      } else {
+        // Sin orden asociada: al menos quitar los botones y dejar aviso.
+        await editMessageReplyMarkup("admin", cb.message.chat.id, cb.message.message_id, { inline_keyboard: [] }).catch(() => {});
+      }
     }
     await answerCallbackQuery("admin", cb.id, "Usuario bloqueado.", true);
     return;
