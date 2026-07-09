@@ -886,15 +886,15 @@ async function handleCallback(cb: TgCallback) {
       pending: tpId(order.created_at),
     });
 
-    const { data: rcpt } = await sb
-      .from("receipts")
-      .select("admin_message_id")
-      .eq("order_id", target)
-      .maybeSingle();
-    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
-    if (photoMid && cb.message) {
-      await deleteMessage("admin", cb.message.chat.id, photoMid).catch(() => {});
-    }
+    await finalizeReceiptCaption({
+      cb,
+      order_id: target,
+      status: "APROBADO",
+      headerIcon: "✅",
+      headerText: "COMPROBANTE APROBADO",
+      statusIcon: "✅",
+      extraBalanceUsd: newBalance,
+    });
     await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
     return;
   }
