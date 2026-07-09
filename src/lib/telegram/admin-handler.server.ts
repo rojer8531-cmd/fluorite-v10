@@ -4,6 +4,7 @@
 import {
   sendMessage as _rawSendMessage,
   editMessageReplyMarkup,
+  editMessageCaption,
   deleteMessage,
   answerCallbackQuery,
   getAdminChatId,
