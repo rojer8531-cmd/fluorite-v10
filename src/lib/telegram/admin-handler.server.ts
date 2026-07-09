@@ -139,7 +139,7 @@ async function markReceiptStatus(
   detail?: string,
 ) {
   await editMessageReplyMarkup("admin", bot_chat_id, message_id, { inline_keyboard: [] }).catch(() => {});
-  await _rawSendMessage(bot_chat_id, `${badge}${detail ? `  ·  ${detail}` : ""}`, {
+  await sendMessage(bot_chat_id, `${badge}${detail ? `  ·  ${detail}` : ""}`, {
     reply_to_message_id: message_id,
     allow_sending_without_reply: true,
   });
