@@ -139,10 +139,61 @@ async function markReceiptStatus(
   detail?: string,
 ) {
   await editMessageReplyMarkup("admin", bot_chat_id, message_id, { inline_keyboard: [] }).catch(() => {});
-  await sendMessage(bot_chat_id, `${badge}${detail ? `  ·  ${detail}` : ""}`, {
+  await _rawSendMessage(bot_chat_id, `${badge}${detail ? `  ·  ${detail}` : ""}`, {
     reply_to_message_id: message_id,
     allow_sending_without_reply: true,
   });
+}
+
+// Edita el mensaje del comprobante conservando la foto original y quitando
+// SOLO los botones inline. Ningún comprobante se elimina jamás.
+async function finalizeReceiptCaption(opts: {
+  cb: TgCallback;
+  order_id: string;
+  status: "APROBADO" | "RECHAZADO" | "BLOQUEADO";
+  headerIcon: string;
+  headerText: string;
+  statusIcon: string;
+  extraBalanceUsd?: number | null; // saldo final para mostrar (post-aprobación)
+}) {
+  const { cb, order_id, status, headerIcon, headerText, statusIcon, extraBalanceUsd } = opts;
+  const chat_id = cb.message?.chat.id;
+  const message_id = cb.message?.message_id;
+
+  const { data: order } = await sb
+    .from("orders")
+    .select("id, telegram_id, total_usd, created_at, admin_message_id, payment_methods(country_name, method_name), bot_users(balance, username, display_name)")
+    .eq("id", order_id)
+    .maybeSingle();
+  if (!order) return;
+  const o = order as {
+    telegram_id: number;
+    total_usd: number;
+    created_at: string;
+    admin_message_id: number | null;
+    payment_methods: { country_name: string; method_name: string } | null;
+    bot_users: { balance: number; username: string | null; display_name: string | null } | null;
+  };
+  const bal = extraBalanceUsd != null ? extraBalanceUsd : Number(o.bot_users?.balance ?? 0);
+  const userTag = o.bot_users?.username ? `@${o.bot_users.username}` : (o.bot_users?.display_name ?? "—");
+  const pid = tpId(o.created_at);
+  const country = o.payment_methods?.country_name ?? "—";
+
+  const newCaption =
+    `${headerIcon} <b>${headerText}</b>\n\n` +
+    `👤 <b>Usuario:</b> ${userTag} · <code>${o.telegram_id}</code>\n` +
+    `🆔 <b>Pending:</b> <code>${pid}</code>\n` +
+    `💰 <b>Monto:</b> $${Number(o.total_usd).toFixed(2)} USD\n` +
+    `💳 <b>Saldo:</b> $${bal.toFixed(2)} USD\n` +
+    `🌎 <b>País:</b> ${country}\n\n` +
+    `${statusIcon} <b>Estado:</b> ${status}`;
+
+  const target_mid = o.admin_message_id ?? message_id;
+  if (!chat_id || !target_mid) return;
+  // editMessageCaption preserva la foto original y borra los botones.
+  await editMessageCaption("admin", chat_id, target_mid, newCaption, {
+    reply_markup: { inline_keyboard: [] },
+  }).catch(() => {});
 }
 
 // ===== Pendientes =====
