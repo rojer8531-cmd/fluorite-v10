@@ -1201,7 +1201,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
   await screen(
     telegram_id,
     chat_id,
-    `⏳ <b>Comprobante recibido</b>\n\nLo estamos revisando. Te avisaremos apenas sea procesado.`,
+    `⏳ <b>Comprobante en revisión</b>\n\nTu comprobante está siendo verificado.\n\nNo lo envíes nuevamente. Si envías el mismo comprobante varias veces, tu recarga podrá ser rechazada sin derecho a reclamo.\n\nGracias por tu paciencia.`,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
     { final: true },
   );
