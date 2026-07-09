@@ -1078,14 +1078,11 @@ async function acceptManualKey(telegram_id: number, chat_id: number) {
     `🧾 Orden: <code>${orderId.slice(0, 8)}</code>`;
   const kb = { inline_keyboard: [[{ text: "🔑 Enviar key", callback_data: `adm:sendkey:${orderId}` }]] };
 
-  const { getWarehouseChatId, getAdminChatId: getAdmin } = await import("./api.server");
+  // Los pedidos manuales de key SOLO deben llegar al Bot Almacén — nunca al Admin.
+  const { getWarehouseChatId } = await import("./api.server");
   const wh = getWarehouseChatId();
-  const admin = getAdmin();
   if (wh) {
-    sendMessage("warehouse", wh, notify).catch(() => {});
-  }
-  if (admin) {
-    sendMessage("admin", admin, notify, { reply_markup: kb }).catch(() => {});
+    sendMessage("warehouse", wh, notify, { reply_markup: kb }).catch(() => {});
   }
 
   const balanceLeft = Number(purchase.new_balance ?? 0);
