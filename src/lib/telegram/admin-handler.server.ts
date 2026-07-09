@@ -4,6 +4,7 @@
 import {
   sendMessage as _rawSendMessage,
   editMessageReplyMarkup,
+  editMessageCaption,
   deleteMessage,
   answerCallbackQuery,
   getAdminChatId,
@@ -142,6 +143,57 @@ async function markReceiptStatus(
     reply_to_message_id: message_id,
     allow_sending_without_reply: true,
   });
+}
+
+// Edita el mensaje del comprobante conservando la foto original y quitando
+// SOLO los botones inline. Ningún comprobante se elimina jamás.
+async function finalizeReceiptCaption(opts: {
+  cb: TgCallback;
+  order_id: string;
+  status: "APROBADO" | "RECHAZADO" | "BLOQUEADO";
+  headerIcon: string;
+  headerText: string;
+  statusIcon: string;
+  extraBalanceUsd?: number | null; // saldo final para mostrar (post-aprobación)
+}) {
+  const { cb, order_id, status, headerIcon, headerText, statusIcon, extraBalanceUsd } = opts;
+  const chat_id = cb.message?.chat.id;
+  const message_id = cb.message?.message_id;
+
+  const { data: order } = await sb
+    .from("orders")
+    .select("id, telegram_id, total_usd, created_at, admin_message_id, payment_methods(country_name, method_name), bot_users(balance, username, display_name)")
+    .eq("id", order_id)
+    .maybeSingle();
+  if (!order) return;
+  const o = order as {
+    telegram_id: number;
+    total_usd: number;
+    created_at: string;
+    admin_message_id: number | null;
+    payment_methods: { country_name: string; method_name: string } | null;
+    bot_users: { balance: number; username: string | null; display_name: string | null } | null;
+  };
+  const bal = extraBalanceUsd != null ? extraBalanceUsd : Number(o.bot_users?.balance ?? 0);
+  const userTag = o.bot_users?.username ? `@${o.bot_users.username}` : (o.bot_users?.display_name ?? "—");
+  const pid = tpId(o.created_at);
+  const country = o.payment_methods?.country_name ?? "—";
+
+  const newCaption =
+    `${headerIcon} <b>${headerText}</b>\n\n` +
+    `👤 <b>Usuario:</b> ${userTag} · <code>${o.telegram_id}</code>\n` +
+    `🆔 <b>Pending:</b> <code>${pid}</code>\n` +
+    `💰 <b>Monto:</b> $${Number(o.total_usd).toFixed(2)} USD\n` +
+    `💳 <b>Saldo:</b> $${bal.toFixed(2)} USD\n` +
+    `🌎 <b>País:</b> ${country}\n\n` +
+    `${statusIcon} <b>Estado:</b> ${status}`;
+
+  const target_mid = o.admin_message_id ?? message_id;
+  if (!chat_id || !target_mid) return;
+  // editMessageCaption preserva la foto original y borra los botones.
+  await editMessageCaption("admin", chat_id, target_mid, newCaption, {
+    reply_markup: { inline_keyboard: [] },
+  }).catch(() => {});
 }
 
 // ===== Pendientes =====
@@ -834,15 +886,15 @@ async function handleCallback(cb: TgCallback) {
       pending: tpId(order.created_at),
     });
 
-    const { data: rcpt } = await sb
-      .from("receipts")
-      .select("admin_message_id")
-      .eq("order_id", target)
-      .maybeSingle();
-    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
-    if (photoMid && cb.message) {
-      await deleteMessage("admin", cb.message.chat.id, photoMid).catch(() => {});
-    }
+    await finalizeReceiptCaption({
+      cb,
+      order_id: target,
+      status: "APROBADO",
+      headerIcon: "✅",
+      headerText: "COMPROBANTE APROBADO",
+      statusIcon: "✅",
+      extraBalanceUsd: newBalance,
+    });
     await answerCallbackQuery("admin", cb.id, `✅ Aprobado · $${amount.toFixed(2)}`, true);
     return;
   }
@@ -859,12 +911,10 @@ async function handleCallback(cb: TgCallback) {
       await answerCallbackQuery("admin", cb.id, "Orden no encontrada", true);
       return;
     }
-    const { data: rcpt } = await sb
-      .from("receipts")
-      .select("admin_message_id")
-      .eq("order_id", target)
-      .maybeSingle();
-    const photoMid = rcpt?.admin_message_id ?? cb.message?.message_id ?? 0;
+    if (order.status !== "pending_approval") {
+      await answerCallbackQuery("admin", cb.id, "Ya procesada.", true);
+      return;
+    }
     await Promise.all([
       sb.from("orders").update({ status: "rejected", admin_note: note }).eq("id", target),
       sb.from("receipts").update({ status: "rejected" }).eq("order_id", target),
@@ -878,10 +928,15 @@ async function handleCallback(cb: TgCallback) {
     ]);
     const u = (order as { bot_users: { telegram_id: number; chat_id: number } }).bot_users;
     await notifyUserRejected({ telegram_id: u.telegram_id, chat_id: u.chat_id, note, pending: tpId(order.created_at) });
-    if (photoMid > 0) {
-      await deleteMessage("admin", chat_id, photoMid).catch(() => {});
-    }
-    await answerCallbackQuery("admin", cb.id, "❌ Rechazado · Falso", true);
+    await finalizeReceiptCaption({
+      cb,
+      order_id: target,
+      status: "RECHAZADO",
+      headerIcon: "❌",
+      headerText: "COMPROBANTE RECHAZADO",
+      statusIcon: "❌",
+    });
+    await answerCallbackQuery("admin", cb.id, "❌ Rechazado", true);
     return;
   }
 
@@ -894,8 +949,31 @@ async function handleCallback(cb: TgCallback) {
       target_type: "telegram_id",
       target_id: target,
     });
+    // Buscar la orden asociada al mensaje (por admin_message_id) para editar
+    // el caption sin perder la imagen del comprobante.
     if (cb.message) {
-      await markReceiptStatus(cb.message.chat.id, cb.message.message_id, `🚫 BLOQUEADO`, String(tgId));
+      const { data: linkedOrder } = await sb
+        .from("orders")
+        .select("id, status")
+        .eq("admin_message_id", cb.message.message_id)
+        .maybeSingle();
+      if (linkedOrder) {
+        if (linkedOrder.status === "pending_approval") {
+          await sb.from("orders").update({ status: "rejected", admin_note: "Bloqueado" }).eq("id", linkedOrder.id);
+          await sb.from("receipts").update({ status: "rejected" }).eq("order_id", linkedOrder.id);
+        }
+        await finalizeReceiptCaption({
+          cb,
+          order_id: linkedOrder.id,
+          status: "BLOQUEADO",
+          headerIcon: "⛔",
+          headerText: "USUARIO BLOQUEADO",
+          statusIcon: "⛔",
+        });
+      } else {
+        // Sin orden asociada: al menos quitar los botones y dejar aviso.
+        await editMessageReplyMarkup("admin", cb.message.chat.id, cb.message.message_id, { inline_keyboard: [] }).catch(() => {});
+      }
     }
     await answerCallbackQuery("admin", cb.id, "Usuario bloqueado.", true);
     return;

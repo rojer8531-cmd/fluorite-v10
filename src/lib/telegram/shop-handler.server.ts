@@ -1,6 +1,7 @@
 // Shop Bot — handler completo (UI minimalista)
 import {
   sendMessage,
+  sendPhoto,
   sendPhotoMultipart,
   getFile,
   downloadFile,
@@ -1078,14 +1079,11 @@ async function acceptManualKey(telegram_id: number, chat_id: number) {
     `🧾 Orden: <code>${orderId.slice(0, 8)}</code>`;
   const kb = { inline_keyboard: [[{ text: "🔑 Enviar key", callback_data: `adm:sendkey:${orderId}` }]] };
 
-  const { getWarehouseChatId, getAdminChatId: getAdmin } = await import("./api.server");
+  // Los pedidos manuales de key SOLO deben llegar al Bot Almacén — nunca al Admin.
+  const { getWarehouseChatId } = await import("./api.server");
   const wh = getWarehouseChatId();
-  const admin = getAdmin();
   if (wh) {
-    sendMessage("warehouse", wh, notify).catch(() => {});
-  }
-  if (admin) {
-    sendMessage("admin", admin, notify, { reply_markup: kb }).catch(() => {});
+    sendMessage("warehouse", wh, notify, { reply_markup: kb }).catch(() => {});
   }
 
   const balanceLeft = Number(purchase.new_balance ?? 0);
@@ -1203,7 +1201,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
   await screen(
     telegram_id,
     chat_id,
-    `⏳ <b>Comprobante recibido</b>\n\nLo estamos revisando. Te avisaremos apenas sea procesado.`,
+    `⏳ <b>Comprobante en revisión</b>\n\nTu comprobante está siendo verificado.\n\nNo lo envíes nuevamente. Si envías el mismo comprobante varias veces, tu recarga podrá ser rechazada sin derecho a reclamo.\n\nGracias por tu paciencia.`,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
     { final: true },
   );
@@ -1288,66 +1286,45 @@ async function processReceiptPhotoReview(opts: {
     await sb.from("receipts").delete().eq("id", receipt_id);
     await notifyUser(
       chat_id,
-      `🚫 <b>Cuenta bloqueada por 24 horas</b>\n\nLa imagen que enviaste no es un comprobante de pago válido.\n\nDurante las próximas 24 horas no podrás utilizar ninguna función del bot. El acceso se restaurará automáticamente.`,
+      `🚫 <b>Usuario bloqueado temporalmente</b>\n\n` +
+        `Motivo: se detectó el envío de una imagen que no corresponde a un comprobante de pago válido JAJAJA querías pasarte de inteligente no niño solo eres un tonto.\n\n` +
+        `Duración: 24 horas.`,
     );
     return;
   }
 
+  // Nota: la validación de monto es SOLO informativa. Aunque no coincida
+  // exactamente, igual reenviamos el comprobante al admin (con un aviso
+  // visible) para que él decida — así ningún comprobante se pierde.
+  let amountFlag = "";
   if (ocr?.amount != null) {
     const tolUsd = Math.max(2, expectedUsd * 0.05);
     const tolLocal = expectedLocal ? Math.max(2, expectedLocal * 0.05) : 0;
     const matchesUsd = Math.abs(ocr.amount - expectedUsd) <= tolUsd;
     const matchesLocal = expectedLocal != null && Math.abs(ocr.amount - expectedLocal) <= tolLocal;
     if (!matchesUsd && !matchesLocal) {
-      // Monto no coincide — no lo enviamos al admin.
-      await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-      await sb.from("receipts").delete().eq("id", receipt_id);
-      const pm = o.payment_methods;
-      const expectedText = expectedLocal
-        ? `${expectedUsd.toFixed(2)} USD (aprox. ${expectedLocal.toFixed(2)} ${o.currency ?? ""})`
-        : `${expectedUsd.toFixed(2)} USD`;
-      const detected = ocr.amount.toFixed(2);
-      const pmDetail = pm
-        ? `\n\n💳 <b>${pm.country_name} · ${pm.method_name}</b>\n🪪 ${pm.holder_name ?? "—"}\n📋 <code>${pm.account_info ?? "—"}</code>`
-        : "";
-      await notifyUser(
-        chat_id,
-        `❌ <b>Comprobante rechazado</b>\n\nEl monto detectado (<b>${detected}</b>) no coincide con el esperado (<b>${expectedText}</b>).\n\nRevisá que hayas pagado el monto correcto al método de pago correspondiente y volvé a enviar el comprobante correcto.${pmDetail}`,
-      );
-      return;
+      amountFlag = `\n⚠️ <b>Monto detectado no coincide:</b> ${ocr.amount.toFixed(2)} vs esperado ${expectedUsd.toFixed(2)} USD`;
     }
   }
 
   const ocrSummary = formatOcrSummary(ocr, expectedUsd, expectedLocal);
 
-
-
-
-
   const userTag = user.username ? `@${user.username}` : (user.display_name ?? "—");
-  const pm = o.payment_methods;
-  const pmInfo = pm
-    ? `\n💳 ${pm.country_name} · ${pm.method_name}` +
-      (pm.holder_name ? `\n🪪 ${pm.holder_name}` : "") +
-      (pm.account_info ? `\n📋 <code>${pm.account_info}</code>` : "")
-    : "";
-  const balLine = `\n💼 Saldo actual: $${Number(user.balance).toFixed(2)} USD`;
-  let caption: string;
-  if (isRecharge) {
-    caption =
-      `💰 <b>Recarga · $${Number(o.total_usd).toFixed(2)}</b>\n` +
-      `${userTag} · <code>${telegram_id}</code>` +
-      pmInfo +
-      balLine +
-      ocrSummary;
-  } else {
-    caption =
-      `🛒 <b>${o.products?.name ?? "—"} · ${o.product_prices?.duration_label ?? "—"}${o.keys_qty > 1 ? ` ×${o.keys_qty}` : ""}</b>\n` +
-      `$${Number(o.total_usd).toFixed(2)} · ${userTag} · <code>${telegram_id}</code>` +
-      pmInfo +
-      balLine +
-      ocrSummary;
-  }
+  const country = o.payment_methods?.country_name ?? "—";
+  const method = o.payment_methods?.method_name ?? "—";
+  const kind = isRecharge ? "Recarga" : `Compra · ${o.products?.name ?? "—"}${o.product_prices?.duration_label ? " · " + o.product_prices.duration_label : ""}`;
+
+  const caption =
+    `📩 <b>Nuevo Comprobante</b>\n\n` +
+    `👤 <b>Usuario:</b> ${userTag} · <code>${telegram_id}</code>\n` +
+    `🆔 <b>Pending:</b> <code>${pid}</code>\n` +
+    `💰 <b>Monto:</b> $${Number(o.total_usd).toFixed(2)} USD\n` +
+    `💳 <b>Saldo actual:</b> $${Number(user.balance).toFixed(2)} USD\n` +
+    `🌎 <b>País:</b> ${country}\n` +
+    `🏦 <b>Método:</b> ${method}\n` +
+    `📦 <b>Tipo:</b> ${kind}` +
+    amountFlag +
+    ocrSummary;
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) {
@@ -1365,12 +1342,11 @@ async function processReceiptPhotoReview(opts: {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "Aprobar", callback_data: `adm:approve:${order_id}` },
-            { text: "Rechazar", callback_data: `adm:reject:${order_id}` },
+            { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
+            { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
           ],
           [
-            { text: "Enviar key manual", callback_data: `adm:sendkey:${order_id}` },
-            { text: "Bloquear", callback_data: `adm:block:${telegram_id}` },
+            { text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` },
           ],
         ],
       },
@@ -1382,6 +1358,32 @@ async function processReceiptPhotoReview(opts: {
       sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt_id),
       sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id),
     ]);
+  } else {
+    // Si Telegram rechazó la foto, aún así reenviamos por file_id como
+    // fallback: el comprobante JAMÁS puede perderse.
+    const fallback = await sendPhoto(
+      "admin",
+      adminChatId,
+      photo.file_id,
+      caption,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
+              { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
+            ],
+            [{ text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` }],
+          ],
+        },
+      },
+    );
+    if (fallback.ok && fallback.result) {
+      await Promise.all([
+        sb.from("receipts").update({ admin_message_id: fallback.result.message_id }).eq("id", receipt_id),
+        sb.from("orders").update({ admin_message_id: fallback.result.message_id }).eq("id", order_id),
+      ]);
+    }
   }
 }
 
