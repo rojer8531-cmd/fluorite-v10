@@ -1,6 +1,7 @@
 // Shop Bot — handler completo (UI minimalista)
 import {
   sendMessage,
+  sendPhoto,
   sendPhotoMultipart,
   getFile,
   downloadFile,
