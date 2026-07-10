@@ -158,20 +158,27 @@ export async function ocrReceipt(bytes: ArrayBuffer, mime = "image/jpeg"): Promi
  * Si OCR falló o no se ejecutó, etiqueta con <i>OCR: sin lectura</i>.
  */
 export function formatOcrSummary(ocr: OcrResult | null, expectedUsd: number, expectedLocal?: number | null): string {
-  if (!ocr) return `\n<i>OCR: sin lectura</i>`;
+  if (!ocr) return `\n\n🤖 <b>Análisis IA:</b> <i>sin lectura (revisá la imagen manualmente)</i>`;
   const a = ocr.amount;
   let badge = "❓";
-  if (ocr.is_payment === false) badge = "⛔";
-  else if (a !== null) {
+  let verdict = "revisión manual";
+  if (ocr.is_payment === false) {
+    badge = "⛔";
+    verdict = "NO parece un comprobante de pago";
+  } else if (a !== null) {
     const tolUsd = 2;
     const tolLocal = expectedLocal ? Math.max(2, expectedLocal * 0.03) : 0;
-    if (Math.abs(a - expectedUsd) <= tolUsd) badge = "✅";
-    else if (expectedLocal && Math.abs(a - expectedLocal) <= tolLocal) badge = "✅";
-    else badge = "⚠️";
+    if (Math.abs(a - expectedUsd) <= tolUsd) { badge = "✅"; verdict = "monto coincide (USD)"; }
+    else if (expectedLocal && Math.abs(a - expectedLocal) <= tolLocal) { badge = "✅"; verdict = "monto coincide (moneda local)"; }
+    else { badge = "⚠️"; verdict = "monto NO coincide con lo esperado"; }
+  } else {
+    verdict = "no se pudo leer el monto";
   }
-  const parts = [`${badge} OCR`];
-  if (a !== null) parts.push(`${a}`);
-  if (ocr.reference) parts.push(`ref ${ocr.reference}`);
-  if (ocr.date) parts.push(`${ocr.date}`);
-  return `\n<i>${parts.join(" · ")}</i>`;
+  const lines: string[] = [`\n\n🤖 <b>Análisis IA</b> ${badge} <i>${verdict}</i>`];
+  if (a !== null) lines.push(`• Monto detectado: <b>${a}</b>`);
+  if (ocr.reference) lines.push(`• Referencia: <code>${ocr.reference}</code>`);
+  if (ocr.date) lines.push(`• Fecha: ${ocr.date}`);
+  if (ocr.recipient) lines.push(`• Destinatario: ${ocr.recipient}`);
+  if (ocr.is_payment === true && a === null) lines.push(`• Detectado como comprobante, pero sin monto legible`);
+  return lines.join("\n");
 }
