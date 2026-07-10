@@ -9,6 +9,9 @@ import {
   answerCallbackQuery,
   getAdminChatId,
   sendPhoto,
+  sendPhotoMultipart,
+  getFile,
+  downloadFile,
 } from "./api.server";
 import {
   sb,
