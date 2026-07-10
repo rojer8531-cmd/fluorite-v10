@@ -8,7 +8,6 @@ import {
   deleteMessage,
   answerCallbackQuery,
   getAdminChatId,
-  sendPhoto,
   sendPhotoMultipart,
   getFile,
   downloadFile,
