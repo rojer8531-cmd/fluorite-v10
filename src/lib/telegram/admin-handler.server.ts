@@ -971,37 +971,11 @@ async function handleCallback(cb: TgCallback) {
   }
 
   if (action === "sendkey") {
-    if (!chat_id) return;
-    const order_id = target;
-    const { data: ord } = await sb
-      .from("orders")
-      .select("id, telegram_id, products(name), product_prices(duration_label)")
-      .eq("id", order_id)
-      .maybeSingle();
-    if (!ord) {
-      await sendMessage(chat_id, `Orden no encontrada.`);
-      return;
-    }
-    const name = (ord as { products: { name: string } | null }).products?.name ?? "—";
-    const dur = (ord as { product_prices: { duration_label: string } | null }).product_prices?.duration_label ?? "—";
-    const sent = await sendMessage(
-      chat_id,
-      `<b>Enviar key</b>\n\n` +
-        `Producto  ${name}\n` +
-        `Duración  ${dur}\n` +
-        `Usuario   <code>${ord.telegram_id}</code>\n` +
-        `Orden     <code>${order_id.slice(0, 8)}</code>\n\n` +
-        `Respondé a este mensaje pegando la key. Se enviará solo a este usuario.`,
-      { reply_markup: { force_reply: true, selective: true } },
-    );
-    if (sent.ok && sent.result) {
-      await sb
-        .from("orders")
-        .update({ admin_message_id: sent.result.message_id })
-        .eq("id", order_id);
-    }
+    // El envío de keys se hace desde el Bot Almacén, no desde el admin.
+    await answerCallbackQuery("admin", cb.id, "El envío de keys se hace desde el Bot Almacén.", true);
     return;
   }
+
 
   if (chat_id) {
     await sendMessage(chat_id, `Esa opción ya no está disponible. Usa la barra inferior para continuar.`, {
