@@ -8,7 +8,9 @@ import {
   deleteMessage,
   answerCallbackQuery,
   getAdminChatId,
-  sendPhoto,
+  sendPhotoMultipart,
+  getFile,
+  downloadFile,
 } from "./api.server";
 import {
   sb,
@@ -190,10 +192,21 @@ async function finalizeReceiptCaption(opts: {
 
   const target_mid = o.admin_message_id ?? message_id;
   if (!chat_id || !target_mid) return;
-  // editMessageCaption preserva la foto original y borra los botones.
-  await editMessageCaption("admin", chat_id, target_mid, newCaption, {
+  // Intentamos editar el caption (foto). Si el mensaje es de texto (fallback),
+  // caemos a editMessageText. En cualquier caso removemos los botones para
+  // garantizar idempotencia: una vez ejecutada la acción, no hay más botones.
+  const capRes = await editMessageCaption("admin", chat_id, target_mid, newCaption, {
     reply_markup: { inline_keyboard: [] },
-  }).catch(() => {});
+  });
+  if (!capRes.ok) {
+    const { editMessageText } = await import("./api.server");
+    const txtRes = await editMessageText("admin", chat_id, target_mid, newCaption, {
+      reply_markup: { inline_keyboard: [] },
+    });
+    if (!txtRes.ok) {
+      await editMessageReplyMarkup("admin", chat_id, target_mid, { inline_keyboard: [] }).catch(() => {});
+    }
+  }
 }
 
 // ===== Pendientes =====
@@ -231,57 +244,46 @@ async function adminPendientes(chat_id: number) {
       `Monto    $${Number(o.total_usd).toFixed(2)}\n` +
       `Tipo     ${label}\n` +
       `Orden    <code>${o.id.slice(0, 8)}</code>`;
+    const kb = {
+      inline_keyboard: [
+        [
+          { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
+          { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
+        ],
+        [
+          { text: "🚫 Bloquear", callback_data: `ord:block:${o.telegram_id}` },
+        ],
+      ],
+    };
+
+    // Re-subimos la imagen al bot admin usando bytes (los file_id son
+    // específicos por bot: el file_id del shop bot NO sirve para el admin bot).
+    let sentMid: number | null = null;
     if (r?.file_id) {
-      const sent = await sendPhoto("admin", chat_id, r.file_id, caption, {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
-              { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
-            ],
-            [
-              { text: "🚫 Bloquear", callback_data: `ord:block:${o.telegram_id}` },
-              { text: "🔑 Enviar key", callback_data: `ord:sendkey:${o.id}` },
-            ],
-          ],
-        },
-      });
-      if (sent.ok && sent.result) {
-        await sb
-          .from("receipts")
-          .update({ admin_message_id: sent.result.message_id })
-          .eq("order_id", o.id);
-      } else {
-        await sendMessage(chat_id, caption, {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
-                { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
-              ],
-              [
-                { text: "🚫 Bloquear", callback_data: `ord:block:${o.telegram_id}` },
-                { text: "🔑 Enviar key", callback_data: `ord:sendkey:${o.id}` },
-              ],
-            ],
-          },
-        });
+      try {
+        const info = await getFile("shop", r.file_id);
+        if (info.ok && info.result?.file_path) {
+          const bytes = await downloadFile("shop", info.result.file_path);
+          if (bytes) {
+            const sent = await sendPhotoMultipart("admin", chat_id, bytes, "comprobante.jpg", caption, {
+              reply_markup: kb,
+            });
+            if (sent.ok && sent.result) sentMid = sent.result.message_id;
+          }
+        }
+      } catch (err) {
+        console.error("[adminPendientes] re-upload failed", err);
       }
-    } else {
-      await sendMessage(chat_id, caption, {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
-              { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
-            ],
-            [
-              { text: "🚫 Bloquear", callback_data: `ord:block:${o.telegram_id}` },
-              { text: "🔑 Enviar key", callback_data: `ord:sendkey:${o.id}` },
-            ],
-          ],
-        },
-      });
+    }
+    if (sentMid == null) {
+      const sent = await sendMessage(chat_id, caption, { reply_markup: kb });
+      if (sent.ok && sent.result) sentMid = sent.result.message_id;
+    }
+    if (sentMid != null) {
+      await Promise.all([
+        sb.from("receipts").update({ admin_message_id: sentMid }).eq("order_id", o.id),
+        sb.from("orders").update({ admin_message_id: sentMid }).eq("id", o.id),
+      ]);
     }
   }
 }
@@ -980,37 +982,11 @@ async function handleCallback(cb: TgCallback) {
   }
 
   if (action === "sendkey") {
-    if (!chat_id) return;
-    const order_id = target;
-    const { data: ord } = await sb
-      .from("orders")
-      .select("id, telegram_id, products(name), product_prices(duration_label)")
-      .eq("id", order_id)
-      .maybeSingle();
-    if (!ord) {
-      await sendMessage(chat_id, `Orden no encontrada.`);
-      return;
-    }
-    const name = (ord as { products: { name: string } | null }).products?.name ?? "—";
-    const dur = (ord as { product_prices: { duration_label: string } | null }).product_prices?.duration_label ?? "—";
-    const sent = await sendMessage(
-      chat_id,
-      `<b>Enviar key</b>\n\n` +
-        `Producto  ${name}\n` +
-        `Duración  ${dur}\n` +
-        `Usuario   <code>${ord.telegram_id}</code>\n` +
-        `Orden     <code>${order_id.slice(0, 8)}</code>\n\n` +
-        `Respondé a este mensaje pegando la key. Se enviará solo a este usuario.`,
-      { reply_markup: { force_reply: true, selective: true } },
-    );
-    if (sent.ok && sent.result) {
-      await sb
-        .from("orders")
-        .update({ admin_message_id: sent.result.message_id })
-        .eq("id", order_id);
-    }
+    // El envío de keys se hace desde el Bot Almacén, no desde el admin.
+    await answerCallbackQuery("admin", cb.id, "El envío de keys se hace desde el Bot Almacén.", true);
     return;
   }
+
 
   if (chat_id) {
     await sendMessage(chat_id, `Esa opción ya no está disponible. Usa la barra inferior para continuar.`, {

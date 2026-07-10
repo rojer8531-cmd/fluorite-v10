@@ -1077,7 +1077,7 @@ async function acceptManualKey(telegram_id: number, chat_id: number) {
     `💵 ${total.toFixed(2)} USD (pagado con saldo)\n` +
     `👤 ${userTag} · <code>${telegram_id}</code>\n` +
     `🧾 Orden: <code>${orderId.slice(0, 8)}</code>`;
-  const kb = { inline_keyboard: [[{ text: "🔑 Enviar key", callback_data: `adm:sendkey:${orderId}` }]] };
+  const kb = { inline_keyboard: [[{ text: "🔑 Enviar key", callback_data: `alm:sendkey:${orderId}` }]] };
 
   // Los pedidos manuales de key SOLO deben llegar al Bot Almacén — nunca al Admin.
   const { getWarehouseChatId } = await import("./api.server");
