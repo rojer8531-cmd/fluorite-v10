@@ -234,57 +234,46 @@ async function adminPendientes(chat_id: number) {
       `Monto    $${Number(o.total_usd).toFixed(2)}\n` +
       `Tipo     ${label}\n` +
       `Orden    <code>${o.id.slice(0, 8)}</code>`;
+    const kb = {
+      inline_keyboard: [
+        [
+          { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
+          { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
+        ],
+        [
+          { text: "🚫 Bloquear", callback_data: `ord:block:${o.telegram_id}` },
+        ],
+      ],
+    };
+
+    // Re-subimos la imagen al bot admin usando bytes (los file_id son
+    // específicos por bot: el file_id del shop bot NO sirve para el admin bot).
+    let sentMid: number | null = null;
     if (r?.file_id) {
-      const sent = await sendPhoto("admin", chat_id, r.file_id, caption, {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
-              { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
-            ],
-            [
-              { text: "🚫 Bloquear", callback_data: `ord:block:${o.telegram_id}` },
-              { text: "🔑 Enviar key", callback_data: `ord:sendkey:${o.id}` },
-            ],
-          ],
-        },
-      });
-      if (sent.ok && sent.result) {
-        await sb
-          .from("receipts")
-          .update({ admin_message_id: sent.result.message_id })
-          .eq("order_id", o.id);
-      } else {
-        await sendMessage(chat_id, caption, {
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
-                { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
-              ],
-              [
-                { text: "🚫 Bloquear", callback_data: `ord:block:${o.telegram_id}` },
-                { text: "🔑 Enviar key", callback_data: `ord:sendkey:${o.id}` },
-              ],
-            ],
-          },
-        });
+      try {
+        const info = await getFile("shop", r.file_id);
+        if (info.ok && info.result?.file_path) {
+          const bytes = await downloadFile("shop", info.result.file_path);
+          if (bytes) {
+            const sent = await sendPhotoMultipart("admin", chat_id, bytes, "comprobante.jpg", caption, {
+              reply_markup: kb,
+            });
+            if (sent.ok && sent.result) sentMid = sent.result.message_id;
+          }
+        }
+      } catch (err) {
+        console.error("[adminPendientes] re-upload failed", err);
       }
-    } else {
-      await sendMessage(chat_id, caption, {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "✅ Aprobar", callback_data: `ord:approve:${o.id}` },
-              { text: "❌ Rechazar", callback_data: `ord:reject:${o.id}` },
-            ],
-            [
-              { text: "🚫 Bloquear", callback_data: `ord:block:${o.telegram_id}` },
-              { text: "🔑 Enviar key", callback_data: `ord:sendkey:${o.id}` },
-            ],
-          ],
-        },
-      });
+    }
+    if (sentMid == null) {
+      const sent = await sendMessage(chat_id, caption, { reply_markup: kb });
+      if (sent.ok && sent.result) sentMid = sent.result.message_id;
+    }
+    if (sentMid != null) {
+      await Promise.all([
+        sb.from("receipts").update({ admin_message_id: sentMid }).eq("order_id", o.id),
+        sb.from("orders").update({ admin_message_id: sentMid }).eq("id", o.id),
+      ]);
     }
   }
 }
