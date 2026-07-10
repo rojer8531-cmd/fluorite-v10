@@ -192,10 +192,21 @@ async function finalizeReceiptCaption(opts: {
 
   const target_mid = o.admin_message_id ?? message_id;
   if (!chat_id || !target_mid) return;
-  // editMessageCaption preserva la foto original y borra los botones.
-  await editMessageCaption("admin", chat_id, target_mid, newCaption, {
+  // Intentamos editar el caption (foto). Si el mensaje es de texto (fallback),
+  // caemos a editMessageText. En cualquier caso removemos los botones para
+  // garantizar idempotencia: una vez ejecutada la acción, no hay más botones.
+  const capRes = await editMessageCaption("admin", chat_id, target_mid, newCaption, {
     reply_markup: { inline_keyboard: [] },
-  }).catch(() => {});
+  });
+  if (!capRes.ok) {
+    const { editMessageText } = await import("./api.server");
+    const txtRes = await editMessageText("admin", chat_id, target_mid, newCaption, {
+      reply_markup: { inline_keyboard: [] },
+    });
+    if (!txtRes.ok) {
+      await editMessageReplyMarkup("admin", chat_id, target_mid, { inline_keyboard: [] }).catch(() => {});
+    }
+  }
 }
 
 // ===== Pendientes =====
