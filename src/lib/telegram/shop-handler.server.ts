@@ -1,8 +1,8 @@
 // Shop Bot — handler completo (UI minimalista)
 import {
   sendMessage,
-  sendPhoto,
   sendPhotoMultipart,
+  sendDocumentMultipart,
   getFile,
   downloadFile,
   answerCallbackQuery,
@@ -176,6 +176,27 @@ const RANK_LABEL: Record<string, string> = {
 };
 
 const SUPPORT_USERNAME = "@ravevq";
+
+function adminReceiptKeyboard(order_id: string, telegram_id: number) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
+        { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
+      ],
+      [{ text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` }],
+    ],
+  };
+}
+
+function newestTelegramPhotoFileId(result?: { photo?: Array<{ file_id: string }> }) {
+  return result?.photo?.[result.photo.length - 1]?.file_id ?? null;
+}
+
+function receiptFilename(filePath: string | undefined, fallback: string) {
+  const clean = filePath?.split("/").pop()?.trim();
+  return clean || fallback;
+}
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
