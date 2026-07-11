@@ -1320,53 +1320,44 @@ async function processReceiptPhotoReview(opts: {
     "admin",
     adminChatId,
     bytes,
-    "comprobante.jpg",
+    receiptFilename(fileInfo.result.file_path, "comprobante.jpg"),
     caption,
     {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
-            { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
-          ],
-          [
-            { text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` },
-          ],
-        ],
-      },
+      reply_markup: adminReceiptKeyboard(order_id, telegram_id),
     },
   );
 
   if (sent.ok && sent.result) {
+    const adminFileId = newestTelegramPhotoFileId(sent.result);
     await Promise.all([
-      sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt_id),
+      sb.from("receipts").update({
+        admin_message_id: sent.result.message_id,
+        ...(adminFileId ? { admin_file_id: adminFileId } : {}),
+      }).eq("id", receipt_id),
       sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id),
     ]);
   } else {
-    // Si Telegram rechazó la foto, aún así reenviamos por file_id como
-    // fallback: el comprobante JAMÁS puede perderse.
-    const fallback = await sendPhoto(
+    console.error("[receipt admin upload] sendPhotoMultipart failed", sent.description);
+    // Fallback seguro: si Telegram no acepta la foto como imagen, enviamos
+    // los mismos bytes como documento. Nunca reutilizamos el file_id del shop bot.
+    const fallback = await sendDocumentMultipart(
       "admin",
       adminChatId,
-      photo.file_id,
+      bytes,
+      receiptFilename(fileInfo.result.file_path, "comprobante.jpg"),
       caption,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
-              { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
-            ],
-            [{ text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` }],
-          ],
-        },
-      },
+      { reply_markup: adminReceiptKeyboard(order_id, telegram_id) },
     );
     if (fallback.ok && fallback.result) {
       await Promise.all([
-        sb.from("receipts").update({ admin_message_id: fallback.result.message_id }).eq("id", receipt_id),
+        sb.from("receipts").update({
+          admin_message_id: fallback.result.message_id,
+          ...(fallback.result.document?.file_id ? { admin_file_id: fallback.result.document.file_id } : {}),
+        }).eq("id", receipt_id),
         sb.from("orders").update({ admin_message_id: fallback.result.message_id }).eq("id", order_id),
       ]);
+    } else {
+      console.error("[receipt admin upload] sendDocumentMultipart failed", fallback.description);
     }
   }
 }
