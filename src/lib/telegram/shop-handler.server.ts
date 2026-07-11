@@ -1456,28 +1456,43 @@ async function handleReceiptDocument(msg: TgMessage) {
   const adminChatId = getAdminChatId();
   if (!adminChatId) return;
 
-  // Reenviar el documento al admin con botones
-  const { tg } = await import("./api.server");
-  const sent = await tg<{ message_id: number }>("admin", "sendDocument", {
-    chat_id: adminChatId,
-    document: doc.file_id,
+  const fileInfo = await getFile("shop", doc.file_id);
+  if (!fileInfo.ok || !fileInfo.result?.file_path) {
+    await notifyUser(chat_id, `⚠️ Error procesando documento. Intentá enviar el comprobante nuevamente.`);
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt!.id);
+    await sb.from("receipt_fingerprints").delete().eq("file_unique_id", doc.file_unique_id);
+    return;
+  }
+  const bytes = await downloadFile("shop", fileInfo.result.file_path);
+  if (!bytes) {
+    await notifyUser(chat_id, `⚠️ Error descargando documento. Intentá enviar el comprobante nuevamente.`);
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt!.id);
+    await sb.from("receipt_fingerprints").delete().eq("file_unique_id", doc.file_unique_id);
+    return;
+  }
+
+  // Re-subimos el archivo físico al bot admin. Nunca usamos el file_id del
+  // shop bot porque Telegram lo considera inválido para otros bots.
+  const sent = await sendDocumentMultipart(
+    "admin",
+    adminChatId,
+    bytes,
+    doc.file_name || receiptFilename(fileInfo.result.file_path, "comprobante.pdf"),
     caption,
-    parse_mode: "HTML",
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "Aprobar", callback_data: `adm:approve:${order_id}` },
-          { text: "Rechazar", callback_data: `adm:reject:${order_id}` },
-        ],
-        [{ text: "Bloquear", callback_data: `adm:block:${telegram_id}` }],
-      ],
-    },
-  });
+    { reply_markup: adminReceiptKeyboard(order_id, telegram_id) },
+  );
   if (sent.ok && sent.result) {
     await Promise.all([
-      sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt!.id),
+      sb.from("receipts").update({
+        admin_message_id: sent.result.message_id,
+        ...(sent.result.document?.file_id ? { admin_file_id: sent.result.document.file_id } : {}),
+      }).eq("id", receipt!.id),
       sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id),
     ]);
+  } else {
+    console.error("[receipt admin upload] sendDocumentMultipart failed", sent.description);
   }
 
   await setState(telegram_id, "menu", {});
