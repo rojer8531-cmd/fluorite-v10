@@ -470,9 +470,10 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   await patchContext(telegram_id, { product_id });
   const rows = prices.map((p) => {
     const tag = p.has_override ? "  🎁" : p.rank_discounted ? `  ${RANK_INFO[rank].badge}` : "";
+    const stockLabel = p.available_stock > 0 ? `📦 ${p.available_stock}` : `❌ Agotado`;
     return [
       {
-        text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}`,
+        text: `⏳ ${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}  ·  ${stockLabel}${tag}`,
         callback_data: `dur:${p.id}`,
       },
     ];
@@ -484,9 +485,15 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
 
   const rankNote = rank === "gold" ? "" : `\n<i>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label}${rank === "elite" ? " — productos de $30 a $25" : ` · -${RANK_INFO[rank].discountPct}% aplicado`}</i>`;
+
+  const stockLines = prices
+    .map((p) => `⏳ ${p.duration_label}   ${p.available_stock > 0 ? `📦 Stock: ${p.available_stock}` : `❌ Sin stock`}`)
+    .join("\n");
+  const stockBlock = `\n\n<b>Disponibilidad</b>\n${stockLines}\n\n<i>Si un producto está agotado, podés pedirlo en modo manual y un admin te enviará la key.</i>`;
+
   const header = lowBalance
-    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>${rankNote}\n\nPodés ver los precios. Recargá saldo para comprar:`
-    : `<b>${product.name}</b>${rankNote}\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`;
+    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>${rankNote}${stockBlock}\n\nPodés ver los precios. Recargá saldo para comprar:`
+    : `<b>${product.name}</b>${rankNote}\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>${stockBlock}\n\nElegí la duración:`;
 
   await screen(telegram_id, chat_id, header, rows);
 }
@@ -1265,50 +1272,8 @@ async function processReceiptPhotoReview(opts: {
   };
   const pid = tpId(o.created_at);
 
-  // Verificación con IA (OCR). Si detecta que la imagen NO es un comprobante,
-  // bloqueamos 24h. Si el monto no coincide con lo esperado, no se envía al
-  // admin: se le explica al usuario y se le vuelven a mostrar los datos.
-  const { ocrReceipt, formatOcrSummary } = await import("./ocr.server");
-  const ocr = await ocrReceipt(bytes, "image/jpeg");
-
-  const expectedUsd = Number(o.total_usd);
-  const rate = o.payment_methods?.usd_rate != null ? Number(o.payment_methods.usd_rate) : null;
-  const expectedLocal = o.total_local != null
-    ? Number(o.total_local)
-    : (rate && rate !== 1 ? expectedUsd * rate : null);
-
-  if (ocr?.is_payment === false) {
-    // No es comprobante — bloqueamos 24h
-    const { blockSpamReceipt } = await import("./db.server");
-    await blockSpamReceipt(telegram_id);
-    blockCache.set(telegram_id, { value: true, expiresAt: Date.now() + 15_000 });
-    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
-    await sb.from("receipts").delete().eq("id", receipt_id);
-    await notifyUser(
-      chat_id,
-      `🚫 <b>Usuario bloqueado temporalmente</b>\n\n` +
-        `Motivo: se detectó el envío de una imagen que no corresponde a un comprobante de pago válido JAJAJA querías pasarte de inteligente no niño solo eres un tonto.\n\n` +
-        `Duración: 24 horas.`,
-    );
-    return;
-  }
-
-  // Nota: la validación de monto es SOLO informativa. Aunque no coincida
-  // exactamente, igual reenviamos el comprobante al admin (con un aviso
-  // visible) para que él decida — así ningún comprobante se pierde.
-  let amountFlag = "";
-  if (ocr?.amount != null) {
-    const tolUsd = Math.max(2, expectedUsd * 0.05);
-    const tolLocal = expectedLocal ? Math.max(2, expectedLocal * 0.05) : 0;
-    const matchesUsd = Math.abs(ocr.amount - expectedUsd) <= tolUsd;
-    const matchesLocal = expectedLocal != null && Math.abs(ocr.amount - expectedLocal) <= tolLocal;
-    if (!matchesUsd && !matchesLocal) {
-      amountFlag = `\n⚠️ <b>Monto detectado no coincide:</b> ${ocr.amount.toFixed(2)} vs esperado ${expectedUsd.toFixed(2)} USD`;
-    }
-  }
-
-  const ocrSummary = formatOcrSummary(ocr, expectedUsd, expectedLocal);
-
+  // Sin análisis de IA: reenviamos el comprobante directamente al admin
+  // para que él haga la verificación 100% manual.
   const userTag = user.username ? `@${user.username}` : (user.display_name ?? "—");
   const country = o.payment_methods?.country_name ?? "—";
   const method = o.payment_methods?.method_name ?? "—";
@@ -1322,9 +1287,7 @@ async function processReceiptPhotoReview(opts: {
     `💳 <b>Saldo actual:</b> $${Number(user.balance).toFixed(2)} USD\n` +
     `🌎 <b>País:</b> ${country}\n` +
     `🏦 <b>Método:</b> ${method}\n` +
-    `📦 <b>Tipo:</b> ${kind}` +
-    amountFlag +
-    ocrSummary;
+    `📦 <b>Tipo:</b> ${kind}`;
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) {
