@@ -269,6 +269,10 @@ async function adminPendientes(chat_id: number) {
               reply_markup: kb,
             });
             if (sent.ok && sent.result) sentMid = sent.result.message_id;
+            const adminFileId = sent.result?.photo?.[sent.result.photo.length - 1]?.file_id ?? null;
+            if (adminFileId) {
+              await sb.from("receipts").update({ admin_file_id: adminFileId }).eq("order_id", o.id);
+            }
           }
         }
       } catch (err) {

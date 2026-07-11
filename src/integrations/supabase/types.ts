@@ -695,6 +695,7 @@ export type Database = {
       }
       receipts: {
         Row: {
+          admin_file_id: string | null
           admin_message_id: number | null
           created_at: string
           file_id: string
@@ -710,6 +711,7 @@ export type Database = {
           width: number | null
         }
         Insert: {
+          admin_file_id?: string | null
           admin_message_id?: number | null
           created_at?: string
           file_id: string
@@ -725,6 +727,7 @@ export type Database = {
           width?: number | null
         }
         Update: {
+          admin_file_id?: string | null
           admin_message_id?: number | null
           created_at?: string
           file_id?: string

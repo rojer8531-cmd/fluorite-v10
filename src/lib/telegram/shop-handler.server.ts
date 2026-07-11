@@ -1,8 +1,8 @@
 // Shop Bot — handler completo (UI minimalista)
 import {
   sendMessage,
-  sendPhoto,
   sendPhotoMultipart,
+  sendDocumentMultipart,
   getFile,
   downloadFile,
   answerCallbackQuery,
@@ -27,6 +27,7 @@ import {
 } from "./db.server";
 import { silentDelete } from "./ui.server";
 import { applyRankDiscount, nextRankProgress, rankLabel, rankBadge, RANK_INFO, normalizeRank } from "./ranks.server";
+import { keepTelegramPromiseAlive } from "./webhook-runner.server";
 
 const forceNewScreenFor = new Set<number>();
 const activeMessageHints = new Map<number, { chat_id: number; message_id: number }>();
@@ -176,6 +177,27 @@ const RANK_LABEL: Record<string, string> = {
 };
 
 const SUPPORT_USERNAME = "@ravevq";
+
+function adminReceiptKeyboard(order_id: string, telegram_id: number) {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
+        { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
+      ],
+      [{ text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` }],
+    ],
+  };
+}
+
+function newestTelegramPhotoFileId(result?: { photo?: Array<{ file_id: string }> }) {
+  return result?.photo?.[result.photo.length - 1]?.file_id ?? null;
+}
+
+function receiptFilename(filePath: string | undefined, fallback: string) {
+  const clean = filePath?.split("/").pop()?.trim();
+  return clean || fallback;
+}
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
@@ -1213,7 +1235,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     { final: true },
   );
 
-  processReceiptPhotoReview({
+  const reviewPromise = processReceiptPhotoReview({
     telegram_id,
     chat_id,
     photo,
@@ -1222,6 +1244,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     isRecharge,
     user,
   }).catch((err) => console.error("[receipt photo background]", err));
+  if (!keepTelegramPromiseAlive(reviewPromise)) await reviewPromise;
   return;
 }
 
@@ -1274,10 +1297,12 @@ async function processReceiptPhotoReview(opts: {
 
   // Sin análisis de IA: reenviamos el comprobante directamente al admin
   // para que él haga la verificación 100% manual.
-  const userTag = user.username ? `@${user.username}` : (user.display_name ?? "—");
-  const country = o.payment_methods?.country_name ?? "—";
-  const method = o.payment_methods?.method_name ?? "—";
-  const kind = isRecharge ? "Recarga" : `Compra · ${o.products?.name ?? "—"}${o.product_prices?.duration_label ? " · " + o.product_prices.duration_label : ""}`;
+  const userTag = escapeHtml(user.username ? `@${user.username}` : (user.display_name ?? "—"));
+  const country = escapeHtml(o.payment_methods?.country_name ?? "—");
+  const method = escapeHtml(o.payment_methods?.method_name ?? "—");
+  const productName = escapeHtml(o.products?.name ?? "—");
+  const duration = o.product_prices?.duration_label ? ` · ${escapeHtml(o.product_prices.duration_label)}` : "";
+  const kind = isRecharge ? "Recarga" : `Compra · ${productName}${duration}`;
 
   const caption =
     `📩 <b>Nuevo Comprobante</b>\n\n` +
@@ -1299,53 +1324,44 @@ async function processReceiptPhotoReview(opts: {
     "admin",
     adminChatId,
     bytes,
-    "comprobante.jpg",
+    receiptFilename(fileInfo.result.file_path, "comprobante.jpg"),
     caption,
     {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
-            { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
-          ],
-          [
-            { text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` },
-          ],
-        ],
-      },
+      reply_markup: adminReceiptKeyboard(order_id, telegram_id),
     },
   );
 
   if (sent.ok && sent.result) {
+    const adminFileId = newestTelegramPhotoFileId(sent.result);
     await Promise.all([
-      sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt_id),
+      sb.from("receipts").update({
+        admin_message_id: sent.result.message_id,
+        ...(adminFileId ? { admin_file_id: adminFileId } : {}),
+      }).eq("id", receipt_id),
       sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id),
     ]);
   } else {
-    // Si Telegram rechazó la foto, aún así reenviamos por file_id como
-    // fallback: el comprobante JAMÁS puede perderse.
-    const fallback = await sendPhoto(
+    console.error("[receipt admin upload] sendPhotoMultipart failed", sent.description);
+    // Fallback seguro: si Telegram no acepta la foto como imagen, enviamos
+    // los mismos bytes como documento. Nunca reutilizamos el file_id del shop bot.
+    const fallback = await sendDocumentMultipart(
       "admin",
       adminChatId,
-      photo.file_id,
+      bytes,
+      receiptFilename(fileInfo.result.file_path, "comprobante.jpg"),
       caption,
-      {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
-              { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
-            ],
-            [{ text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` }],
-          ],
-        },
-      },
+      { reply_markup: adminReceiptKeyboard(order_id, telegram_id) },
     );
     if (fallback.ok && fallback.result) {
       await Promise.all([
-        sb.from("receipts").update({ admin_message_id: fallback.result.message_id }).eq("id", receipt_id),
+        sb.from("receipts").update({
+          admin_message_id: fallback.result.message_id,
+          ...(fallback.result.document?.file_id ? { admin_file_id: fallback.result.document.file_id } : {}),
+        }).eq("id", receipt_id),
         sb.from("orders").update({ admin_message_id: fallback.result.message_id }).eq("id", order_id),
       ]);
+    } else {
+      console.error("[receipt admin upload] sendDocumentMultipart failed", fallback.description);
     }
   }
 }
@@ -1429,12 +1445,12 @@ async function handleReceiptDocument(msg: TgMessage) {
   const o = order as { id: string; created_at: string; total_usd: number; payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null } | null };
   const pid = tpId(o.created_at);
 
-  const userTag2 = user.username ? `@${user.username}` : (user.display_name ?? "—");
+  const userTag2 = escapeHtml(user.username ? `@${user.username}` : (user.display_name ?? "—"));
   const pm2 = o.payment_methods;
   const pmInfo2 = pm2
-    ? `\n💳 ${pm2.country_name} · ${pm2.method_name}` +
-      (pm2.holder_name ? `\n🪪 ${pm2.holder_name}` : "") +
-      (pm2.account_info ? `\n📋 <code>${pm2.account_info}</code>` : "")
+    ? `\n💳 ${escapeHtml(pm2.country_name)} · ${escapeHtml(pm2.method_name)}` +
+      (pm2.holder_name ? `\n🪪 ${escapeHtml(pm2.holder_name)}` : "") +
+      (pm2.account_info ? `\n📋 <code>${escapeHtml(pm2.account_info)}</code>` : "")
     : "";
   const balLine2 = `\n💼 Saldo actual: $${Number(user.balance).toFixed(2)} USD`;
   const caption = isRecharge
@@ -1444,28 +1460,43 @@ async function handleReceiptDocument(msg: TgMessage) {
   const adminChatId = getAdminChatId();
   if (!adminChatId) return;
 
-  // Reenviar el documento al admin con botones
-  const { tg } = await import("./api.server");
-  const sent = await tg<{ message_id: number }>("admin", "sendDocument", {
-    chat_id: adminChatId,
-    document: doc.file_id,
+  const fileInfo = await getFile("shop", doc.file_id);
+  if (!fileInfo.ok || !fileInfo.result?.file_path) {
+    await notifyUser(chat_id, `⚠️ Error procesando documento. Intentá enviar el comprobante nuevamente.`);
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt!.id);
+    await sb.from("receipt_fingerprints").delete().eq("file_unique_id", doc.file_unique_id);
+    return;
+  }
+  const bytes = await downloadFile("shop", fileInfo.result.file_path);
+  if (!bytes) {
+    await notifyUser(chat_id, `⚠️ Error descargando documento. Intentá enviar el comprobante nuevamente.`);
+    await sb.from("orders").update({ status: "pending_receipt" }).eq("id", order_id);
+    await sb.from("receipts").delete().eq("id", receipt!.id);
+    await sb.from("receipt_fingerprints").delete().eq("file_unique_id", doc.file_unique_id);
+    return;
+  }
+
+  // Re-subimos el archivo físico al bot admin. Nunca usamos el file_id del
+  // shop bot porque Telegram lo considera inválido para otros bots.
+  const sent = await sendDocumentMultipart(
+    "admin",
+    adminChatId,
+    bytes,
+    doc.file_name || receiptFilename(fileInfo.result.file_path, "comprobante.pdf"),
     caption,
-    parse_mode: "HTML",
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "Aprobar", callback_data: `adm:approve:${order_id}` },
-          { text: "Rechazar", callback_data: `adm:reject:${order_id}` },
-        ],
-        [{ text: "Bloquear", callback_data: `adm:block:${telegram_id}` }],
-      ],
-    },
-  });
+    { reply_markup: adminReceiptKeyboard(order_id, telegram_id) },
+  );
   if (sent.ok && sent.result) {
     await Promise.all([
-      sb.from("receipts").update({ admin_message_id: sent.result.message_id }).eq("id", receipt!.id),
+      sb.from("receipts").update({
+        admin_message_id: sent.result.message_id,
+        ...(sent.result.document?.file_id ? { admin_file_id: sent.result.document.file_id } : {}),
+      }).eq("id", receipt!.id),
       sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id),
     ]);
+  } else {
+    console.error("[receipt admin upload] sendDocumentMultipart failed", sent.description);
   }
 
   await setState(telegram_id, "menu", {});

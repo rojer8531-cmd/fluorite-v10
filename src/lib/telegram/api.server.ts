@@ -338,7 +338,26 @@ export async function sendPhotoMultipart(
     fd.append(k, typeof v === "string" ? v : JSON.stringify(v));
   }
   fd.append("photo", new Blob([fileBytes]), filename);
-  return tg<{ message_id: number }>(bot, "sendPhoto", fd);
+  return tg<{ message_id: number; photo?: Array<{ file_id: string; file_unique_id?: string; width?: number; height?: number }> }>(bot, "sendPhoto", fd);
+}
+
+export async function sendDocumentMultipart(
+  bot: BotKind,
+  chat_id: number | string,
+  fileBytes: ArrayBuffer,
+  filename: string,
+  caption: string,
+  extra: Record<string, unknown> = {},
+) {
+  const fd = new FormData();
+  fd.append("chat_id", String(chat_id));
+  fd.append("caption", limitTelegramText(caption, MAX_CAPTION_TEXT));
+  fd.append("parse_mode", "HTML");
+  for (const [k, v] of Object.entries(extra)) {
+    fd.append(k, typeof v === "string" ? v : JSON.stringify(v));
+  }
+  fd.append("document", new Blob([fileBytes]), filename);
+  return tg<{ message_id: number; document?: { file_id: string; file_unique_id?: string } }>(bot, "sendDocument", fd);
 }
 
 export async function copyMessage(
