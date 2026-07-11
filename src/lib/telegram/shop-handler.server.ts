@@ -470,9 +470,10 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   await patchContext(telegram_id, { product_id });
   const rows = prices.map((p) => {
     const tag = p.has_override ? "  🎁" : p.rank_discounted ? `  ${RANK_INFO[rank].badge}` : "";
+    const stockLabel = p.available_stock > 0 ? `📦 ${p.available_stock}` : `❌ Agotado`;
     return [
       {
-        text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}${tag}`,
+        text: `⏳ ${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}  ·  ${stockLabel}${tag}`,
         callback_data: `dur:${p.id}`,
       },
     ];
@@ -484,9 +485,15 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
 
   const rankNote = rank === "gold" ? "" : `\n<i>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label}${rank === "elite" ? " — productos de $30 a $25" : ` · -${RANK_INFO[rank].discountPct}% aplicado`}</i>`;
+
+  const stockLines = prices
+    .map((p) => `⏳ ${p.duration_label}   ${p.available_stock > 0 ? `📦 Stock: ${p.available_stock}` : `❌ Sin stock`}`)
+    .join("\n");
+  const stockBlock = `\n\n<b>Disponibilidad</b>\n${stockLines}\n\n<i>Si un producto está agotado, podés pedirlo en modo manual y un admin te enviará la key.</i>`;
+
   const header = lowBalance
-    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>${rankNote}\n\nPodés ver los precios. Recargá saldo para comprar:`
-    : `<b>${product.name}</b>${rankNote}\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>\n\nElegí la duración:`;
+    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>${rankNote}${stockBlock}\n\nPodés ver los precios. Recargá saldo para comprar:`
+    : `<b>${product.name}</b>${rankNote}\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>${stockBlock}\n\nElegí la duración:`;
 
   await screen(telegram_id, chat_id, header, rows);
 }
