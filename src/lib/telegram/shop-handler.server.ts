@@ -27,6 +27,7 @@ import {
 } from "./db.server";
 import { silentDelete } from "./ui.server";
 import { applyRankDiscount, nextRankProgress, rankLabel, rankBadge, RANK_INFO, normalizeRank } from "./ranks.server";
+import { keepTelegramPromiseAlive } from "./webhook-runner.server";
 
 const forceNewScreenFor = new Set<number>();
 const activeMessageHints = new Map<number, { chat_id: number; message_id: number }>();
@@ -1234,7 +1235,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     { final: true },
   );
 
-  processReceiptPhotoReview({
+  const reviewPromise = processReceiptPhotoReview({
     telegram_id,
     chat_id,
     photo,
@@ -1243,6 +1244,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     isRecharge,
     user,
   }).catch((err) => console.error("[receipt photo background]", err));
+  if (!keepTelegramPromiseAlive(reviewPromise)) await reviewPromise;
   return;
 }
 
@@ -1295,10 +1297,12 @@ async function processReceiptPhotoReview(opts: {
 
   // Sin análisis de IA: reenviamos el comprobante directamente al admin
   // para que él haga la verificación 100% manual.
-  const userTag = user.username ? `@${user.username}` : (user.display_name ?? "—");
-  const country = o.payment_methods?.country_name ?? "—";
-  const method = o.payment_methods?.method_name ?? "—";
-  const kind = isRecharge ? "Recarga" : `Compra · ${o.products?.name ?? "—"}${o.product_prices?.duration_label ? " · " + o.product_prices.duration_label : ""}`;
+  const userTag = escapeHtml(user.username ? `@${user.username}` : (user.display_name ?? "—"));
+  const country = escapeHtml(o.payment_methods?.country_name ?? "—");
+  const method = escapeHtml(o.payment_methods?.method_name ?? "—");
+  const productName = escapeHtml(o.products?.name ?? "—");
+  const duration = o.product_prices?.duration_label ? ` · ${escapeHtml(o.product_prices.duration_label)}` : "";
+  const kind = isRecharge ? "Recarga" : `Compra · ${productName}${duration}`;
 
   const caption =
     `📩 <b>Nuevo Comprobante</b>\n\n` +
@@ -1441,12 +1445,12 @@ async function handleReceiptDocument(msg: TgMessage) {
   const o = order as { id: string; created_at: string; total_usd: number; payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null } | null };
   const pid = tpId(o.created_at);
 
-  const userTag2 = user.username ? `@${user.username}` : (user.display_name ?? "—");
+  const userTag2 = escapeHtml(user.username ? `@${user.username}` : (user.display_name ?? "—"));
   const pm2 = o.payment_methods;
   const pmInfo2 = pm2
-    ? `\n💳 ${pm2.country_name} · ${pm2.method_name}` +
-      (pm2.holder_name ? `\n🪪 ${pm2.holder_name}` : "") +
-      (pm2.account_info ? `\n📋 <code>${pm2.account_info}</code>` : "")
+    ? `\n💳 ${escapeHtml(pm2.country_name)} · ${escapeHtml(pm2.method_name)}` +
+      (pm2.holder_name ? `\n🪪 ${escapeHtml(pm2.holder_name)}` : "") +
+      (pm2.account_info ? `\n📋 <code>${escapeHtml(pm2.account_info)}</code>` : "")
     : "";
   const balLine2 = `\n💼 Saldo actual: $${Number(user.balance).toFixed(2)} USD`;
   const caption = isRecharge
