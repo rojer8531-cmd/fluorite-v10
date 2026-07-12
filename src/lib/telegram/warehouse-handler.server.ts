@@ -753,19 +753,31 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
     ? `Username  <a href="https://t.me/${u.username}">@${escapeHtml(u.username)}</a>`
     : `Username  <i>no disponible</i>`;
 
+  const relDate = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (diffDays <= 0) return "Hoy";
+    if (diffDays === 1) return "Ayer";
+    if (diffDays < 30) return `Hace ${diffDays} días`;
+    const months = Math.floor(diffDays / 30);
+    return months === 1 ? "Hace 1 mes" : `Hace ${months} meses`;
+  };
+  const statusDot = blocked ? "🔴" : "🟢";
+  const statusText = blocked ? blockedTxt : "Activo";
+
   const text =
-    `<b>Detalle de usuario</b>\n\n` +
-    `Nombre    <b>${escapeHtml(u.display_name ?? "—")}</b>\n` +
-    `${usernameLine}\n` +
-    `Telegram  <code>${u.telegram_id}</code>\n` +
-    `Chat      <code>${u.chat_id}</code>\n` +
+    `👤 <b>Usuario</b>\n\n` +
+    `<b>${escapeHtml(u.display_name ?? "Sin nombre")}</b>\n` +
+    `${usernameLine}\n\n` +
+    `ID        <code>${u.telegram_id}</code>\n` +
+    `Estado    ${statusDot} ${statusText}\n` +
+    `Rango     ${escapeHtml(String(u.rank ?? "Normal"))}\n\n` +
     `Saldo     <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
-    `Recargado $${Number(u.total_recharged).toFixed(2)} USD\n` +
-    `Rango     ${u.rank}\n` +
-    `Órdenes   ${ordersCount ?? 0}  ·  Entregadas ${deliveredCount ?? 0}\n` +
-    `Registro  ${new Date(u.registered_at).toLocaleString("es")}\n` +
-    `Visto     ${new Date(u.last_seen_at).toLocaleString("es")}\n` +
-    `Estado    ${blockedTxt}\n\n` +
+    `Órdenes   ${ordersCount ?? 0} · ${deliveredCount ?? 0} entregadas\n\n` +
+    `Registro  ${relDate(u.registered_at)}\n` +
+    `Visto     ${relDate(u.last_seen_at)}\n\n` +
     `<b>Últimas órdenes</b>\n${ordersLines}`;
 
   const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
