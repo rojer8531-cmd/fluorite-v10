@@ -648,16 +648,37 @@ async function adminUsuarios(chat_id: number, page = 0) {
     return;
   }
 
-  const lines = users.map((u, i) => {
-    const idx = from + i + 1;
-    const name = escapeHtml(u.display_name ?? u.username ?? "—");
-    return `${idx}. <b>${name}</b>\n<code>${u.telegram_id}</code>`;
-  });
+  const totalPages = Math.max(1, Math.ceil(total / USERS_PAGE_SIZE));
+  const pad = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : s + " ".repeat(n - s.length));
+
+  const rows: string[] = [];
+  for (let i = 0; i < users.length; i += 2) {
+    const a = users[i];
+    const b = users[i + 1];
+    const nameA = a.display_name ?? a.username ?? "";
+    const nameB = b ? (b.display_name ?? b.username ?? "") : "";
+    const dotA = nameA ? "🟢" : "⚪";
+    const dotB = b ? (nameB ? "🟢" : "⚪") : "";
+    const labelA = nameA || "Sin nombre";
+    const labelB = b ? (nameB || "Sin nombre") : "";
+    const leftTop = pad(`${dotA} ${labelA}`, 22);
+    const leftBot = pad(String(a.telegram_id), 22);
+    rows.push(`${leftTop}${b ? `${dotB} ${labelB}` : ""}`);
+    rows.push(`${leftBot}${b ? b.telegram_id : ""}`);
+    rows.push("");
+  }
+  const body = `<pre>${escapeHtml(rows.join("\n").trimEnd())}</pre>`;
 
   const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
   for (let i = 0; i < users.length; i += 2) {
-    const row = [{ text: `${from + i + 1}`, callback_data: `akusr:${users[i].telegram_id}` }];
-    if (users[i + 1]) row.push({ text: `${from + i + 2}`, callback_data: `akusr:${users[i + 1].telegram_id}` });
+    const a = users[i];
+    const b = users[i + 1];
+    const labelA = a.display_name ?? a.username ?? "Sin nombre";
+    const row = [{ text: `${from + i + 1}. ${labelA}`, callback_data: `akusr:${a.telegram_id}` }];
+    if (b) {
+      const labelB = b.display_name ?? b.username ?? "Sin nombre";
+      row.push({ text: `${from + i + 2}. ${labelB}`, callback_data: `akusr:${b.telegram_id}` });
+    }
     kb.push(row);
   }
   const nav: Array<{ text: string; callback_data: string }> = [];
@@ -670,7 +691,7 @@ async function adminUsuarios(chat_id: number, page = 0) {
     chat_id,
     adminId(),
     "usuarios",
-    `<b>Usuarios</b>  ·  ${total}  ·  pág ${page + 1}/${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n\n")}`,
+    `<b>Usuarios</b> · ${total} · ${page + 1}/${totalPages}\n\n${body}`,
     kb,
   );
 }
@@ -732,19 +753,31 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
     ? `Username  <a href="https://t.me/${u.username}">@${escapeHtml(u.username)}</a>`
     : `Username  <i>no disponible</i>`;
 
+  const relDate = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (diffDays <= 0) return "Hoy";
+    if (diffDays === 1) return "Ayer";
+    if (diffDays < 30) return `Hace ${diffDays} días`;
+    const months = Math.floor(diffDays / 30);
+    return months === 1 ? "Hace 1 mes" : `Hace ${months} meses`;
+  };
+  const statusDot = blocked ? "🔴" : "🟢";
+  const statusText = blocked ? blockedTxt : "Activo";
+
   const text =
-    `<b>Detalle de usuario</b>\n\n` +
-    `Nombre    <b>${escapeHtml(u.display_name ?? "—")}</b>\n` +
-    `${usernameLine}\n` +
-    `Telegram  <code>${u.telegram_id}</code>\n` +
-    `Chat      <code>${u.chat_id}</code>\n` +
+    `👤 <b>Usuario</b>\n\n` +
+    `<b>${escapeHtml(u.display_name ?? "Sin nombre")}</b>\n` +
+    `${usernameLine}\n\n` +
+    `ID        <code>${u.telegram_id}</code>\n` +
+    `Estado    ${statusDot} ${statusText}\n` +
+    `Rango     ${escapeHtml(String(u.rank ?? "Normal"))}\n\n` +
     `Saldo     <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
-    `Recargado $${Number(u.total_recharged).toFixed(2)} USD\n` +
-    `Rango     ${u.rank}\n` +
-    `Órdenes   ${ordersCount ?? 0}  ·  Entregadas ${deliveredCount ?? 0}\n` +
-    `Registro  ${new Date(u.registered_at).toLocaleString("es")}\n` +
-    `Visto     ${new Date(u.last_seen_at).toLocaleString("es")}\n` +
-    `Estado    ${blockedTxt}\n\n` +
+    `Órdenes   ${ordersCount ?? 0} · ${deliveredCount ?? 0} entregadas\n\n` +
+    `Registro  ${relDate(u.registered_at)}\n` +
+    `Visto     ${relDate(u.last_seen_at)}\n\n` +
     `<b>Últimas órdenes</b>\n${ordersLines}`;
 
   const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
@@ -839,7 +872,7 @@ async function adminPromptNewPrice(chat_id: number, price_id: string) {
   await sendMessage(
     "warehouse",
     chat_id,
-    `<b>PRICEEDIT:${price_id}</b>\n${name} · ${p.duration_label}\nPrecio actual: <b>$${Number(p.price_usd).toFixed(2)}</b>\n\nRespondé a este mensaje con el nuevo precio en USD (ej: <code>4.50</code>).`,
+    `<b>PRICEEDIT:${price_id}</b>\n\n💲 <b>Editar precio</b>\n\n📦 Producto: <b>${escapeHtml(name)}</b>\n🗓️ Duración: <b>${escapeHtml(p.duration_label)}</b>\n💰 Precio actual: <b>$${Number(p.price_usd).toFixed(2)} USD</b>\n\n✏️ Responde a este mensaje con el nuevo precio en USD.\n\n📌 Ejemplo: <code>4.50</code>`,
     { reply_markup: { force_reply: true, selective: true } },
   );
 }
