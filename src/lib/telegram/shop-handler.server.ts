@@ -921,6 +921,28 @@ async function showDownloadPanel(telegram_id: number, chat_id: number) {
   }
 }
 
+async function showOfficialChannel(telegram_id: number, chat_id: number) {
+  forceNewScreenFor.add(telegram_id);
+  try {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `📢 <b>Canal Oficial</b>\n\nUnite a nuestro canal de WhatsApp para enterarte de novedades, ofertas y anuncios importantes.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📢 Unirme al Canal", url: OFFICIAL_CHANNEL_URL }],
+            [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+          ],
+        },
+        disable_web_page_preview: false,
+      },
+    );
+  } finally {
+    forceNewScreenFor.delete(telegram_id);
+  }
+}
+
 // Enrutado del menú inferior fijo. Devuelve true si manejó el texto.
 async function routeBottomMenu(
   text: string,
