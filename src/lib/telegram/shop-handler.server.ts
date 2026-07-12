@@ -930,7 +930,7 @@ async function routeBottomMenu(
   const map: Record<keyof typeof BOTTOM_MENU, (tid: number, cid: number) => Promise<unknown>> = {
     products: showProducts,
     recharge: startRecharge,
-    buy: showBuyWithBalance,
+    official_channel: showOfficialChannel,
     profile: showProfile,
     more: showMoreOptions,
     status: showOrderStatus,
