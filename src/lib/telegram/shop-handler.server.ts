@@ -1892,9 +1892,8 @@ async function showOrderStatus(telegram_id: number, chat_id: number) {
     const isRecharge = (o as { order_type?: string | null }).order_type === "recharge" || !p;
     const title = isRecharge
       ? `<b>Recarga</b>`
-      : `<b>${escapeHtml(displayName)} · ${escapeHtml(pr?.duration_label ?? p?.name ?? "—")}</b>`;
-    const subtitle = isRecharge ? "" : `\n${escapeHtml(p?.name ?? "—")}`;
-    return `${title}${subtitle}\n${st.icon} ${st.text}\n📅 ${relDate(o.created_at)}\n💰 Enviado: ${amount}`;
+      : `<b>${escapeHtml(displayName)} · ${escapeHtml(pr?.duration_label ?? "—")}</b>`;
+    return `${title}\n${st.icon} ${st.text}\n📅 ${relDate(o.created_at)}\n💰 Enviado: ${amount}`;
   });
   return screen(telegram_id, chat_id, `📦 <b>Mis órdenes</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
 }
