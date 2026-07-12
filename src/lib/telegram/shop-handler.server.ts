@@ -239,7 +239,7 @@ function bottomKeyboard() {
   return {
     keyboard: [
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.recharge }],
-      [{ text: BOTTOM_MENU.buy }, { text: BOTTOM_MENU.profile }],
+      [{ text: BOTTOM_MENU.official_channel }, { text: BOTTOM_MENU.profile }],
       [{ text: BOTTOM_MENU.more }],
     ],
     resize_keyboard: true,
