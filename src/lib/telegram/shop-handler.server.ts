@@ -229,7 +229,7 @@ const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
   "📋 Más": "more",
 };
 
-const DOWNLOAD_PANEL_URL = "https://keymarkethnx7.vercel.app/";
+const DOWNLOAD_PANEL_URL = "https://resendstore.vercel.app/";
 
 function isBottomMenuText(text: string) {
   return text in BOTTOM_MENU_ALIASES || Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
