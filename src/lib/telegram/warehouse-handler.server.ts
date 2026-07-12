@@ -648,16 +648,37 @@ async function adminUsuarios(chat_id: number, page = 0) {
     return;
   }
 
-  const lines = users.map((u, i) => {
-    const idx = from + i + 1;
-    const name = escapeHtml(u.display_name ?? u.username ?? "—");
-    return `${idx}. <b>${name}</b>\n<code>${u.telegram_id}</code>`;
-  });
+  const totalPages = Math.max(1, Math.ceil(total / USERS_PAGE_SIZE));
+  const pad = (s: string, n: number) => (s.length >= n ? s.slice(0, n) : s + " ".repeat(n - s.length));
+
+  const rows: string[] = [];
+  for (let i = 0; i < users.length; i += 2) {
+    const a = users[i];
+    const b = users[i + 1];
+    const nameA = a.display_name ?? a.username ?? "";
+    const nameB = b ? (b.display_name ?? b.username ?? "") : "";
+    const dotA = nameA ? "🟢" : "⚪";
+    const dotB = b ? (nameB ? "🟢" : "⚪") : "";
+    const labelA = nameA || "Sin nombre";
+    const labelB = b ? (nameB || "Sin nombre") : "";
+    const leftTop = pad(`${dotA} ${labelA}`, 22);
+    const leftBot = pad(String(a.telegram_id), 22);
+    rows.push(`${leftTop}${b ? `${dotB} ${labelB}` : ""}`);
+    rows.push(`${leftBot}${b ? b.telegram_id : ""}`);
+    rows.push("");
+  }
+  const body = `<pre>${escapeHtml(rows.join("\n").trimEnd())}</pre>`;
 
   const kb: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
   for (let i = 0; i < users.length; i += 2) {
-    const row = [{ text: `${from + i + 1}`, callback_data: `akusr:${users[i].telegram_id}` }];
-    if (users[i + 1]) row.push({ text: `${from + i + 2}`, callback_data: `akusr:${users[i + 1].telegram_id}` });
+    const a = users[i];
+    const b = users[i + 1];
+    const labelA = a.display_name ?? a.username ?? "Sin nombre";
+    const row = [{ text: `${from + i + 1}. ${labelA}`, callback_data: `akusr:${a.telegram_id}` }];
+    if (b) {
+      const labelB = b.display_name ?? b.username ?? "Sin nombre";
+      row.push({ text: `${from + i + 2}. ${labelB}`, callback_data: `akusr:${b.telegram_id}` });
+    }
     kb.push(row);
   }
   const nav: Array<{ text: string; callback_data: string }> = [];
@@ -670,7 +691,7 @@ async function adminUsuarios(chat_id: number, page = 0) {
     chat_id,
     adminId(),
     "usuarios",
-    `<b>Usuarios</b>  ·  ${total}  ·  pág ${page + 1}/${Math.max(1, Math.ceil(total / USERS_PAGE_SIZE))}\n\n${lines.join("\n\n")}`,
+    `<b>Usuarios</b> · ${total} · ${page + 1}/${totalPages}\n\n${body}`,
     kb,
   );
 }
