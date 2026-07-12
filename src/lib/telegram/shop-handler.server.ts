@@ -1230,7 +1230,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
   await screen(
     telegram_id,
     chat_id,
-    `⏳ <b>Comprobante en revisión</b>\n\nTu comprobante está siendo verificado.\n\nNo lo envíes nuevamente. Si envías el mismo comprobante varias veces, tu recarga podrá ser rechazada sin derecho a reclamo.\n\nGracias por tu paciencia.`,
+    `⏳ <b>Comprobante en revisión</b>\n\nTu comprobante está siendo verificado.\n\n⚠️ No lo envíes nuevamente. Los comprobantes duplicados pueden ser rechazados.\n\n🔴 Tiempo estimado: <b>4 o 5 HORAS</b>\n🔴 En alta demanda: <b>HASTA 24 HORAS</b>\n\nNo seas estúpido. Recuerda que tenemos demasiados comprobantes en revisión, así que solo espera y no pierdas tu pago por estar exigiendo.\n\nGracias por tu paciencia.`,
     [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
     { final: true },
   );
