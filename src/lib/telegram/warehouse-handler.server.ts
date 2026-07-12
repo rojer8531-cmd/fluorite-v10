@@ -872,7 +872,7 @@ async function adminPromptNewPrice(chat_id: number, price_id: string) {
   await sendMessage(
     "warehouse",
     chat_id,
-    `<b>PRICEEDIT:${price_id}</b>\n${name} · ${p.duration_label}\nPrecio actual: <b>$${Number(p.price_usd).toFixed(2)}</b>\n\nRespondé a este mensaje con el nuevo precio en USD (ej: <code>4.50</code>).`,
+    `<b>PRICEEDIT:${price_id}</b>\n\n💲 <b>Editar precio</b>\n\n📦 Producto: <b>${escapeHtml(name)}</b>\n🗓️ Duración: <b>${escapeHtml(p.duration_label)}</b>\n💰 Precio actual: <b>$${Number(p.price_usd).toFixed(2)} USD</b>\n\n✏️ Responde a este mensaje con el nuevo precio en USD.\n\n📌 Ejemplo: <code>4.50</code>`,
     { reply_markup: { force_reply: true, selective: true } },
   );
 }
