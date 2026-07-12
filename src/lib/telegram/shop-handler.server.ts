@@ -1853,29 +1853,48 @@ async function handleCallback(cb: TgCallback) {
 async function showOrderStatus(telegram_id: number, chat_id: number) {
   const { data: orders } = await sb
     .from("orders")
-    .select("id, status, total_usd, created_at, products(name), product_prices(duration_label)")
+    .select("id, status, total_usd, created_at, order_type, products(name), product_prices(duration_label)")
     .eq("telegram_id", telegram_id)
     .order("created_at", { ascending: false })
     .limit(10);
   if (!orders || orders.length === 0) {
     return screen(telegram_id, chat_id, `No tenés órdenes.`, [BACK_BUTTON]);
   }
-  const statusLabel: Record<string, string> = {
-    delivered: "Entregado",
-    pending_approval: "En revisión",
-    pending_receipt: "Esperando comprobante",
-    rejected: "Rechazado",
-    approved: "Aprobado",
-    pending: "Pendiente",
+  const { data: userRow } = await sb
+    .from("bot_users")
+    .select("display_name, username")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  const displayName = userRow?.display_name ?? userRow?.username ?? "Usuario";
+  const statusLabel: Record<string, { icon: string; text: string }> = {
+    delivered: { icon: "🟢", text: "Aprobado" },
+    approved: { icon: "🟢", text: "Aprobado" },
+    pending_approval: { icon: "⏳", text: "En revisión" },
+    pending_receipt: { icon: "⏳", text: "Esperando comprobante" },
+    pending: { icon: "⏳", text: "Pendiente" },
+    rejected: { icon: "❌", text: "Rechazado" },
+  };
+  const relDate = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+    if (diffDays <= 0) return "Hoy";
+    if (diffDays === 1) return "Ayer";
+    if (diffDays < 7) return `Hace ${diffDays} días`;
+    return d.toLocaleDateString("es");
   };
   const blocks = orders.map((o) => {
     const p = (o as { products: { name: string } | null }).products;
     const pr = (o as { product_prices: { duration_label: string } | null }).product_prices;
-    const date = new Date(o.created_at).toLocaleDateString("es");
-    const name = p?.name ?? "—";
-    const dur = pr?.duration_label ? ` ${pr.duration_label}` : "";
-    const st = statusLabel[o.status] ?? o.status;
-    return `<b>${escapeHtml(name)}${escapeHtml(dur)}</b>\n${st}\n$${Number(o.total_usd).toFixed(2)}\n${date}`;
+    const st = statusLabel[o.status] ?? { icon: "•", text: o.status };
+    const amount = `$${Number(o.total_usd).toFixed(2)}`;
+    const isRecharge = (o as { order_type?: string | null }).order_type === "recharge" || !p;
+    const title = isRecharge
+      ? `<b>Recarga</b>`
+      : `<b>${escapeHtml(displayName)} · ${escapeHtml(pr?.duration_label ?? p?.name ?? "—")}</b>`;
+    const subtitle = isRecharge ? "" : `\n${escapeHtml(p?.name ?? "—")}`;
+    return `${title}${subtitle}\n${st.icon} ${st.text}\n📅 ${relDate(o.created_at)}\n💰 Enviado: ${amount}`;
   });
   return screen(telegram_id, chat_id, `📦 <b>Mis órdenes</b>\n\n${blocks.join("\n\n")}`, [BACK_BUTTON]);
 }
