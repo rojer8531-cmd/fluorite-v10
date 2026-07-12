@@ -203,7 +203,7 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 const BOTTOM_MENU = {
   products: "🛒 Productos",
   recharge: "💰 Recargar Saldo",
-  buy: "💳 Comprar",
+  official_channel: "Canal Oficial",
   profile: "👤 Mi Perfil",
   more: "📋 Todo",
   // Opciones extras (solo accesibles vía "Todo" como inline buttons)
