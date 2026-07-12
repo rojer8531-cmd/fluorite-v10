@@ -203,7 +203,7 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 const BOTTOM_MENU = {
   products: "🛒 Productos",
   recharge: "💰 Recargar Saldo",
-  buy: "💳 Comprar",
+  official_channel: "Canal Oficial",
   profile: "👤 Mi Perfil",
   more: "📋 Todo",
   // Opciones extras (solo accesibles vía "Todo" como inline buttons)
@@ -220,9 +220,7 @@ const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
   "💰 Recargar": "recharge",
   "💰 Recargar saldo": "recharge",
   "💰 Recargar Saldo": "recharge",
-  "💳 Comprar": "buy",
-  "🛍 Comprar": "buy",
-  "🛒 Comprar": "buy",
+  "Canal Oficial": "official_channel",
   "👤 Cuenta": "profile",
   "👤 Perfil": "profile",
   "👤 Mi perfil": "profile",
@@ -231,7 +229,8 @@ const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
   "📋 Más": "more",
 };
 
-const DOWNLOAD_PANEL_URL = "https://keymarkethnx7.vercel.app/";
+const DOWNLOAD_PANEL_URL = "https://resendstore.vercel.app/";
+const OFFICIAL_CHANNEL_URL = "https://whatsapp.com/channel/0029VbC678PIyPtc7iERCH2R";
 
 function isBottomMenuText(text: string) {
   return text in BOTTOM_MENU_ALIASES || Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
@@ -241,7 +240,7 @@ function bottomKeyboard() {
   return {
     keyboard: [
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.recharge }],
-      [{ text: BOTTOM_MENU.buy }, { text: BOTTOM_MENU.profile }],
+      [{ text: BOTTOM_MENU.official_channel }, { text: BOTTOM_MENU.profile }],
       [{ text: BOTTOM_MENU.more }],
     ],
     resize_keyboard: true,
@@ -922,6 +921,28 @@ async function showDownloadPanel(telegram_id: number, chat_id: number) {
   }
 }
 
+async function showOfficialChannel(telegram_id: number, chat_id: number) {
+  forceNewScreenFor.add(telegram_id);
+  try {
+    await sendMessage(
+      "shop",
+      chat_id,
+      `📢 <b>Canal Oficial</b>\n\nUnite a nuestro canal de WhatsApp para enterarte de novedades, ofertas y anuncios importantes.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📢 Unirme al Canal", url: OFFICIAL_CHANNEL_URL }],
+            [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+          ],
+        },
+        disable_web_page_preview: false,
+      },
+    );
+  } finally {
+    forceNewScreenFor.delete(telegram_id);
+  }
+}
+
 // Enrutado del menú inferior fijo. Devuelve true si manejó el texto.
 async function routeBottomMenu(
   text: string,
@@ -932,7 +953,7 @@ async function routeBottomMenu(
   const map: Record<keyof typeof BOTTOM_MENU, (tid: number, cid: number) => Promise<unknown>> = {
     products: showProducts,
     recharge: startRecharge,
-    buy: showBuyWithBalance,
+    official_channel: showOfficialChannel,
     profile: showProfile,
     more: showMoreOptions,
     status: showOrderStatus,
