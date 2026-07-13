@@ -481,7 +481,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   const prices = rawPrices.map((p) => {
     const base = overrides.has(p.id) ? overrides.get(p.id)! : Number(p.price_usd);
     const price_usd = applyRankDiscount(base, rank);
-    return { ...p, price_usd, has_override: overrides.has(p.id), rank_discounted: price_usd < base };
+    return { ...p, price_usd };
   });
   // Mostramos SIEMPRE los precios. Aunque no tenga saldo, puede elegir país
   // y pagar por un método externo; si tiene saldo también verá pago con saldo.
@@ -491,18 +491,18 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   await patchContext(telegram_id, { product_id });
 
   function fmtPrice(n: number) {
-    return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+    return Number.isInteger(n) ? `💲${n}` : `💲${n.toFixed(2)}`;
   }
 
   const rows = prices.map((p) => {
-    const tag = p.has_override ? "  🎁" : p.rank_discounted ? `  ${RANK_INFO[rank].badge}` : "";
-    const stockLabel = p.available_stock > 0 ? "" : ` ❌ Agotado`;
-    return [
-      {
-        text: `⏳ ${p.duration_label}  ·  ${fmtPrice(Number(p.price_usd))}${stockLabel}${tag}`,
-        callback_data: `dur:${p.id}`,
-      },
-    ];
+    const btn: { text: string; callback_data?: string } = {
+      text: `${p.duration_label}  ·  ${fmtPrice(Number(p.price_usd))}`,
+    };
+    // Sin stock: se muestra la opción pero deshabilitada (sin callback_data).
+    if (p.available_stock > 0) {
+      btn.callback_data = `dur:${p.id}`;
+    }
+    return [btn];
   });
 
   if (lowBalance) {
@@ -510,19 +510,18 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   }
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
 
-  const rankNote = rank === "gold" ? "" : `\n<i>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label}${rank === "elite" ? " — productos de $30 a $25" : ` · -${RANK_INFO[rank].discountPct}% aplicado`}</i>`;
-
+  const maxLabelLen = Math.max(...prices.map((p) => p.duration_label.length));
   const priceLines = prices
     .map((p) => {
       const label = escapeHtml(p.duration_label);
       const price = fmtPrice(Number(p.price_usd));
-      return `⏳ ${label.padEnd(10)} ${price}`;
+      return `⏳ ${label.padEnd(maxLabelLen + 7)} ${price}`;
     })
     .join("\n");
 
   const header = lowBalance
-    ? `<b>${escapeHtml(product.name)}</b>\n\n💸 <b>Saldo insuficiente</b>\n💰 Saldo: $${balance.toFixed(2)}\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>${rankNote}\n\n<pre>${priceLines}</pre>\n\nElegí la duración:`
-    : `<b>${escapeHtml(product.name)}</b>${rankNote}\n\n💰 Saldo: $${balance.toFixed(2)}\n\n<pre>${priceLines}</pre>\n\nElegí la duración:`;
+    ? `🛍️ Panel Reesend\n\n💸 <b>Saldo insuficiente</b>\n💰 Saldo: $${balance.toFixed(2)}\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\n<pre>${priceLines}</pre>\n\nSeleccioná la duración:`
+    : `🛍️ Panel Reesend\n\n💰 Saldo: $${balance.toFixed(2)}\n\n<pre>${priceLines}</pre>\n\nSeleccioná la duración:`;
 
   await screen(telegram_id, chat_id, header, rows);
 }
