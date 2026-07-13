@@ -519,9 +519,10 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     })
     .join("\n");
 
+  const productTitle = escapeHtml(product.name);
   const header = lowBalance
-    ? `🛍️ Panel Reesend\n\n💸 <b>Saldo insuficiente</b>\n💰 Saldo: $${balance.toFixed(2)}\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\n<pre>${priceLines}</pre>\n\nSeleccioná la duración:`
-    : `🛍️ Panel Reesend\n\n💰 Saldo: $${balance.toFixed(2)}\n\n<pre>${priceLines}</pre>\n\nSeleccioná la duración:`;
+    ? `🛍️ Panel ${productTitle}\n\n💸 <b>Saldo insuficiente</b>\n💰 Saldo: $${balance.toFixed(2)}\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\n<pre>${priceLines}</pre>\n\nSeleccioná una duración.`
+    : `🛍️ Panel ${productTitle}\n\n💰 Saldo: $${balance.toFixed(2)}\n\n<pre>${priceLines}</pre>\n\nSeleccioná una duración.`;
 
   await screen(telegram_id, chat_id, header, rows);
 }
