@@ -489,12 +489,17 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   const lowBalance = balance < minPrice;
 
   await patchContext(telegram_id, { product_id });
+
+  function fmtPrice(n: number) {
+    return Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+  }
+
   const rows = prices.map((p) => {
     const tag = p.has_override ? "  🎁" : p.rank_discounted ? `  ${RANK_INFO[rank].badge}` : "";
-    const stockLabel = p.available_stock > 0 ? `📦 ${p.available_stock}` : `❌ Agotado`;
+    const stockLabel = p.available_stock > 0 ? "" : ` ❌ Agotado`;
     return [
       {
-        text: `⏳ ${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}  ·  ${stockLabel}${tag}`,
+        text: `⏳ ${p.duration_label}  ·  ${fmtPrice(Number(p.price_usd))}${stockLabel}${tag}`,
         callback_data: `dur:${p.id}`,
       },
     ];
@@ -507,14 +512,17 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
 
   const rankNote = rank === "gold" ? "" : `\n<i>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label}${rank === "elite" ? " — productos de $30 a $25" : ` · -${RANK_INFO[rank].discountPct}% aplicado`}</i>`;
 
-  const stockLines = prices
-    .map((p) => `⏳ ${p.duration_label}   ${p.available_stock > 0 ? `📦 Stock: ${p.available_stock}` : `❌ Sin stock`}`)
+  const priceLines = prices
+    .map((p) => {
+      const label = escapeHtml(p.duration_label);
+      const price = fmtPrice(Number(p.price_usd));
+      return `⏳ ${label.padEnd(10)} ${price}`;
+    })
     .join("\n");
-  const stockBlock = `\n\n<b>Disponibilidad</b>\n${stockLines}\n\n<i>Si un producto está agotado, podés pedirlo en modo manual y un admin te enviará la key.</i>`;
 
   const header = lowBalance
-    ? `<b>${product.name}</b>\n\n💸 <b>Saldo insuficiente</b>\nSaldo actual: <b>$${balance.toFixed(2)} USD</b>\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>${rankNote}${stockBlock}\n\nPodés ver los precios. Recargá saldo para comprar:`
-    : `<b>${product.name}</b>${rankNote}\n\nSaldo disponible: <b>$${balance.toFixed(2)} USD</b>${stockBlock}\n\nElegí la duración:`;
+    ? `<b>${escapeHtml(product.name)}</b>\n\n💸 <b>Saldo insuficiente</b>\n💰 Saldo: $${balance.toFixed(2)}\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>${rankNote}\n\n<pre>${priceLines}</pre>\n\nElegí la duración:`
+    : `<b>${escapeHtml(product.name)}</b>${rankNote}\n\n💰 Saldo: $${balance.toFixed(2)}\n\n<pre>${priceLines}</pre>\n\nElegí la duración:`;
 
   await screen(telegram_id, chat_id, header, rows);
 }
