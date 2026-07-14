@@ -1863,8 +1863,27 @@ async function handleCallback(cb: TgCallback) {
   if (data.startsWith("cat:")) return showCategory(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("prod:")) return showDurations(telegram_id, chat_id, data.slice(5));
   if (data.startsWith("dur:")) {
-    await patchContext(telegram_id, { price_id: data.slice(4), qty: 1 });
-    return showCountries(telegram_id, chat_id, 1);
+    const price_id = data.slice(4);
+    await patchContext(telegram_id, { price_id, qty: 1 });
+    const [{ data: price }, { data: u }] = await Promise.all([
+      sb.from("product_prices").select("*").eq("id", price_id).single(),
+      sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
+    ]);
+    if (!price) return;
+    const unit_usd = await getUserPriceForId(telegram_id, price_id, Number(price.price_usd));
+    const balance = Number(u?.balance ?? 0);
+    if (balance < unit_usd) {
+      return screen(
+        telegram_id,
+        chat_id,
+        `💸 <b>Tu saldo es insuficiente.</b>\n\nRecarga saldo para poder realizar la compra.`,
+        [
+          [{ text: "💰 Recargar Saldo", callback_data: "menu:recharge" }],
+          BACK_BUTTON,
+        ],
+      );
+    }
+    return payWithBalance(telegram_id, chat_id);
   }
   if (data.startsWith("qty:")) return showCountries(telegram_id, chat_id, Number(data.slice(4)) || 1);
   if (data === "pay:balance") return payWithBalance(telegram_id, chat_id);
