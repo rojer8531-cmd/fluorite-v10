@@ -1859,6 +1859,7 @@ async function handleCallback(cb: TgCallback) {
   if (data === "more:panel") return showDownloadPanel(telegram_id, chat_id);
   if (data.startsWith("anvw:")) return openAnnouncement(telegram_id, chat_id, data.slice(5));
 
+  if (data === "noop") return;
   if (data.startsWith("cat:")) return showCategory(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("prod:")) return showDurations(telegram_id, chat_id, data.slice(5));
   if (data.startsWith("dur:")) {
