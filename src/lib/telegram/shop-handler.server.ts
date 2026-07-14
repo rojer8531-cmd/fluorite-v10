@@ -509,13 +509,17 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
 
   const maxLabelLen = Math.max(...prices.map((p) => p.duration_label.length));
+  const priceStrings = prices.map((p) => fmtPrice(Number(p.price_usd)));
+  const maxPriceLen = Math.max(...priceStrings.map((s) => s.length));
   const priceLines = prices
-    .map((p) => {
+    .map((p, i) => {
       const label = escapeHtml(p.duration_label);
-      const price = fmtPrice(Number(p.price_usd));
-      return `⏳ ${label.padEnd(maxLabelLen + 7)} ${price}`;
+      const price = priceStrings[i];
+      const stock = p.available_stock > 0 ? `📦${p.available_stock}` : `📦sin Stock`;
+      return `⏳ ${label.padEnd(maxLabelLen + 4)} ${price.padEnd(maxPriceLen + 3)} ${stock}`;
     })
     .join("\n");
+
 
   const productTitle = escapeHtml(product.name);
   const header = lowBalance
