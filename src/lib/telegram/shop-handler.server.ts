@@ -495,14 +495,12 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   }
 
   const rows = prices.map((p) => {
-    const btn: { text: string; callback_data?: string } = {
+    // Sin stock: botón visible pero deshabilitado (callback no-op para cumplir con la API de Telegram).
+    const callback_data = p.available_stock > 0 ? `dur:${p.id}` : "noop";
+    return [{
       text: `${p.duration_label}  ·  ${fmtPrice(Number(p.price_usd))}`,
-    };
-    // Sin stock: se muestra la opción pero deshabilitada (sin callback_data).
-    if (p.available_stock > 0) {
-      btn.callback_data = `dur:${p.id}`;
-    }
-    return [btn];
+      callback_data,
+    }];
   });
 
   if (lowBalance) {
@@ -1861,6 +1859,7 @@ async function handleCallback(cb: TgCallback) {
   if (data === "more:panel") return showDownloadPanel(telegram_id, chat_id);
   if (data.startsWith("anvw:")) return openAnnouncement(telegram_id, chat_id, data.slice(5));
 
+  if (data === "noop") return;
   if (data.startsWith("cat:")) return showCategory(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("prod:")) return showDurations(telegram_id, chat_id, data.slice(5));
   if (data.startsWith("dur:")) {
