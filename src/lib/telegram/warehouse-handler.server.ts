@@ -1497,6 +1497,71 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Agregar método (paso 1: pedir nombre del país) =====
+    if (replySource.includes("PMADD1")) {
+      const country_name = text.trim().replace(/\s+/g, " ");
+      if (country_name.length < 2 || country_name.length > 40) {
+        await sendMessage("warehouse", msg.chat.id, `Nombre de país inválido.`);
+        return;
+      }
+      const cc = deriveCountryCode(country_name);
+      const { data: existing } = await sb
+        .from("payment_methods")
+        .select("id")
+        .eq("country_code", cc)
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        await pmConfirmReplaceExisting(msg.chat.id, cc, country_name);
+        return;
+      }
+      await pmPromptAddStep2(msg.chat.id, cc, country_name);
+      return;
+    }
+
+    // ===== Agregar método (paso 2: guardar contenido verbatim) =====
+    const pmAdd2Match = replySource.match(/PMADD2:([A-Za-z0-9_-]+)\|([^\n]+)/);
+    if (pmAdd2Match) {
+      const cc = pmAdd2Match[1].toUpperCase();
+      const country_name = pmAdd2Match[2].trim();
+      const body = text;
+      if (!body.trim()) {
+        await sendMessage("warehouse", msg.chat.id, `El contenido está vacío.`);
+        return;
+      }
+      const meta = extractPmMetadata(body);
+      await sb.from("payment_methods").delete().eq("country_code", cc);
+      const { data: inserted, error } = await sb.from("payment_methods").insert({
+        country_code: cc,
+        country_name,
+        method_name: meta.method_name ?? "Pago",
+        holder_name: meta.holder_name,
+        account_info: meta.account_info,
+        extra_info: null,
+        currency: "USD",
+        usd_rate: 1,
+        body_raw: body,
+        active: true,
+      } as never).select().single();
+      if (error || !inserted) {
+        await sendMessage("warehouse", msg.chat.id, `Error guardando: ${error?.message ?? "desconocido"}`);
+        return;
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "pm_add_simple",
+        target_type: "payment_method",
+        target_id: (inserted as { id: string }).id,
+        details: { country_code: cc } as never,
+      });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ Método de pago guardado correctamente.\n\n🌎 País: <b>${escapeHtml(country_name)}</b>\n\n${body}`,
+      );
+      return;
+    }
+
     // ===== Editar método pegando contenido verbatim (por país) =====
     const pmBodyMatch = replySource.match(/PMBODY:([A-Za-z0-9_-]+)/);
     if (pmBodyMatch) {
