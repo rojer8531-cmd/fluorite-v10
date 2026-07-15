@@ -715,43 +715,21 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
     await sendMessage("warehouse", chat_id, `Usuario no encontrado.`);
     return;
   }
-  const [{ count: ordersCount }, { count: deliveredCount }, { data: lastOrders }, { data: blocked }] = await Promise.all([
-    sb.from("orders").select("id", { count: "exact", head: true }).eq("telegram_id", telegram_id),
+  const [{ count: deliveredCount }, { data: blocked }] = await Promise.all([
     sb
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("telegram_id", telegram_id)
       .eq("status", "delivered"),
     sb
-      .from("orders")
-      .select("id, status, total_usd, created_at, products(name)")
-      .eq("telegram_id", telegram_id)
-      .order("created_at", { ascending: false })
-      .limit(5),
-    sb
       .from("blocked_users")
-      .select("blocked_until, reason")
+      .select("blocked_until")
       .eq("telegram_id", telegram_id)
       .maybeSingle(),
   ]);
 
-  const blockedTxt = blocked
-    ? blocked.blocked_until
-      ? `Bloqueado hasta ${new Date(blocked.blocked_until).toLocaleString("es")}`
-      : `Bloqueado permanente`
-    : `Activo`;
-
-  const ordersLines =
-    (lastOrders ?? [])
-      .map((o) => {
-        const name = (o as { products: { name: string } | null }).products?.name ?? "—";
-        return `${o.status}  ·  $${Number(o.total_usd).toFixed(2)}  ·  ${name}  ·  ${new Date(o.created_at).toLocaleDateString("es")}`;
-      })
-      .join("\n") || "Sin órdenes.";
-
-  const usernameLine = u.username
-    ? `Username  <a href="https://t.me/${u.username}">@${escapeHtml(u.username)}</a>`
-    : `Username  <i>no disponible</i>`;
+  const { normalizeRank, RANK_INFO } = await import("./ranks.server");
+  const rankInfo = RANK_INFO[normalizeRank(u.rank)];
 
   const relDate = (iso: string) => {
     const d = new Date(iso);
@@ -764,39 +742,40 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
     const months = Math.floor(diffDays / 30);
     return months === 1 ? "Hace 1 mes" : `Hace ${months} meses`;
   };
-  const statusDot = blocked ? "🔴" : "🟢";
-  const statusText = blocked ? blockedTxt : "Activo";
+
+  const isBlocked = !!blocked;
+  const statusLine = isBlocked ? "🔴 Estado: Bloqueado" : "🟢 Estado: Activo";
+  const displayName = u.display_name ?? u.username ?? "Sin nombre";
 
   const text =
-    `👤 <b>Usuario</b>\n\n` +
-    `<b>${escapeHtml(u.display_name ?? "Sin nombre")}</b>\n` +
-    `${usernameLine}\n\n` +
-    `ID        <code>${u.telegram_id}</code>\n` +
-    `Estado    ${statusDot} ${statusText}\n` +
-    `Rango     ${escapeHtml(String(u.rank ?? "Normal"))}\n\n` +
-    `Saldo     <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
-    `Órdenes   ${ordersCount ?? 0} · ${deliveredCount ?? 0} entregadas\n\n` +
-    `Registro  ${relDate(u.registered_at)}\n` +
-    `Visto     ${relDate(u.last_seen_at)}\n\n` +
-    `<b>Últimas órdenes</b>\n${ordersLines}`;
+    `👤 <b>${escapeHtml(displayName)}</b>\n` +
+    `🆔 <code>${u.telegram_id}</code>\n\n` +
+    `${statusLine}\n` +
+    `⌛️ Rango: ${escapeHtml(rankInfo.label)}\n\n` +
+    `💰 Saldo: $${Number(u.balance).toFixed(2)} USD\n` +
+    `📦 Ventas totales: ${deliveredCount ?? 0}\n\n` +
+    `🗓️ Registro: ${relDate(u.registered_at)}\n` +
+    `🕘 Última conexión: ${relDate(u.last_seen_at)}`;
 
-  const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
-  if (u.username) {
-    buttons.push([{ text: `Escribir a @${u.username}`, url: `https://t.me/${u.username}` }]);
-  }
-  buttons.push([
-    { text: "Enviar mensaje directo", callback_data: `akusrmsg:${u.telegram_id}` },
-  ]);
-  buttons.push([
-    { text: "💵 Descuento personal", callback_data: `akusrdisc:${u.telegram_id}` },
-  ]);
+  const msgBtn: { text: string; callback_data?: string; url?: string } = u.username
+    ? { text: "💬 Mensaje", url: `https://t.me/${u.username}` }
+    : { text: "💬 Mensaje", callback_data: `akusrmsg:${u.telegram_id}` };
 
-  buttons.push(
-    blocked
-      ? [{ text: "Desbloquear", callback_data: `akusrunblock:${u.telegram_id}` }]
-      : [{ text: "Bloquear", callback_data: `adm:block:${u.telegram_id}` }],
-  );
-  buttons.push([{ text: "Volver", callback_data: "akp:users" }]);
+  const blockBtn = isBlocked
+    ? { text: "🔓 Desbloquear", callback_data: `akusrunblock:${u.telegram_id}` }
+    : { text: "🚫 Bloquear", callback_data: `adm:block:${u.telegram_id}` };
+
+  const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [
+    [msgBtn, blockBtn],
+    [
+      { text: "🎁 Descuento", callback_data: `akusrdisc:${u.telegram_id}` },
+      { text: "🪬 Directo", callback_data: `akusrmsg:${u.telegram_id}` },
+    ],
+    [
+      { text: "🏠 Inicio", callback_data: "akp:inicio" },
+      { text: "↩️ Volver", callback_data: "akp:users" },
+    ],
+  ];
 
   await sendMessage("warehouse", chat_id, text, {
     reply_markup: { inline_keyboard: buttons },
