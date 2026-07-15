@@ -359,13 +359,14 @@ const COUNTRY_MAP: Record<string, string> = {
 // ===== Gestión de métodos de pago =====
 
 async function pmMenu(chat_id: number) {
-  await sendMessage("warehouse", chat_id, `<b>Métodos de Pago</b>\n\nSeleccioná una opción:`, {
+  await sendMessage("warehouse", chat_id, `<b>💳 Métodos de Pago</b>\n\nSeleccioná una opción:`, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Editar Método (Pegar Contenido)", callback_data: "pm:editlist" }],
-        [{ text: "Agregar País Nuevo", callback_data: "pm:addnew" }],
-        [{ text: "Eliminar Método", callback_data: "pm:dellist" }],
-        [{ text: "Países Disponibles", callback_data: "pm:countries" }],
+        [{ text: "➕ Agregar método", callback_data: "pm:add" }],
+        [{ text: "✏️ Editar método", callback_data: "pm:editlist" }],
+        [{ text: "🗑️ Eliminar método", callback_data: "pm:dellist" }],
+        [{ text: "📋 Ver métodos", callback_data: "pm:countries" }],
+        [{ text: "⬅️ Volver", callback_data: "akp:inicio" }],
       ],
     },
   });
@@ -453,6 +454,51 @@ async function pmPromptAddCountry(chat_id: number) {
     { reply_markup: { force_reply: true, selective: true } },
   );
 }
+
+function deriveCountryCode(name: string): string {
+  const key = name.trim().toLowerCase();
+  if (COUNTRY_MAP[key]) return COUNTRY_MAP[key];
+  const clean = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
+  return (clean.slice(0, 2) || "XX").toUpperCase();
+}
+
+async function pmPromptAddStep1(chat_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PMADD1</b>\n\n🌎 ¿Para qué país deseas agregar un método de pago?\n\nRespondé a este mensaje con el nombre del país.\nEjemplo: <code>Argentina</code>`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function pmPromptAddStep2(chat_id: number, cc: string, country_name: string) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PMADD2:${cc}|${country_name}</b>\n\n📋 Ahora pegá el método de pago completo para <b>${escapeHtml(country_name)}</b>.\n\nSe guardará exactamente como lo envíes, respetando emojis, saltos de línea y formato.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function pmConfirmReplaceExisting(chat_id: number, cc: string, country_name: string) {
+  await patchContext(Number(adminId()), { pm_pending: { cc, name: country_name } });
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `⚠️ Ya existe un método para <b>${escapeHtml(country_name)}</b>. ¿Deseas reemplazarlo?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "✅ Reemplazar", callback_data: "pmadd:replace" },
+            { text: "❌ Cancelar", callback_data: "pmadd:cancel" },
+          ],
+        ],
+      },
+    },
+  );
+}
+
 
 
 async function pmCountriesView(chat_id: number) {
@@ -715,43 +761,21 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
     await sendMessage("warehouse", chat_id, `Usuario no encontrado.`);
     return;
   }
-  const [{ count: ordersCount }, { count: deliveredCount }, { data: lastOrders }, { data: blocked }] = await Promise.all([
-    sb.from("orders").select("id", { count: "exact", head: true }).eq("telegram_id", telegram_id),
+  const [{ count: deliveredCount }, { data: blocked }] = await Promise.all([
     sb
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("telegram_id", telegram_id)
       .eq("status", "delivered"),
     sb
-      .from("orders")
-      .select("id, status, total_usd, created_at, products(name)")
-      .eq("telegram_id", telegram_id)
-      .order("created_at", { ascending: false })
-      .limit(5),
-    sb
       .from("blocked_users")
-      .select("blocked_until, reason")
+      .select("blocked_until")
       .eq("telegram_id", telegram_id)
       .maybeSingle(),
   ]);
 
-  const blockedTxt = blocked
-    ? blocked.blocked_until
-      ? `Bloqueado hasta ${new Date(blocked.blocked_until).toLocaleString("es")}`
-      : `Bloqueado permanente`
-    : `Activo`;
-
-  const ordersLines =
-    (lastOrders ?? [])
-      .map((o) => {
-        const name = (o as { products: { name: string } | null }).products?.name ?? "—";
-        return `${o.status}  ·  $${Number(o.total_usd).toFixed(2)}  ·  ${name}  ·  ${new Date(o.created_at).toLocaleDateString("es")}`;
-      })
-      .join("\n") || "Sin órdenes.";
-
-  const usernameLine = u.username
-    ? `Username  <a href="https://t.me/${u.username}">@${escapeHtml(u.username)}</a>`
-    : `Username  <i>no disponible</i>`;
+  const { normalizeRank, RANK_INFO } = await import("./ranks.server");
+  const rankInfo = RANK_INFO[normalizeRank(u.rank)];
 
   const relDate = (iso: string) => {
     const d = new Date(iso);
@@ -764,39 +788,40 @@ async function adminUserDetail(chat_id: number, telegram_id: number) {
     const months = Math.floor(diffDays / 30);
     return months === 1 ? "Hace 1 mes" : `Hace ${months} meses`;
   };
-  const statusDot = blocked ? "🔴" : "🟢";
-  const statusText = blocked ? blockedTxt : "Activo";
+
+  const isBlocked = !!blocked;
+  const statusLine = isBlocked ? "🔴 Estado: Bloqueado" : "🟢 Estado: Activo";
+  const displayName = u.display_name ?? u.username ?? "Sin nombre";
 
   const text =
-    `👤 <b>Usuario</b>\n\n` +
-    `<b>${escapeHtml(u.display_name ?? "Sin nombre")}</b>\n` +
-    `${usernameLine}\n\n` +
-    `ID        <code>${u.telegram_id}</code>\n` +
-    `Estado    ${statusDot} ${statusText}\n` +
-    `Rango     ${escapeHtml(String(u.rank ?? "Normal"))}\n\n` +
-    `Saldo     <b>$${Number(u.balance).toFixed(2)} USD</b>\n` +
-    `Órdenes   ${ordersCount ?? 0} · ${deliveredCount ?? 0} entregadas\n\n` +
-    `Registro  ${relDate(u.registered_at)}\n` +
-    `Visto     ${relDate(u.last_seen_at)}\n\n` +
-    `<b>Últimas órdenes</b>\n${ordersLines}`;
+    `👤 <b>${escapeHtml(displayName)}</b>\n` +
+    `🆔 <code>${u.telegram_id}</code>\n\n` +
+    `${statusLine}\n` +
+    `⌛️ Rango: ${escapeHtml(rankInfo.label)}\n\n` +
+    `💰 Saldo: $${Number(u.balance).toFixed(2)} USD\n` +
+    `📦 Ventas totales: ${deliveredCount ?? 0}\n\n` +
+    `🗓️ Registro: ${relDate(u.registered_at)}\n` +
+    `🕘 Última conexión: ${relDate(u.last_seen_at)}`;
 
-  const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [];
-  if (u.username) {
-    buttons.push([{ text: `Escribir a @${u.username}`, url: `https://t.me/${u.username}` }]);
-  }
-  buttons.push([
-    { text: "Enviar mensaje directo", callback_data: `akusrmsg:${u.telegram_id}` },
-  ]);
-  buttons.push([
-    { text: "💵 Descuento personal", callback_data: `akusrdisc:${u.telegram_id}` },
-  ]);
+  const msgBtn: { text: string; callback_data?: string; url?: string } = u.username
+    ? { text: "💬 Mensaje", url: `https://t.me/${u.username}` }
+    : { text: "💬 Mensaje", callback_data: `akusrmsg:${u.telegram_id}` };
 
-  buttons.push(
-    blocked
-      ? [{ text: "Desbloquear", callback_data: `akusrunblock:${u.telegram_id}` }]
-      : [{ text: "Bloquear", callback_data: `adm:block:${u.telegram_id}` }],
-  );
-  buttons.push([{ text: "Volver", callback_data: "akp:users" }]);
+  const blockBtn = isBlocked
+    ? { text: "🔓 Desbloquear", callback_data: `akusrunblock:${u.telegram_id}` }
+    : { text: "🚫 Bloquear", callback_data: `adm:block:${u.telegram_id}` };
+
+  const buttons: Array<Array<{ text: string; callback_data?: string; url?: string }>> = [
+    [msgBtn, blockBtn],
+    [
+      { text: "🎁 Descuento", callback_data: `akusrdisc:${u.telegram_id}` },
+      { text: "🪬 Directo", callback_data: `akusrmsg:${u.telegram_id}` },
+    ],
+    [
+      { text: "🏠 Inicio", callback_data: "akp:inicio" },
+      { text: "↩️ Volver", callback_data: "akp:users" },
+    ],
+  ];
 
   await sendMessage("warehouse", chat_id, text, {
     reply_markup: { inline_keyboard: buttons },
@@ -1472,6 +1497,71 @@ async function handleMessage(msg: TgMessage) {
       return;
     }
 
+    // ===== Agregar método (paso 1: pedir nombre del país) =====
+    if (replySource.includes("PMADD1")) {
+      const country_name = text.trim().replace(/\s+/g, " ");
+      if (country_name.length < 2 || country_name.length > 40) {
+        await sendMessage("warehouse", msg.chat.id, `Nombre de país inválido.`);
+        return;
+      }
+      const cc = deriveCountryCode(country_name);
+      const { data: existing } = await sb
+        .from("payment_methods")
+        .select("id")
+        .eq("country_code", cc)
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        await pmConfirmReplaceExisting(msg.chat.id, cc, country_name);
+        return;
+      }
+      await pmPromptAddStep2(msg.chat.id, cc, country_name);
+      return;
+    }
+
+    // ===== Agregar método (paso 2: guardar contenido verbatim) =====
+    const pmAdd2Match = replySource.match(/PMADD2:([A-Za-z0-9_-]+)\|([^\n]+)/);
+    if (pmAdd2Match) {
+      const cc = pmAdd2Match[1].toUpperCase();
+      const country_name = pmAdd2Match[2].trim();
+      const body = text;
+      if (!body.trim()) {
+        await sendMessage("warehouse", msg.chat.id, `El contenido está vacío.`);
+        return;
+      }
+      const meta = extractPmMetadata(body);
+      await sb.from("payment_methods").delete().eq("country_code", cc);
+      const { data: inserted, error } = await sb.from("payment_methods").insert({
+        country_code: cc,
+        country_name,
+        method_name: meta.method_name ?? "Pago",
+        holder_name: meta.holder_name,
+        account_info: meta.account_info,
+        extra_info: null,
+        currency: "USD",
+        usd_rate: 1,
+        body_raw: body,
+        active: true,
+      } as never).select().single();
+      if (error || !inserted) {
+        await sendMessage("warehouse", msg.chat.id, `Error guardando: ${error?.message ?? "desconocido"}`);
+        return;
+      }
+      await sb.from("admin_logs").insert({
+        admin_telegram_id: msg.from.id,
+        action: "pm_add_simple",
+        target_type: "payment_method",
+        target_id: (inserted as { id: string }).id,
+        details: { country_code: cc } as never,
+      });
+      await sendMessage(
+        "warehouse",
+        msg.chat.id,
+        `✅ Método de pago guardado correctamente.\n\n🌎 País: <b>${escapeHtml(country_name)}</b>\n\n${body}`,
+      );
+      return;
+    }
+
     // ===== Editar método pegando contenido verbatim (por país) =====
     const pmBodyMatch = replySource.match(/PMBODY:([A-Za-z0-9_-]+)/);
     if (pmBodyMatch) {
@@ -1984,6 +2074,24 @@ async function handleCallback(cb: TgCallback) {
   }
   if (data === "akp:pm") { if (chat_id) await pmMenu(chat_id); return; }
   if (data === "pm:addnew") { if (chat_id) await pmPromptAddCountry(chat_id); return; }
+  if (data === "pm:add") { if (chat_id) await pmPromptAddStep1(chat_id); return; }
+  if (data === "pmadd:cancel") {
+    await patchContext(Number(adminId()), { pm_pending: null });
+    if (chat_id) await sendMessage("warehouse", chat_id, `❌ Cancelado.`);
+    return;
+  }
+  if (data === "pmadd:replace") {
+    if (!chat_id) return;
+    const st = await getState(Number(adminId()));
+    const pending = (st?.context as { pm_pending?: { cc: string; name: string } } | undefined)?.pm_pending;
+    if (!pending) {
+      await sendMessage("warehouse", chat_id, `Sesión expirada. Volvé a intentarlo.`);
+      return;
+    }
+    await patchContext(Number(adminId()), { pm_pending: null });
+    await pmPromptAddStep2(chat_id, pending.cc, pending.name);
+    return;
+  }
   if (data === "pm:editlist") { if (chat_id) await pmListAll(chat_id, "edit"); return; }
   if (data === "pm:dellist") { if (chat_id) await pmListAll(chat_id, "del"); return; }
   if (data === "pm:countries") { if (chat_id) await pmCountriesView(chat_id); return; }
