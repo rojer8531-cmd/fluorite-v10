@@ -2009,6 +2009,24 @@ async function handleCallback(cb: TgCallback) {
   }
   if (data === "akp:pm") { if (chat_id) await pmMenu(chat_id); return; }
   if (data === "pm:addnew") { if (chat_id) await pmPromptAddCountry(chat_id); return; }
+  if (data === "pm:add") { if (chat_id) await pmPromptAddStep1(chat_id); return; }
+  if (data === "pmadd:cancel") {
+    await patchContext(Number(adminId()), { pm_pending: null });
+    if (chat_id) await sendMessage("warehouse", chat_id, `❌ Cancelado.`);
+    return;
+  }
+  if (data === "pmadd:replace") {
+    if (!chat_id) return;
+    const st = await getState(Number(adminId()));
+    const pending = (st?.context as { pm_pending?: { cc: string; name: string } } | undefined)?.pm_pending;
+    if (!pending) {
+      await sendMessage("warehouse", chat_id, `Sesión expirada. Volvé a intentarlo.`);
+      return;
+    }
+    await patchContext(Number(adminId()), { pm_pending: null });
+    await pmPromptAddStep2(chat_id, pending.cc, pending.name);
+    return;
+  }
   if (data === "pm:editlist") { if (chat_id) await pmListAll(chat_id, "edit"); return; }
   if (data === "pm:dellist") { if (chat_id) await pmListAll(chat_id, "del"); return; }
   if (data === "pm:countries") { if (chat_id) await pmCountriesView(chat_id); return; }
