@@ -359,13 +359,14 @@ const COUNTRY_MAP: Record<string, string> = {
 // ===== Gestión de métodos de pago =====
 
 async function pmMenu(chat_id: number) {
-  await sendMessage("warehouse", chat_id, `<b>Métodos de Pago</b>\n\nSeleccioná una opción:`, {
+  await sendMessage("warehouse", chat_id, `<b>💳 Métodos de Pago</b>\n\nSeleccioná una opción:`, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "Editar Método (Pegar Contenido)", callback_data: "pm:editlist" }],
-        [{ text: "Agregar País Nuevo", callback_data: "pm:addnew" }],
-        [{ text: "Eliminar Método", callback_data: "pm:dellist" }],
-        [{ text: "Países Disponibles", callback_data: "pm:countries" }],
+        [{ text: "➕ Agregar método", callback_data: "pm:add" }],
+        [{ text: "✏️ Editar método", callback_data: "pm:editlist" }],
+        [{ text: "🗑️ Eliminar método", callback_data: "pm:dellist" }],
+        [{ text: "📋 Ver métodos", callback_data: "pm:countries" }],
+        [{ text: "⬅️ Volver", callback_data: "akp:inicio" }],
       ],
     },
   });
