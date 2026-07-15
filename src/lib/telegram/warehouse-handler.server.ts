@@ -455,6 +455,51 @@ async function pmPromptAddCountry(chat_id: number) {
   );
 }
 
+function deriveCountryCode(name: string): string {
+  const key = name.trim().toLowerCase();
+  if (COUNTRY_MAP[key]) return COUNTRY_MAP[key];
+  const clean = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
+  return (clean.slice(0, 2) || "XX").toUpperCase();
+}
+
+async function pmPromptAddStep1(chat_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PMADD1</b>\n\n🌎 ¿Para qué país deseas agregar un método de pago?\n\nRespondé a este mensaje con el nombre del país.\nEjemplo: <code>Argentina</code>`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function pmPromptAddStep2(chat_id: number, cc: string, country_name: string) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PMADD2:${cc}|${country_name}</b>\n\n📋 Ahora pegá el método de pago completo para <b>${escapeHtml(country_name)}</b>.\n\nSe guardará exactamente como lo envíes, respetando emojis, saltos de línea y formato.`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function pmConfirmReplaceExisting(chat_id: number, cc: string, country_name: string) {
+  await patchContext(Number(adminId()), { pm_pending: { cc, name: country_name } });
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `⚠️ Ya existe un método para <b>${escapeHtml(country_name)}</b>. ¿Deseas reemplazarlo?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "✅ Reemplazar", callback_data: "pmadd:replace" },
+            { text: "❌ Cancelar", callback_data: "pmadd:cancel" },
+          ],
+        ],
+      },
+    },
+  );
+}
+
+
 
 async function pmCountriesView(chat_id: number) {
   const { data: methods } = await sb
