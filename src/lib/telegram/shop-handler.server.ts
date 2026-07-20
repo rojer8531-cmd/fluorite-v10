@@ -230,6 +230,10 @@ const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
 };
 
 const DOWNLOAD_PANEL_URL = "https://resendstore.vercel.app/";
+const REESEND_DOWNLOAD_URL = "https://reesend.vercel.app/";
+function downloadUrlFor(productName: string) {
+  return /reesend/i.test(productName) ? REESEND_DOWNLOAD_URL : DOWNLOAD_PANEL_URL;
+}
 const OFFICIAL_CHANNEL_URL = "https://whatsapp.com/channel/0029VbC678PIyPtc7iERCH2R";
 
 function isBottomMenuText(text: string) {
