@@ -2237,6 +2237,48 @@ async function handleCallback(cb: TgCallback) {
   answerCallbackQuery("warehouse", cb.id).catch(() => {});
   const data = cb.data ?? "";
   const chat_id = cb.message?.chat.id;
+  // ===== Wizard Agregar Producto =====
+  if (data === "padd:new") {
+    if (chat_id) await padStartCategory(chat_id, cb.from.id);
+    return;
+  }
+  if (data.startsWith("padd:cat:")) {
+    const cat = data.slice(9) === "iOS" ? "iOS" : "Android";
+    await setProductAddCtx(cb.from.id, { category: cat });
+    if (chat_id) await padPromptName(chat_id);
+    return;
+  }
+  if (data === "padd:cancel") {
+    await clearProductAddCtx(cb.from.id);
+    if (chat_id) await sendMessage("warehouse", chat_id, `❌ Cancelado. No se guardó ningún producto.`);
+    return;
+  }
+  if (data === "padd:preview") {
+    if (chat_id) await padShowPreview(chat_id, cb.from.id);
+    return;
+  }
+  if (data === "padd:edit") {
+    if (chat_id) await padShowEditMenu(chat_id);
+    return;
+  }
+  if (data === "padd:ecat") {
+    if (chat_id) await padStartCategory(chat_id, cb.from.id);
+    return;
+  }
+  if (data === "padd:ename") {
+    if (chat_id) await padPromptName(chat_id);
+    return;
+  }
+  if (data.startsWith("padd:ep:")) {
+    const which = data.slice(8) as "1" | "7" | "30";
+    if (chat_id) await padPromptPrice(chat_id, which, which === "1" ? 3 : which === "7" ? 4 : 5);
+    return;
+  }
+  if (data === "padd:save") {
+    if (chat_id) await padSaveProduct(chat_id, cb.from.id, cb.from.id);
+    return;
+  }
+
 
   if (data === "akp:inicio") {
     if (chat_id) {
