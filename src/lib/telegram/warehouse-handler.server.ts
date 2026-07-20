@@ -1665,6 +1665,42 @@ async function handleMessage(msg: TgMessage) {
       );
       return;
     }
+    // ===== Wizard Agregar Producto: nombre =====
+    if (replySource.includes("PRODADD:name")) {
+      const name = text.trim().replace(/\s+/g, " ");
+      if (name.length < 2 || name.length > 60) {
+        await sendMessage("warehouse", msg.chat.id, `Nombre inválido (2-60 caracteres). Volvé a intentar.`);
+        return;
+      }
+      await setProductAddCtx(msg.from.id, { name });
+      const c = await getProductAddCtx(msg.from.id);
+      if (c.p1 != null && c.p7 != null && c.p30 != null) {
+        await padShowPreview(msg.chat.id, msg.from.id);
+      } else {
+        await padPromptPrice(msg.chat.id, "1", 3);
+      }
+      return;
+    }
+
+    // ===== Wizard Agregar Producto: precios =====
+    const padPriceMatch = replySource.match(/PRODADD:price:(1|7|30)/);
+    if (padPriceMatch) {
+      const which = padPriceMatch[1] as "1" | "7" | "30";
+      const n = Number(text.replace(",", ".").trim());
+      if (!Number.isFinite(n) || n < 0 || n > 100000) {
+        await sendMessage("warehouse", msg.chat.id, `Precio inválido. Ejemplo: <code>4.00</code>`);
+        return;
+      }
+      const key = which === "1" ? "p1" : which === "7" ? "p7" : "p30";
+      await setProductAddCtx(msg.from.id, { [key]: n } as Partial<ProductAddCtx>);
+      const c = await getProductAddCtx(msg.from.id);
+      if (c.p1 == null) return padPromptPrice(msg.chat.id, "1", 3);
+      if (c.p7 == null) return padPromptPrice(msg.chat.id, "7", 4);
+      if (c.p30 == null) return padPromptPrice(msg.chat.id, "30", 5);
+      await padShowPreview(msg.chat.id, msg.from.id);
+      return;
+    }
+
 
     // ===== Agregar método (paso 1: pedir nombre del país) =====
     if (replySource.includes("PMADD1")) {
