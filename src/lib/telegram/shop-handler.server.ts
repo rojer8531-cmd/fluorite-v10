@@ -1080,7 +1080,7 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
     `🔑 <b>Tu Key</b>\n<code>${escapeHtml(keyVal)}</code>\n\n` +
     `🧾 <b>Orden:</b> ${escapeHtml(orderId)}\n` +
     `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
-    `📂 <b>Descargar Archivo:</b> ${DOWNLOAD_PANEL_URL}\n\n` +
+    `📂 <b>Descargar Archivo:</b> ${downloadUrlFor(productName)}\n\n` +
     `¡Gracias por tu compra! Disfruta tu producto.`;
 
   await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
