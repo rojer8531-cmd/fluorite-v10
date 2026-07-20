@@ -915,15 +915,182 @@ async function adminProductsList(chat_id: number) {
     await sendMessage("warehouse", chat_id, `No hay productos cargados.`);
     return;
   }
-  const kb = products.map((p) => [
-    {
-      text: `${p.active ? "" : "⏸ "}${p.name}  ·  ${p.category}`,
-      callback_data: `prodm:${p.id}`,
-    },
-  ]);
-  await sendMessage("warehouse", chat_id, `<b>📦 Productos (iOS / Android)</b>\n\nElegí un producto para editar o borrar:`, {
+  const kb: { text: string; callback_data: string }[][] = [
+    [{ text: "➕ Agregar Producto", callback_data: "padd:new" }],
+  ];
+  for (const p of products) {
+    kb.push([
+      {
+        text: `${p.active ? "" : "⏸ "}${p.name}  ·  ${p.category}`,
+        callback_data: `prodm:${p.id}`,
+      },
+    ]);
+  }
+  await sendMessage("warehouse", chat_id, `<b>📦 Productos (iOS / Android)</b>\n\nElegí un producto para editar o borrar, o agregá uno nuevo:`, {
     reply_markup: { inline_keyboard: kb },
   });
+}
+
+// ===== Wizard: Agregar Producto =====
+interface ProductAddCtx {
+  category?: "iOS" | "Android";
+  name?: string;
+  p1?: number;
+  p7?: number;
+  p30?: number;
+}
+
+async function getProductAddCtx(telegram_id: number): Promise<ProductAddCtx> {
+  const st = await getState(telegram_id);
+  const raw = (st?.context as { padd?: ProductAddCtx } | undefined)?.padd;
+  return raw ?? {};
+}
+
+async function setProductAddCtx(telegram_id: number, patch: Partial<ProductAddCtx>) {
+  const cur = await getProductAddCtx(telegram_id);
+  await patchContext(telegram_id, { padd: { ...cur, ...patch } });
+}
+
+async function clearProductAddCtx(telegram_id: number) {
+  await patchContext(telegram_id, { padd: null });
+}
+
+async function padStartCategory(chat_id: number, telegram_id: number) {
+  await clearProductAddCtx(telegram_id);
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>➕ Agregar Producto</b>\n\nPaso 1 de 5 — Elegí la plataforma:`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "📱 iOS", callback_data: "padd:cat:iOS" },
+            { text: "🤖 Android", callback_data: "padd:cat:Android" },
+          ],
+          [{ text: "❌ Cancelar", callback_data: "padd:cancel" }],
+        ],
+      },
+    },
+  );
+}
+
+async function padPromptName(chat_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PRODADD:name</b>\n\nPaso 2 de 5 — Respondé con el <b>nombre del producto</b>.\n\nEjemplo: <code>DRIP CLIENT</code>`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+async function padPromptPrice(chat_id: number, which: "1" | "7" | "30", step: number) {
+  const label = which === "1" ? "1 Día" : which === "7" ? "7 Días" : "30 Días";
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>PRODADD:price:${which}</b>\n\nPaso ${step} de 5 — Respondé con el precio de <b>${label}</b> en USD.\n\nEjemplo: <code>4.00</code>`,
+    { reply_markup: { force_reply: true, selective: true } },
+  );
+}
+
+function fmtPricePreview(n: number) {
+  return Number.isInteger(n) ? `$${n}.00` : `$${n.toFixed(2)}`;
+}
+
+async function padShowPreview(chat_id: number, telegram_id: number) {
+  const c = await getProductAddCtx(telegram_id);
+  if (!c.name || c.p1 == null || c.p7 == null || c.p30 == null) {
+    await sendMessage("warehouse", chat_id, `Faltan datos, empezá de nuevo.`);
+    return;
+  }
+  const text =
+    `<b>Vista previa</b>\n\n` +
+    `📦 <b>${escapeHtml(c.name)}</b>  ·  ${c.category}\n` +
+    `Seleccioná una duración.\n\n` +
+    `⌛️ 1 Día • ${fmtPricePreview(c.p1)}\n` +
+    `⌛️ 7 Días • ${fmtPricePreview(c.p7)}\n` +
+    `⌛️ 30 Días • ${fmtPricePreview(c.p30)}`;
+  await sendMessage("warehouse", chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "➕ Agregar Producto", callback_data: "padd:save" }],
+        [{ text: "✏️ Editar", callback_data: "padd:edit" }],
+        [{ text: "❌ Cancelar", callback_data: "padd:cancel" }],
+      ],
+    },
+  });
+}
+
+async function padShowEditMenu(chat_id: number) {
+  await sendMessage("warehouse", chat_id, `✏️ ¿Qué querés editar?`, {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "📱 Plataforma", callback_data: "padd:ecat" },
+          { text: "📝 Nombre", callback_data: "padd:ename" },
+        ],
+        [
+          { text: "1 Día", callback_data: "padd:ep:1" },
+          { text: "7 Días", callback_data: "padd:ep:7" },
+          { text: "30 Días", callback_data: "padd:ep:30" },
+        ],
+        [{ text: "⬅️ Volver a vista previa", callback_data: "padd:preview" }],
+      ],
+    },
+  });
+}
+
+async function padSaveProduct(chat_id: number, telegram_id: number, admin_id: number) {
+  const c = await getProductAddCtx(telegram_id);
+  if (!c.category || !c.name || c.p1 == null || c.p7 == null || c.p30 == null) {
+    await sendMessage("warehouse", chat_id, `Faltan datos, empezá de nuevo.`);
+    return;
+  }
+  const { data: maxRow } = await sb
+    .from("products")
+    .select("sort_order")
+    .eq("category", c.category)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextSort = ((maxRow?.sort_order as number | undefined) ?? 0) + 1;
+  const { data: prod, error } = await sb
+    .from("products")
+    .insert({ name: c.name, category: c.category, active: true, sort_order: nextSort } as never)
+    .select("id")
+    .single();
+  if (error || !prod) {
+    await sendMessage("warehouse", chat_id, `Error: ${error?.message ?? "no se pudo crear el producto"}`);
+    return;
+  }
+  const pid = (prod as { id: string }).id;
+  const priceRows = [
+    { product_id: pid, duration_label: "1 Día", duration_days: 1, price_usd: c.p1, active: true, sort_order: 1 },
+    { product_id: pid, duration_label: "7 Días", duration_days: 7, price_usd: c.p7, active: true, sort_order: 2 },
+    { product_id: pid, duration_label: "30 Días", duration_days: 30, price_usd: c.p30, active: true, sort_order: 3 },
+  ];
+  const { error: prErr } = await sb.from("product_prices").insert(priceRows as never);
+  if (prErr) {
+    await sb.from("products").delete().eq("id", pid);
+    await sendMessage("warehouse", chat_id, `Error creando precios: ${prErr.message}`);
+    return;
+  }
+  invalidateCatalogCache();
+  await sb.from("admin_logs").insert({
+    admin_telegram_id: admin_id,
+    action: "product_add",
+    target_type: "product",
+    target_id: pid,
+    details: { name: c.name, category: c.category, p1: c.p1, p7: c.p7, p30: c.p30 } as never,
+  });
+  await clearProductAddCtx(telegram_id);
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `✅ Producto agregado.\n\n📦 <b>${escapeHtml(c.name)}</b>  ·  ${c.category}\n⌛️ 1 Día • ${fmtPricePreview(c.p1)}\n⌛️ 7 Días • ${fmtPricePreview(c.p7)}\n⌛️ 30 Días • ${fmtPricePreview(c.p30)}\n\nYa está disponible para los usuarios.`,
+  );
+  await adminProductsList(chat_id);
 }
 
 async function adminProductMenu(chat_id: number, product_id: string) {
