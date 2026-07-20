@@ -176,7 +176,7 @@ const RANK_LABEL: Record<string, string> = {
   leyenda: "💎 Diamond",
 };
 
-const SUPPORT_USERNAME = "@ravevq";
+const SUPPORT_USERNAME = "@rsnnd";
 
 function adminReceiptKeyboard(order_id: string, telegram_id: number) {
   return {
