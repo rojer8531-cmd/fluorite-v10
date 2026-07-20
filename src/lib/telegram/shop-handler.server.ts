@@ -176,7 +176,7 @@ const RANK_LABEL: Record<string, string> = {
   leyenda: "💎 Diamond",
 };
 
-const SUPPORT_USERNAME = "@ravevq";
+const SUPPORT_USERNAME = "@rsnnd";
 
 function adminReceiptKeyboard(order_id: string, telegram_id: number) {
   return {
@@ -230,6 +230,10 @@ const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
 };
 
 const DOWNLOAD_PANEL_URL = "https://resendstore.vercel.app/";
+const REESEND_DOWNLOAD_URL = "https://reesend.vercel.app/";
+function downloadUrlFor(productName: string) {
+  return /reesend/i.test(productName) ? REESEND_DOWNLOAD_URL : DOWNLOAD_PANEL_URL;
+}
 const OFFICIAL_CHANNEL_URL = "https://whatsapp.com/channel/0029VbC678PIyPtc7iERCH2R";
 
 function isBottomMenuText(text: string) {
@@ -1076,7 +1080,7 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
     `🔑 <b>Tu Key</b>\n<code>${escapeHtml(keyVal)}</code>\n\n` +
     `🧾 <b>Orden:</b> ${escapeHtml(orderId)}\n` +
     `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
-    `📂 <b>Descargar Archivo:</b> ${DOWNLOAD_PANEL_URL}\n\n` +
+    `📂 <b>Descargar Archivo:</b> ${downloadUrlFor(productName)}\n\n` +
     `¡Gracias por tu compra! Disfruta tu producto.`;
 
   await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
@@ -1156,7 +1160,7 @@ async function acceptManualKey(telegram_id: number, chat_id: number) {
     `⏳ Tu key será enviada por un administrador en unos minutos.\n\n` +
     `🧾 <b>Orden:</b> ${escapeHtml(shortId)}\n` +
     `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
-    `📂 <b>Descargar Archivo:</b> ${DOWNLOAD_PANEL_URL}\n\n` +
+    `📂 <b>Descargar Archivo:</b> ${downloadUrlFor(productName)}\n\n` +
     `¡Gracias por tu compra!`;
   await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
 }
