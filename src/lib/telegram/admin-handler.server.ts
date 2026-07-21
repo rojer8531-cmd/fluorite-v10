@@ -83,7 +83,7 @@ function adminBottomKeyboard() {
   return {
     keyboard: [
       [{ text: ADMIN_BOTTOM.pendientes }, { text: ADMIN_BOTTOM.bloqueos }],
-      [{ text: ADMIN_BOTTOM.usuario }, { text: ADMIN_BOTTOM.rol }],
+      [{ text: ADMIN_BOTTOM.rol }],
     ],
     resize_keyboard: true,
     is_persistent: true,
