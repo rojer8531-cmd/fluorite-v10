@@ -5,6 +5,7 @@ import {
   sendMessage as _rawSendMessage,
   editMessageReplyMarkup,
   editMessageCaption,
+  editMessageText,
   deleteMessage,
   answerCallbackQuery,
   getAdminChatId,
@@ -82,7 +83,7 @@ function adminBottomKeyboard() {
   return {
     keyboard: [
       [{ text: ADMIN_BOTTOM.pendientes }, { text: ADMIN_BOTTOM.bloqueos }],
-      [{ text: ADMIN_BOTTOM.usuario }, { text: ADMIN_BOTTOM.rol }],
+      [{ text: ADMIN_BOTTOM.rol }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -295,29 +296,64 @@ async function adminPendientes(chat_id: number) {
 }
 
 // ===== Bloqueos =====
-async function adminBloqueos(chat_id: number) {
+type BlockedRow = { telegram_id: number; reason: string | null; blocked_until: string | null };
+
+async function loadBlockedList(): Promise<BlockedRow[]> {
   const { data } = await sb
     .from("blocked_users")
-    .select("telegram_id, reason, blocked_until, infraction_count")
+    .select("telegram_id, reason, blocked_until")
     .order("telegram_id")
-    .limit(50);
-  if (!data || data.length === 0) {
+    .limit(200);
+  return (data as BlockedRow[] | null) ?? [];
+}
+
+function bloqueoText(b: BlockedRow): string {
+  const status = b.blocked_until
+    ? `⏳ Hasta ${new Date(b.blocked_until).toLocaleString("es")}`
+    : `✖️ Permanente`;
+  return `<b>🚫 Bloqueos</b>\n\n🔒 Usuario\n\n<code>${b.telegram_id}</code>\n\n${status}`;
+}
+
+function bloqueoKb(b: BlockedRow, idx: number, total: number) {
+  const prev = (idx - 1 + total) % total;
+  const next = (idx + 1) % total;
+  return {
+    inline_keyboard: [
+      [{ text: "🔓 Desbloquear", callback_data: `admbl:unblock:${b.telegram_id}:${idx}` }],
+      [
+        { text: "🔚", callback_data: `admbl:page:${prev}` },
+        { text: `${idx + 1}/${total}`, callback_data: "noop" },
+        { text: "🔜", callback_data: `admbl:page:${next}` },
+      ],
+    ],
+  };
+}
+
+async function adminBloqueos(chat_id: number) {
+  const list = await loadBlockedList();
+  if (list.length === 0) {
     await sendMessage(chat_id, `<b>🚫 Bloqueos</b>\n\nNo hay usuarios bloqueados.`);
     return;
   }
-  const lines = data.map((b, i) => {
-    const until = b.blocked_until
-      ? `hasta ${new Date(b.blocked_until).toLocaleString("es")}`
-      : `permanente`;
-    return `${i + 1}. <code>${b.telegram_id}</code> · ${escapeHtml(b.reason ?? "—")} · ${until}`;
-  });
-  const kb = data.map((b) => [
-    { text: `Desbloquear ${b.telegram_id}`, callback_data: `admunblock:${b.telegram_id}` },
-  ]);
-  await sendMessage(chat_id, `<b>🚫 Bloqueos (${data.length})</b>\n\n${lines.join("\n")}`, {
-    reply_markup: { inline_keyboard: kb },
+  await sendMessage(chat_id, bloqueoText(list[0]), {
+    reply_markup: bloqueoKb(list[0], 0, list.length),
   });
 }
+
+async function bloqueosEditPage(chat_id: number, message_id: number, idx: number) {
+  const list = await loadBlockedList();
+  if (list.length === 0) {
+    await editMessageText("admin", chat_id, message_id, `<b>🚫 Bloqueos</b>\n\nNo hay usuarios bloqueados.`, {
+      reply_markup: { inline_keyboard: [] },
+    }).catch(() => {});
+    return;
+  }
+  const safeIdx = ((idx % list.length) + list.length) % list.length;
+  await editMessageText("admin", chat_id, message_id, bloqueoText(list[safeIdx]), {
+    reply_markup: bloqueoKb(list[safeIdx], safeIdx, list.length),
+  }).catch(() => {});
+}
+
 
 // ===== Acreditar recarga (cuando el admin responde con monto) =====
 async function creditRecharge(
@@ -700,6 +736,30 @@ async function handleCallback(cb: TgCallback) {
   answerCallbackQuery("admin", cb.id).catch(() => {});
   const data = cb.data ?? "";
   const chat_id = cb.message?.chat.id;
+
+  if (data === "noop") return;
+
+  if (data.startsWith("admbl:page:") && chat_id && cb.message) {
+    const idx = parseInt(data.slice("admbl:page:".length), 10) || 0;
+    await bloqueosEditPage(chat_id, cb.message.message_id, idx);
+    return;
+  }
+  if (data.startsWith("admbl:unblock:") && chat_id && cb.message) {
+    const parts = data.slice("admbl:unblock:".length).split(":");
+    const tgId = parseInt(parts[0], 10);
+    const idx = parseInt(parts[1] ?? "0", 10) || 0;
+    await sb.from("blocked_users").delete().eq("telegram_id", tgId);
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: cb.from.id,
+      action: "unblock_user",
+      target_type: "telegram_id",
+      target_id: String(tgId),
+    });
+    await answerCallbackQuery("admin", cb.id, `Desbloqueado ${tgId}.`, true);
+    await bloqueosEditPage(chat_id, cb.message.message_id, idx);
+    return;
+  }
+
 
   if (data.startsWith("admunblock:")) {
     const tgId = parseInt(data.slice(11), 10);
