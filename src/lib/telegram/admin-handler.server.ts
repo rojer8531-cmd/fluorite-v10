@@ -737,6 +737,30 @@ async function handleCallback(cb: TgCallback) {
   const data = cb.data ?? "";
   const chat_id = cb.message?.chat.id;
 
+  if (data === "noop") return;
+
+  if (data.startsWith("admbl:page:") && chat_id && cb.message) {
+    const idx = parseInt(data.slice("admbl:page:".length), 10) || 0;
+    await bloqueosEditPage(chat_id, cb.message.message_id, idx);
+    return;
+  }
+  if (data.startsWith("admbl:unblock:") && chat_id && cb.message) {
+    const parts = data.slice("admbl:unblock:".length).split(":");
+    const tgId = parseInt(parts[0], 10);
+    const idx = parseInt(parts[1] ?? "0", 10) || 0;
+    await sb.from("blocked_users").delete().eq("telegram_id", tgId);
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: cb.from.id,
+      action: "unblock_user",
+      target_type: "telegram_id",
+      target_id: String(tgId),
+    });
+    await answerCallbackQuery("admin", cb.id, `Desbloqueado ${tgId}.`, true);
+    await bloqueosEditPage(chat_id, cb.message.message_id, idx);
+    return;
+  }
+
+
   if (data.startsWith("admunblock:")) {
     const tgId = parseInt(data.slice(11), 10);
     await sb.from("blocked_users").delete().eq("telegram_id", tgId);
