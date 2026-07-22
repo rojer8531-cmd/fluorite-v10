@@ -789,8 +789,42 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data.startsWith("rol:filter:")) {
-    const r = data.slice("rol:filter:".length) as Rank;
-    if (chat_id) await rolFilter(chat_id, r);
+    const rest = data.slice("rol:filter:".length).split(":");
+    const r = rest[0] as Rank;
+    const page = rest[1] ? Math.max(0, parseInt(rest[1], 10) || 0) : 0;
+    if (chat_id) await rolFilter(chat_id, r, page);
+    return;
+  }
+  if (data === "rol:stats") {
+    if (chat_id) await rolStats(chat_id);
+    return;
+  }
+  if (data.startsWith("rol:assign:")) {
+    const tgId = parseInt(data.slice("rol:assign:".length), 10);
+    if (chat_id && Number.isFinite(tgId)) await rolAssignMenu(chat_id, tgId);
+    return;
+  }
+  if (data.startsWith("rol:confirm:")) {
+    const [, , idStr, r] = data.split(":");
+    const tgId = parseInt(idStr, 10);
+    if (!Number.isFinite(tgId) || !RANKS.includes(r as Rank)) {
+      await answerCallbackQuery("admin", cb.id, "Datos inválidos", true);
+      return;
+    }
+    await assignRank({
+      telegram_id: tgId,
+      new_rank: r as Rank,
+      admin_telegram_id: cb.from.id,
+      reason: "asignación manual desde panel admin",
+    });
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: cb.from.id,
+      action: "assign_rank",
+      target_type: "telegram_id",
+      target_id: String(tgId),
+      details: { new_rank: r } as never,
+    });
+    if (chat_id) await rolAssignConfirmed(chat_id, tgId, r as Rank);
     return;
   }
   if (data === "rol:filters") {
@@ -1062,9 +1096,81 @@ async function handleCallback(cb: TgCallback) {
 }
 
 // =====================================================================
-// Sistema de Rangos — Menú ROL 🏆
+// Sistema de Rangos — Panel ROL (rediseño visual)
 // =====================================================================
+const SEP = "━━━━━━━━━━━━━━━━";
+const ROL_PAGE_SIZE = 8;
+
+function rankNameOnly(r: Rank): string {
+  return RANK_INFO[r].label;
+}
+
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return "—";
+  const dt = new Date(d);
+  const dd = String(dt.getDate()).padStart(2, "0");
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${dt.getFullYear()}`;
+}
+
+function fmtRelative(d: string | null | undefined): string {
+  if (!d) return "—";
+  const diff = Date.now() - new Date(d).getTime();
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return "Hace instantes";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `Hace ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `Hace ${h} h`;
+  const days = Math.floor(h / 24);
+  if (days === 0) return "Hoy";
+  if (days === 1) return "Ayer";
+  if (days < 30) return `Hace ${days} días`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `Hace ${months} ${months === 1 ? "mes" : "meses"}`;
+  const years = Math.floor(months / 12);
+  return `Hace ${years} ${years === 1 ? "año" : "años"}`;
+}
+
+function userDisplayName(u: { display_name?: string | null; username?: string | null; telegram_id: number }): string {
+  if (u.display_name && String(u.display_name).trim()) return escapeHtml(String(u.display_name));
+  if (u.username) return `@${escapeHtml(String(u.username))}`;
+  return String(u.telegram_id);
+}
+
 async function rolMenu(chat_id: number) {
+  const counts: Record<string, number> = {};
+  let total = 0;
+  for (const r of RANKS) {
+    const { count } = await sb
+      .from("bot_users")
+      .select("telegram_id", { count: "exact", head: true })
+      .eq("rank", r);
+    counts[r] = count ?? 0;
+    total += counts[r];
+  }
+  const text =
+    `<b>📦 Panel de Rangos</b>\n\n` +
+    `${SEP}\n\n` +
+    `📍 <b>Usuarios registrados</b>\n${total}\n\n` +
+    `💷 <b>Rangos disponibles</b>\nGold • Platinum • Diamond • Elite\n\n` +
+    `${SEP}\n\n` +
+    `💲 <b>Ascensos automáticos</b>\n\n` +
+    `100 USD → Platinum\n` +
+    `180 USD → Diamond\n` +
+    `400 USD → Elite`;
+  await sendMessage(chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🪪 Buscar usuario", callback_data: "rol:lookup" }],
+        [{ text: "📦 Ver rangos", callback_data: "rol:filters" }],
+        [{ text: "💷 Estadísticas", callback_data: "rol:stats" }],
+      ],
+    },
+  });
+}
+
+async function rolFiltersMenu(chat_id: number) {
   const counts: Record<string, number> = {};
   for (const r of RANKS) {
     const { count } = await sb
@@ -1073,57 +1179,70 @@ async function rolMenu(chat_id: number) {
       .eq("rank", r);
     counts[r] = count ?? 0;
   }
-  const text =
-    `<b>🏆 ROL · Sistema de Rangos</b>\n\n` +
-    `🏆 <b>Gold</b>     · 0% descuento · ${counts.gold ?? 0} usuarios\n` +
-    `💠 <b>Platinum</b> · 0.5% descuento · ${counts.platinum ?? 0} usuarios\n` +
-    `💎 <b>Diamond</b>  · 1% descuento · ${counts.diamond ?? 0} usuarios\n` +
-    `👑 <b>Elite</b>    · productos $30 → $25 · ${counts.elite ?? 0} usuarios\n\n` +
-    `<b>Ascensos automáticos</b>\n` +
-    `• $100 → Platinum\n• $180 → Diamond\n• $400 → Elite`;
-  await sendMessage(chat_id, text, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "🔍 Buscar usuario por ID", callback_data: "rol:lookup" }],
-        [{ text: "📋 Filtrar por rango", callback_data: "rol:filters" }],
-      ],
-    },
-  });
+  const blocks = RANKS.map((r) => {
+    const n = counts[r] ?? 0;
+    const suffix = n === 1 ? "usuario" : "usuarios";
+    return `<b>${rankNameOnly(r)}</b>\n${n} ${suffix}`;
+  }).join(`\n\n${SEP}\n\n`);
+  const text = `<b>📦 Rangos</b>\n\n${SEP}\n\n${blocks}`;
+  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let i = 0; i < RANKS.length; i += 2) {
+    const row = RANKS.slice(i, i + 2).map((r) => ({
+      text: rankNameOnly(r),
+      callback_data: `rol:filter:${r}:0`,
+    }));
+    kb.push(row);
+  }
+  kb.push([{ text: "🔚 Volver", callback_data: "rol:menu" }]);
+  await sendMessage(chat_id, text, { reply_markup: { inline_keyboard: kb } });
 }
 
-async function rolFiltersMenu(chat_id: number) {
-  await sendMessage(chat_id, `<b>📋 Filtrar usuarios por rango</b>`, {
-    reply_markup: {
-      inline_keyboard: RANKS.map((r) => [
-        { text: `${RANK_INFO[r].badge} ${RANK_INFO[r].label}`, callback_data: `rol:filter:${r}` },
-      ]),
-    },
-  });
-}
-
-async function rolFilter(chat_id: number, rank: Rank) {
-  const { data } = await sb
+async function rolFilter(chat_id: number, rank: Rank, page = 0) {
+  const { count } = await sb
     .from("bot_users")
-    .select("telegram_id, username, display_name, total_recharged, rank_assigned_at")
-    .eq("rank", rank)
-    .order("total_recharged", { ascending: false })
-    .limit(30);
-  if (!data || data.length === 0) {
-    await sendMessage(chat_id, `<b>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label}</b>\n\nSin usuarios.`);
+    .select("telegram_id", { count: "exact", head: true })
+    .eq("rank", rank);
+  const total = count ?? 0;
+  if (total === 0) {
+    await sendMessage(chat_id, `<b>📦 ${rankNameOnly(rank)}</b>\n\n${SEP}\n\nSin usuarios.`, {
+      reply_markup: { inline_keyboard: [[{ text: "🔚 Volver", callback_data: "rol:filters" }]] },
+    });
     return;
   }
-  const lines = data.map((u, i) => {
-    const name = u.display_name ? escapeHtml(String(u.display_name)) : (u.username ? `@${escapeHtml(String(u.username))}` : "—");
-    return `${i + 1}. ${name} · <code>${u.telegram_id}</code> · $${Number(u.total_recharged).toFixed(2)}`;
-  });
-  const kb = data.slice(0, 10).map((u) => [
-    { text: `Ver ${u.telegram_id}`, callback_data: `rol:user:${u.telegram_id}` },
-  ]);
-  await sendMessage(
-    chat_id,
-    `<b>${RANK_INFO[rank].badge} ${RANK_INFO[rank].label} (${data.length})</b>\n\n${lines.join("\n")}`,
-    { reply_markup: { inline_keyboard: kb } },
-  );
+  const pages = Math.max(1, Math.ceil(total / ROL_PAGE_SIZE));
+  const p = Math.min(Math.max(0, page), pages - 1);
+  const from = p * ROL_PAGE_SIZE;
+  const to = from + ROL_PAGE_SIZE - 1;
+  const { data } = await sb
+    .from("bot_users")
+    .select("telegram_id, username, display_name, total_recharged")
+    .eq("rank", rank)
+    .order("total_recharged", { ascending: false })
+    .range(from, to);
+  const rows = data ?? [];
+  const cards = rows
+    .map((u) => `🪪 ${userDisplayName(u)}\n💷 ${Math.round(Number(u.total_recharged))} USD`)
+    .join(`\n\n${SEP}\n\n`);
+  const text =
+    `<b>📦 ${rankNameOnly(rank)}</b>\n\n` +
+    `${SEP}\n\n` +
+    `${cards}\n\n` +
+    `${SEP}\n\n` +
+    `Página ${p + 1} / ${pages}`;
+  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let i = 0; i < rows.length; i += 2) {
+    const row = rows.slice(i, i + 2).map((u) => ({
+      text: (u.display_name?.trim() || u.username || String(u.telegram_id)).slice(0, 20),
+      callback_data: `rol:user:${u.telegram_id}`,
+    }));
+    kb.push(row);
+  }
+  const nav: Array<{ text: string; callback_data: string }> = [];
+  if (p > 0) nav.push({ text: "🔚 Anterior", callback_data: `rol:filter:${rank}:${p - 1}` });
+  if (p < pages - 1) nav.push({ text: "🔜 Siguiente", callback_data: `rol:filter:${rank}:${p + 1}` });
+  if (nav.length) kb.push(nav);
+  kb.push([{ text: "🔚 Volver", callback_data: "rol:filters" }]);
+  await sendMessage(chat_id, text, { reply_markup: { inline_keyboard: kb } });
 }
 
 async function rolShowUser(chat_id: number, telegram_id: number) {
@@ -1137,45 +1256,136 @@ async function rolShowUser(chat_id: number, telegram_id: number) {
     return;
   }
   const current = normalizeRank(u.rank);
-  const info = RANK_INFO[current];
-  const assigned = u.rank_assigned_at ? new Date(u.rank_assigned_at).toLocaleString("es") : "—";
+  const since = fmtDate(u.rank_assigned_at ?? u.registered_at);
   const text =
-    `<b>${info.badge} ${info.label}</b>\n\n` +
-    `Usuario   ${escapeHtml(u.display_name ?? "—")} ${info.badge}\n` +
-    `@${escapeHtml(u.username ?? "—")} · <code>${u.telegram_id}</code>\n` +
-    `Comprado  $${Number(u.total_recharged).toFixed(2)} USD\n` +
-    `Saldo     $${Number(u.balance).toFixed(2)} USD\n` +
-    `Descuento ${current === "elite" ? "productos $30 → $25" : `${info.discountPct}%`}\n` +
-    `Rango desde ${assigned}`;
-  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
-  for (const r of RANKS) {
-    if (r === current) continue;
-    kb.push([{ text: `Asignar ${RANK_INFO[r].badge} ${RANK_INFO[r].label}`, callback_data: `rol:set:${telegram_id}:${r}` }]);
-  }
+    `<b>🪪 ${userDisplayName(u)}</b>\n\n` +
+    `${SEP}\n\n` +
+    `📍 <b>ID</b>\n<code>${u.telegram_id}</code>\n\n` +
+    `📦 <b>Rango</b>\n${rankNameOnly(current)}\n\n` +
+    `${SEP}\n\n` +
+    `💷 <b>Comprado</b>\n${Math.round(Number(u.total_recharged))} USD\n\n` +
+    `💲 <b>Saldo</b>\n${Math.round(Number(u.balance))} USD\n\n` +
+    `⌛️ <b>Desde</b>\n${since}`;
+  const kb: Array<Array<{ text: string; callback_data: string }>> = [
+    [{ text: "📦 Asignar rango", callback_data: `rol:assign:${telegram_id}` }],
+    [{ text: "💷 Historial", callback_data: `rol:history:${telegram_id}` }],
+  ];
   if (current !== "gold") {
-    kb.push([{ text: "♻️ Quitar rango (→ Gold)", callback_data: `rol:reset:${telegram_id}` }]);
+    kb.push([{ text: "✖️ Quitar rango", callback_data: `rol:reset:${telegram_id}` }]);
   }
-  kb.push([{ text: "📜 Ver historial", callback_data: `rol:history:${telegram_id}` }]);
+  kb.push([{ text: "🔚 Volver", callback_data: "rol:menu" }]);
   await sendMessage(chat_id, text, { reply_markup: { inline_keyboard: kb } });
 }
 
-async function rolHistory(chat_id: number, telegram_id: number) {
-  const { data } = await sb
-    .from("rank_history")
-    .select("old_rank, new_rank, changed_by, admin_telegram_id, reason, created_at")
+async function rolAssignMenu(chat_id: number, telegram_id: number) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("telegram_id, username, display_name, rank")
     .eq("telegram_id", telegram_id)
-    .order("created_at", { ascending: false })
-    .limit(15);
-  if (!data || data.length === 0) {
-    await sendMessage(chat_id, `<b>📜 Historial</b> · <code>${telegram_id}</code>\n\nSin cambios registrados.`);
+    .maybeSingle();
+  if (!u) {
+    await sendMessage(chat_id, `No encontré usuario con ID <code>${telegram_id}</code>.`);
     return;
   }
-  const lines = data.map((h) => {
-    const from = h.old_rank ? `${RANK_INFO[normalizeRank(h.old_rank)].badge}` : "—";
-    const to = `${RANK_INFO[normalizeRank(h.new_rank)].badge} ${RANK_INFO[normalizeRank(h.new_rank)].label}`;
-    const who = h.changed_by === "admin" ? `admin ${h.admin_telegram_id ?? ""}` : "auto";
-    const when = new Date(h.created_at).toLocaleString("es");
-    return `${when} · ${from} → ${to} · <i>${escapeHtml(String(h.reason ?? who))}</i>`;
-  });
-  await sendMessage(chat_id, `<b>📜 Historial</b> · <code>${telegram_id}</code>\n\n${lines.join("\n")}`);
+  const current = normalizeRank(u.rank);
+  const text =
+    `<b>📦 Asignar rango</b>\n\n` +
+    `${SEP}\n\n` +
+    `🪪 <b>Usuario</b>\n${userDisplayName(u)}\n\n` +
+    `📍 <b>Actual</b>\n${rankNameOnly(current)}\n\n` +
+    `Selecciona el nuevo rango.`;
+  const kb: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let i = 0; i < RANKS.length; i += 2) {
+    const row = RANKS.slice(i, i + 2).map((r) => ({
+      text: rankNameOnly(r),
+      callback_data: `rol:confirm:${telegram_id}:${r}`,
+    }));
+    kb.push(row);
+  }
+  kb.push([{ text: "🔚 Cancelar", callback_data: `rol:user:${telegram_id}` }]);
+  await sendMessage(chat_id, text, { reply_markup: { inline_keyboard: kb } });
 }
+
+async function rolAssignConfirmed(chat_id: number, telegram_id: number, r: Rank) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("telegram_id, username, display_name")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  const name = u ? userDisplayName(u) : String(telegram_id);
+  const text =
+    `<b>✅ Rango actualizado</b>\n\n` +
+    `${SEP}\n\n` +
+    `🪪 ${name}\n\n` +
+    `📍 <b>Nuevo rango</b>\n${rankNameOnly(r)}`;
+  await sendMessage(chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [[{ text: "🔚 Volver al perfil", callback_data: `rol:user:${telegram_id}` }]],
+    },
+  });
+}
+
+async function rolHistory(chat_id: number, telegram_id: number) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("total_recharged, rank")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  const { count } = await sb
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("telegram_id", telegram_id)
+    .eq("status", "delivered");
+  const { data: last } = await sb
+    .from("orders")
+    .select("created_at")
+    .eq("telegram_id", telegram_id)
+    .eq("status", "delivered")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const total = Math.round(Number(u?.total_recharged ?? 0));
+  const rank = normalizeRank(u?.rank);
+  const text =
+    `<b>💷 Historial</b>\n\n` +
+    `${SEP}\n\n` +
+    `📦 <b>Pedidos</b>\n${count ?? 0}\n\n` +
+    `💷 <b>Total comprado</b>\n${total} USD\n\n` +
+    `⌛️ <b>Última compra</b>\n${last?.created_at ? fmtRelative(last.created_at) : "—"}\n\n` +
+    `📍 <b>Rango actual</b>\n${rankNameOnly(rank)}`;
+  await sendMessage(chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [[{ text: "🔚 Volver", callback_data: `rol:user:${telegram_id}` }]],
+    },
+  });
+}
+
+async function rolStats(chat_id: number) {
+  const counts: Record<string, number> = {};
+  let total = 0;
+  for (const r of RANKS) {
+    const { count } = await sb
+      .from("bot_users")
+      .select("telegram_id", { count: "exact", head: true })
+      .eq("rank", r);
+    counts[r] = count ?? 0;
+    total += counts[r];
+  }
+  const blocks = RANKS.map((r) => {
+    const n = counts[r] ?? 0;
+    const pct = total > 0 ? Math.round((n / total) * 100) : 0;
+    return `<b>${rankNameOnly(r)}</b>\n${n} usuarios · ${pct}%`;
+  }).join(`\n\n${SEP}\n\n`);
+  const text =
+    `<b>💷 Estadísticas</b>\n\n` +
+    `${SEP}\n\n` +
+    `📍 <b>Total</b>\n${total} usuarios\n\n` +
+    `${SEP}\n\n` +
+    `${blocks}`;
+  await sendMessage(chat_id, text, {
+    reply_markup: {
+      inline_keyboard: [[{ text: "🔚 Volver", callback_data: "rol:menu" }]],
+    },
+  });
+}
+
