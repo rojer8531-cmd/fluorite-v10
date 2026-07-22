@@ -1099,7 +1099,7 @@ async function handleCallback(cb: TgCallback) {
 // Sistema de Rangos — Panel ROL (rediseño visual)
 // =====================================================================
 const SEP = "━━━━━━━━━━━━━━━━";
-const ROL_PAGE_SIZE = 8;
+const ROL_PAGE_SIZE = 4;
 
 function rankNameOnly(r: Rank): string {
   return RANK_INFO[r].label;
