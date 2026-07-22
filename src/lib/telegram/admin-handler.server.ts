@@ -1197,16 +1197,20 @@ async function rolFiltersMenu(chat_id: number) {
   await sendMessage(chat_id, text, { reply_markup: { inline_keyboard: kb } });
 }
 
-async function rolFilter(chat_id: number, rank: Rank, page = 0) {
+async function rolFilter(chat_id: number, rank: Rank, page = 0, edit_message_id?: number) {
   const { count } = await sb
     .from("bot_users")
     .select("telegram_id", { count: "exact", head: true })
     .eq("rank", rank);
   const total = count ?? 0;
   if (total === 0) {
-    await sendMessage(chat_id, `<b>📦 ${rankNameOnly(rank)}</b>\n\n${SEP}\n\nSin usuarios.`, {
-      reply_markup: { inline_keyboard: [[{ text: "🔚 Volver", callback_data: "rol:filters" }]] },
-    });
+    const emptyText = `<b>📦 ${rankNameOnly(rank)} • 0 usuarios</b>\n\nSin usuarios.`;
+    const emptyKb = { inline_keyboard: [[{ text: "✖️ Volver", callback_data: "rol:filters" }]] };
+    if (edit_message_id) {
+      await editMessageText("admin", chat_id, edit_message_id, emptyText, { reply_markup: emptyKb });
+    } else {
+      await sendMessage(chat_id, emptyText, { reply_markup: emptyKb });
+    }
     return;
   }
   const pages = Math.max(1, Math.ceil(total / ROL_PAGE_SIZE));
@@ -1220,15 +1224,29 @@ async function rolFilter(chat_id: number, rank: Rank, page = 0) {
     .order("total_recharged", { ascending: false })
     .range(from, to);
   const rows = data ?? [];
-  const cards = rows
-    .map((u) => `🪪 ${userDisplayName(u)}\n💷 ${Math.round(Number(u.total_recharged))} USD`)
-    .join(`\n\n${SEP}\n\n`);
+
+  const plainName = (u: { display_name?: string | null; username?: string | null; telegram_id: number }) => {
+    const n = (u.display_name && String(u.display_name).trim()) || (u.username ? `@${u.username}` : String(u.telegram_id));
+    return String(n);
+  };
+
+  const startIdx = from + 1;
+  const endIdx = from + rows.length;
+  const idxWidth = String(endIdx).length;
+  const nameWidth = Math.min(14, Math.max(6, ...rows.map((u) => plainName(u).length)));
+
+  const lines = rows.map((u, i) => {
+    const num = String(startIdx + i).padStart(idxWidth, " ");
+    const name = plainName(u).slice(0, nameWidth).padEnd(nameWidth, " ");
+    const usd = `${Math.round(Number(u.total_recharged))} USD`;
+    return `${num}. 🛍️ ${name}   💷 ${usd}`;
+  });
+
   const text =
-    `<b>📦 ${rankNameOnly(rank)}</b>\n\n` +
-    `${SEP}\n\n` +
-    `${cards}\n\n` +
-    `${SEP}\n\n` +
-    `Página ${p + 1} / ${pages}`;
+    `<b>📦 ${rankNameOnly(rank)} • ${total} ${total === 1 ? "usuario" : "usuarios"}</b>\n\n` +
+    `<pre>${escapeHtml(lines.join("\n"))}</pre>\n\n` +
+    `📍 Página ${p + 1} / ${pages}`;
+
   const kb: Array<Array<{ text: string; callback_data: string }>> = [];
   for (let i = 0; i < rows.length; i += 2) {
     const row = rows.slice(i, i + 2).map((u) => ({
@@ -1241,7 +1259,14 @@ async function rolFilter(chat_id: number, rank: Rank, page = 0) {
   if (p > 0) nav.push({ text: "🔚 Anterior", callback_data: `rol:filter:${rank}:${p - 1}` });
   if (p < pages - 1) nav.push({ text: "🔜 Siguiente", callback_data: `rol:filter:${rank}:${p + 1}` });
   if (nav.length) kb.push(nav);
-  kb.push([{ text: "🔚 Volver", callback_data: "rol:filters" }]);
+  kb.push([{ text: "✖️ Volver", callback_data: "rol:filters" }]);
+
+  if (edit_message_id) {
+    const res = await editMessageText("admin", chat_id, edit_message_id, text, {
+      reply_markup: { inline_keyboard: kb },
+    });
+    if (res.ok) return;
+  }
   await sendMessage(chat_id, text, { reply_markup: { inline_keyboard: kb } });
 }
 
