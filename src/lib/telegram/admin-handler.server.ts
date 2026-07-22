@@ -789,8 +789,42 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data.startsWith("rol:filter:")) {
-    const r = data.slice("rol:filter:".length) as Rank;
-    if (chat_id) await rolFilter(chat_id, r);
+    const rest = data.slice("rol:filter:".length).split(":");
+    const r = rest[0] as Rank;
+    const page = rest[1] ? Math.max(0, parseInt(rest[1], 10) || 0) : 0;
+    if (chat_id) await rolFilter(chat_id, r, page);
+    return;
+  }
+  if (data === "rol:stats") {
+    if (chat_id) await rolStats(chat_id);
+    return;
+  }
+  if (data.startsWith("rol:assign:")) {
+    const tgId = parseInt(data.slice("rol:assign:".length), 10);
+    if (chat_id && Number.isFinite(tgId)) await rolAssignMenu(chat_id, tgId);
+    return;
+  }
+  if (data.startsWith("rol:confirm:")) {
+    const [, , idStr, r] = data.split(":");
+    const tgId = parseInt(idStr, 10);
+    if (!Number.isFinite(tgId) || !RANKS.includes(r as Rank)) {
+      await answerCallbackQuery("admin", cb.id, "Datos inválidos", true);
+      return;
+    }
+    await assignRank({
+      telegram_id: tgId,
+      new_rank: r as Rank,
+      admin_telegram_id: cb.from.id,
+      reason: "asignación manual desde panel admin",
+    });
+    await sb.from("admin_logs").insert({
+      admin_telegram_id: cb.from.id,
+      action: "assign_rank",
+      target_type: "telegram_id",
+      target_id: String(tgId),
+      details: { new_rank: r } as never,
+    });
+    if (chat_id) await rolAssignConfirmed(chat_id, tgId, r as Rank);
     return;
   }
   if (data === "rol:filters") {
