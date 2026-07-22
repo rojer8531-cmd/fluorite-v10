@@ -792,7 +792,8 @@ async function handleCallback(cb: TgCallback) {
     const rest = data.slice("rol:filter:".length).split(":");
     const r = rest[0] as Rank;
     const page = rest[1] ? Math.max(0, parseInt(rest[1], 10) || 0) : 0;
-    if (chat_id) await rolFilter(chat_id, r, page);
+    const editMid = cb.message?.message_id;
+    if (chat_id) await rolFilter(chat_id, r, page, editMid);
     return;
   }
   if (data === "rol:stats") {
