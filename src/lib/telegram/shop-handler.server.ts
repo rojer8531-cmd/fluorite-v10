@@ -1339,17 +1339,16 @@ async function processReceiptPhotoReview(opts: {
   const duration = o.product_prices?.duration_label ? ` · ${escapeHtml(o.product_prices.duration_label)}` : "";
   const kind = isRecharge ? "Recarga" : `Compra · ${productName}${duration}`;
 
-  const padL = (s: string) => s.padEnd(9, " ");
   const caption =
-    `⌛️ <b>Nuevo Comprobante</b>\n\n` +
-    `<pre>${padL("🪪 Usuario")}${userTag}\n` +
-    `${padL("📍 ID")}${telegram_id}\n` +
-    `${padL("🆔 Pending")}${pid}\n\n` +
-    `${padL("💷 Monto")}${Number(o.total_usd).toFixed(2)} USD\n` +
-    `${padL("💲 Saldo")}${Number(user.balance).toFixed(2)} USD\n\n` +
-    `${padL("🌎 País")}${country}\n` +
-    `${padL("🛍️ Método")}${method}\n` +
-    `${padL("📦 Tipo")}${kind}</pre>`;
+    `📩 <b>Nuevo Comprobante</b>\n\n` +
+    `👤 Usuario: ${userTag}\n` +
+    `🆔 ID: <code>${telegram_id}</code>\n` +
+    `🧾 Pending: <code>${pid}</code>\n\n` +
+    `💵 Monto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
+    `💰 Saldo: <b>${Number(user.balance).toFixed(2)} USD</b>\n\n` +
+    `🌎 País: ${country}\n` +
+    `🏦 Método: ${method}\n` +
+    `📦 Tipo: ${kind}`;
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) {
