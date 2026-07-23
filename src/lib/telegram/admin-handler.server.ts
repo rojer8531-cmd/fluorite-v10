@@ -998,7 +998,7 @@ async function handleCallback(cb: TgCallback) {
       order_id: target,
       status: "APROBADO",
       headerIcon: "✅",
-      headerText: "COMPROBANTE APROBADO",
+      headerText: "Comprobante Aprobado",
       statusIcon: "✅",
       extraBalanceUsd: newBalance,
     });
@@ -1040,7 +1040,7 @@ async function handleCallback(cb: TgCallback) {
       order_id: target,
       status: "RECHAZADO",
       headerIcon: "❌",
-      headerText: "COMPROBANTE RECHAZADO",
+      headerText: "Comprobante Rechazado",
       statusIcon: "❌",
     });
     await answerCallbackQuery("admin", cb.id, "❌ Rechazado", true);
@@ -1073,9 +1073,9 @@ async function handleCallback(cb: TgCallback) {
           cb,
           order_id: linkedOrder.id,
           status: "BLOQUEADO",
-          headerIcon: "⛔",
-          headerText: "USUARIO BLOQUEADO",
-          statusIcon: "⛔",
+          headerIcon: "🚫",
+          headerText: "Bloqueo Aplicado",
+          statusIcon: "🚫",
         });
       } else {
         // Sin orden asociada: al menos quitar los botones y dejar aviso.
