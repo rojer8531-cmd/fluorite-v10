@@ -161,7 +161,7 @@ async function finalizeReceiptCaption(opts: {
   statusIcon: string;
   extraBalanceUsd?: number | null; // saldo final para mostrar (post-aprobación)
 }) {
-  const { cb, order_id, status, headerIcon, headerText, statusIcon, extraBalanceUsd } = opts;
+  const { cb, order_id, status, headerIcon, headerText, extraBalanceUsd } = opts;
   const chat_id = cb.message?.chat.id;
   const message_id = cb.message?.message_id;
 
@@ -181,17 +181,21 @@ async function finalizeReceiptCaption(opts: {
   };
   const bal = extraBalanceUsd != null ? extraBalanceUsd : Number(o.bot_users?.balance ?? 0);
   const userTag = o.bot_users?.username ? `@${o.bot_users.username}` : (o.bot_users?.display_name ?? "—");
-  const pid = tpId(o.created_at);
   const country = o.payment_methods?.country_name ?? "—";
+  const pad = (s: string) => s.padEnd(9, " ");
+  const isBlock = status === "BLOQUEADO";
+
+  const amountBlock = isBlock
+    ? `${pad("💷 Saldo")}${bal.toFixed(2)} USD`
+    : `${pad("💷 Recarga")}${Number(o.total_usd).toFixed(2)} USD\n${pad("💲 Saldo")}${bal.toFixed(2)} USD`;
 
   const newCaption =
     `${headerIcon} <b>${headerText}</b>\n\n` +
-    `👤 <b>Usuario:</b> ${userTag} · <code>${o.telegram_id}</code>\n` +
-    `🆔 <b>Pending:</b> <code>${pid}</code>\n` +
-    `💰 <b>Monto:</b> $${Number(o.total_usd).toFixed(2)} USD\n` +
-    `💳 <b>Saldo:</b> $${bal.toFixed(2)} USD\n` +
-    `🌎 <b>País:</b> ${country}\n\n` +
-    `${statusIcon} <b>Estado:</b> ${status}`;
+    `<pre>${pad("🪪 Usuario")}${escapeHtml(userTag)}\n` +
+    `${pad("📍 ID")}${o.telegram_id}\n\n` +
+    `${amountBlock}\n\n` +
+    `${pad("🌎 País")}${escapeHtml(country)}\n\n` +
+    `📦 Estado 🔜 ${status}</pre>`;
 
   const target_mid = o.admin_message_id ?? message_id;
   if (!chat_id || !target_mid) return;
