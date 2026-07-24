@@ -379,6 +379,7 @@ async function pmListAll(chat_id: number, mode: "edit" | "del") {
   const { data: methods } = await sb
     .from("payment_methods")
     .select("id, country_code, country_name, method_name, active")
+    .eq("active", true)
     .order("country_name");
   if (!methods || methods.length === 0) {
     await sendMessage("warehouse", chat_id, `No hay métodos cargados.`);
