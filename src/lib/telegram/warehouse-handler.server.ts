@@ -441,6 +441,7 @@ async function pmConfirmDeleteCountry(chat_id: number, country_code: string) {
     .from("payment_methods")
     .select("country_name")
     .eq("country_code", country_code)
+    .eq("active", true)
     .limit(1)
     .maybeSingle();
   if (!m) {
