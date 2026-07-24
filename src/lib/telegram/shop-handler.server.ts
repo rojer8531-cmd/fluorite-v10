@@ -1159,7 +1159,6 @@ async function acceptManualKey(telegram_id: number, chat_id: number) {
     `⏳ Tu key será enviada por un administrador en unos minutos.\n\n` +
     `🧾 <b>Orden:</b> ${escapeHtml(shortId)}\n` +
     `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
-    `📂 <b>Descargar Archivo:</b> ${downloadUrlFor(productName)}\n\n` +
     `¡Gracias por tu compra!`;
   await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
 }
