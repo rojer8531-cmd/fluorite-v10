@@ -409,17 +409,55 @@ async function pmListAll(chat_id: number, mode: "edit" | "del") {
     return;
   }
 
-  const kb = methods.map((m) => [
-    {
-      text: `${m.country_name} · ${m.method_name}${m.active ? "" : " (off)"}`,
-      callback_data: `pm:del:${m.id}`,
-    },
+  // Mostrar solo países que tengan al menos un método registrado.
+  const seenDel = new Set<string>();
+  const countriesDel: Array<{ code: string; name: string }> = [];
+  for (const m of methods) {
+    if (seenDel.has(m.country_code)) continue;
+    seenDel.add(m.country_code);
+    countriesDel.push({ code: m.country_code, name: m.country_name });
+  }
+  const kb = countriesDel.map((c) => [
+    { text: `${flagFromCC(c.code)} ${c.name}`, callback_data: `pm:delc:${c.code}` },
   ]);
   await sendMessage(
     "warehouse",
     chat_id,
-    `<b>Eliminar Método</b>\n\nElegí uno:`,
+    `<b>🗑️ Eliminar Método</b>\n\nElegí un país:`,
     { reply_markup: { inline_keyboard: kb } },
+  );
+}
+
+function flagFromCC(cc: string): string {
+  const code = (cc || "").toUpperCase();
+  if (code.length !== 2 || !/^[A-Z]{2}$/.test(code)) return "🌐";
+  const A = 0x1f1e6;
+  return String.fromCodePoint(A + code.charCodeAt(0) - 65, A + code.charCodeAt(1) - 65);
+}
+
+async function pmConfirmDeleteCountry(chat_id: number, country_code: string) {
+  const { data: m } = await sb
+    .from("payment_methods")
+    .select("country_name")
+    .eq("country_code", country_code)
+    .limit(1)
+    .maybeSingle();
+  if (!m) {
+    await sendMessage("warehouse", chat_id, `No hay método para ese país.`);
+    return;
+  }
+  const label = `${flagFromCC(country_code)} ${m.country_name}`;
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `¿Eliminar <b>${label}</b>?`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "☑️ Eliminar", callback_data: `pm:delcgo:${country_code}` }],
+        ],
+      },
+    },
   );
 }
 
@@ -2343,6 +2381,16 @@ async function handleCallback(cb: TgCallback) {
   if (data === "pm:dellist") { if (chat_id) await pmListAll(chat_id, "del"); return; }
   if (data === "pm:countries") { if (chat_id) await pmCountriesView(chat_id); return; }
   if (data.startsWith("pmec:")) { if (chat_id) await pmPromptCountryReplace(chat_id, data.slice(5)); return; }
+  if (data.startsWith("pm:delc:")) { if (chat_id) await pmConfirmDeleteCountry(chat_id, data.slice("pm:delc:".length)); return; }
+  if (data.startsWith("pm:delcgo:")) {
+    const cc = data.slice("pm:delcgo:".length);
+    const { data: m } = await sb.from("payment_methods").select("country_name").eq("country_code", cc).limit(1).maybeSingle();
+    const label = m ? `${flagFromCC(cc)} ${m.country_name}` : `${flagFromCC(cc)} ${cc}`;
+    await sb.from("payment_methods").delete().eq("country_code", cc);
+    await sb.from("admin_logs").insert({ admin_telegram_id: cb.from.id, action: "pm_delete_country", target_type: "payment_method", target_id: cc });
+    if (chat_id) await sendMessage("warehouse", chat_id, `${label} eliminado correctamente ✅`);
+    return;
+  }
   if (data.startsWith("pm:del:")) { if (chat_id) await pmConfirmDelete(chat_id, data.slice(7)); return; }
   if (data.startsWith("pmdel:")) {
     const pmId = data.slice(6);
