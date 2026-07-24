@@ -2398,7 +2398,7 @@ async function handleCallback(cb: TgCallback) {
   if (data.startsWith("pm:del:")) { if (chat_id) await pmConfirmDelete(chat_id, data.slice(7)); return; }
   if (data.startsWith("pmdel:")) {
     const pmId = data.slice(6);
-    await sb.from("payment_methods").delete().eq("id", pmId);
+    await sb.from("payment_methods").update({ active: false }).eq("id", pmId);
     await sb.from("admin_logs").insert({ admin_telegram_id: cb.from.id, action: "pm_delete", target_type: "payment_method", target_id: pmId });
     if (chat_id) await sendMessage("warehouse", chat_id, `Método eliminado.`);
     return;
