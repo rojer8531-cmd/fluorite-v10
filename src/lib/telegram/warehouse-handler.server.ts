@@ -2386,9 +2386,11 @@ async function handleCallback(cb: TgCallback) {
   if (data.startsWith("pm:delc:")) { if (chat_id) await pmConfirmDeleteCountry(chat_id, data.slice("pm:delc:".length)); return; }
   if (data.startsWith("pm:delcgo:")) {
     const cc = data.slice("pm:delcgo:".length);
-    const { data: m } = await sb.from("payment_methods").select("country_name").eq("country_code", cc).limit(1).maybeSingle();
+    const { data: m } = await sb.from("payment_methods").select("country_name").eq("country_code", cc).eq("active", true).limit(1).maybeSingle();
     const label = m ? `${flagFromCC(cc)} ${m.country_name}` : `${flagFromCC(cc)} ${cc}`;
-    await sb.from("payment_methods").delete().eq("country_code", cc);
+    // Soft-delete: desactivamos para no romper FKs de órdenes existentes.
+    // El bot de compras filtra por active=true, así desaparece inmediatamente.
+    await sb.from("payment_methods").update({ active: false }).eq("country_code", cc);
     await sb.from("admin_logs").insert({ admin_telegram_id: cb.from.id, action: "pm_delete_country", target_type: "payment_method", target_id: cc });
     if (chat_id) await sendMessage("warehouse", chat_id, `${label} eliminado correctamente ✅`);
     return;
