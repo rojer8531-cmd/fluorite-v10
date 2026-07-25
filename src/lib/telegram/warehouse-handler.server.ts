@@ -973,7 +973,7 @@ async function adminProductsList(chat_id: number) {
 
 // ===== Wizard: Agregar Producto =====
 interface ProductAddCtx {
-  category?: "iOS" | "Android";
+  category?: "iOS" | "Android" | "Auxilio de Famosos";
   name?: string;
   p1?: number;
   p7?: number;
