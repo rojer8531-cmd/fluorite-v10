@@ -29,7 +29,7 @@ export interface VisibleCatalogProduct extends CatalogProduct {
   total_stock: number;
 }
 
-const CATEGORY_ORDER: ProductCategory[] = ["iOS", "Android"];
+const CATEGORY_ORDER: ProductCategory[] = ["iOS", "Android", "Auxilio de Famosos"];
 
 // Caché en memoria (TTL 10s) para reducir consultas repetidas.
 const CACHE_TTL_MS = 10_000;
