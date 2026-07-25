@@ -110,7 +110,7 @@ async function buildVisibleCatalog() {
         } satisfies VisibleCatalogProduct;
       })
       .filter((product) => (hideOutOfStock ? product.total_stock > 0 : true)),
-  })).filter((section) => section.products.length > 0);
+  }));
 
   return { grouped, hideOutOfStock, stockByPriceId };
 }
