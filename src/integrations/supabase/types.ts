@@ -871,7 +871,7 @@ export type Database = {
         | "rejected"
         | "delivered"
         | "cancelled"
-      product_category: "iOS" | "Android"
+      product_category: "iOS" | "Android" | "Auxilio de Famosos"
       receipt_status: "pending" | "approved" | "rejected" | "duplicate"
       user_rank:
         | "normal"
@@ -1016,7 +1016,7 @@ export const Constants = {
         "delivered",
         "cancelled",
       ],
-      product_category: ["iOS", "Android"],
+      product_category: ["iOS", "Android", "Auxilio de Famosos"],
       receipt_status: ["pending", "approved", "rejected", "duplicate"],
       user_rank: [
         "normal",
