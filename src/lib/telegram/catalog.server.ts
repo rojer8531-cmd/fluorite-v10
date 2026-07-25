@@ -1,6 +1,6 @@
 import { sb } from "./db.server";
 
-type ProductCategory = "iOS" | "Android" | "Auxilio de Famosos";
+type ProductCategory = "iOS" | "Android" | "Auxiliar de Famosos";
 
 export interface CatalogProduct {
   id: string;
@@ -29,7 +29,7 @@ export interface VisibleCatalogProduct extends CatalogProduct {
   total_stock: number;
 }
 
-const CATEGORY_ORDER: ProductCategory[] = ["iOS", "Android", "Auxilio de Famosos"];
+const CATEGORY_ORDER: ProductCategory[] = ["iOS", "Android", "Auxiliar de Famosos"];
 
 // Caché en memoria (TTL 10s) para reducir consultas repetidas.
 const CACHE_TTL_MS = 10_000;
