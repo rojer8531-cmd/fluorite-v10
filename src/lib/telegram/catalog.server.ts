@@ -1,6 +1,6 @@
 import { sb } from "./db.server";
 
-type ProductCategory = "iOS" | "Android";
+type ProductCategory = "iOS" | "Android" | "Auxilio de Famosos";
 
 export interface CatalogProduct {
   id: string;
