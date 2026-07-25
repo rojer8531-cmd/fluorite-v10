@@ -2284,7 +2284,9 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data.startsWith("padd:cat:")) {
-    const cat = data.slice(9) === "iOS" ? "iOS" : "Android";
+    const raw = data.slice(9);
+    const cat: "iOS" | "Android" | "Auxilio de Famosos" =
+      raw === "iOS" ? "iOS" : raw === "Android" ? "Android" : "Auxilio de Famosos";
     await setProductAddCtx(cb.from.id, { category: cat });
     if (chat_id) await padPromptName(chat_id);
     return;
