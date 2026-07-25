@@ -1008,6 +1008,7 @@ async function padStartCategory(chat_id: number, telegram_id: number) {
             { text: "📱 iOS", callback_data: "padd:cat:iOS" },
             { text: "🤖 Android", callback_data: "padd:cat:Android" },
           ],
+          [{ text: "⭐ Auxilio de Famosos", callback_data: "padd:cat:Auxilio de Famosos" }],
           [{ text: "❌ Cancelar", callback_data: "padd:cancel" }],
         ],
       },
