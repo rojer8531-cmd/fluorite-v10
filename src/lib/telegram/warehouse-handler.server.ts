@@ -973,7 +973,7 @@ async function adminProductsList(chat_id: number) {
 
 // ===== Wizard: Agregar Producto =====
 interface ProductAddCtx {
-  category?: "iOS" | "Android";
+  category?: "iOS" | "Android" | "Auxilio de Famosos";
   name?: string;
   p1?: number;
   p7?: number;
@@ -1008,6 +1008,7 @@ async function padStartCategory(chat_id: number, telegram_id: number) {
             { text: "📱 iOS", callback_data: "padd:cat:iOS" },
             { text: "🤖 Android", callback_data: "padd:cat:Android" },
           ],
+          [{ text: "⭐ Auxilio de Famosos", callback_data: "padd:cat:Auxilio de Famosos" }],
           [{ text: "❌ Cancelar", callback_data: "padd:cancel" }],
         ],
       },
@@ -2283,7 +2284,9 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data.startsWith("padd:cat:")) {
-    const cat = data.slice(9) === "iOS" ? "iOS" : "Android";
+    const raw = data.slice(9);
+    const cat: "iOS" | "Android" | "Auxilio de Famosos" =
+      raw === "iOS" ? "iOS" : raw === "Android" ? "Android" : "Auxilio de Famosos";
     await setProductAddCtx(cb.from.id, { category: cat });
     if (chat_id) await padPromptName(chat_id);
     return;
