@@ -363,13 +363,21 @@ async function showSupport(telegram_id: number, chat_id: number) {
   );
 }
 
+const CATEGORY_EMOJI: Record<string, string> = {
+  "ios": "🔴",
+  "android": "🟢",
+  "auxiliar de famosos": "🔵",
+};
+
 function categoryButtons(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>["grouped"]) {
   const rows: Array<Array<{ text: string; callback_data: string }>> = [];
   for (const section of grouped) {
-    rows.push([{ text: section.category, callback_data: `cat:${section.category}` }]);
+    const emoji = CATEGORY_EMOJI[section.category.toLowerCase()] ?? "🟣";
+    rows.push([{ text: `${emoji} ${section.category}`, callback_data: `cat:${section.category}` }]);
   }
   return rows;
 }
+
 
 async function showBuyWithBalance(telegram_id: number, chat_id: number) {
   await showProducts(telegram_id, chat_id);
