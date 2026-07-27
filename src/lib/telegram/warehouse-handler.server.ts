@@ -613,25 +613,80 @@ async function pmConfirmDelete(chat_id: number, pm_id: string) {
 }
 
 
-async function adminListProducts(chat_id: number) {
+// ===== Wizard "Agregar Keys" (un solo mensaje, siempre editado) =====
+interface AkFlow {
+  chat_id: number;
+  message_id: number;
+  product_id?: string;
+  price_id?: string;
+}
+
+async function getAkFlow(uid: number): Promise<AkFlow | null> {
+  const st = await getState(uid);
+  const flow = (st?.context as Record<string, unknown> | undefined)?.ak_flow as AkFlow | undefined;
+  return flow && flow.message_id ? flow : null;
+}
+
+async function setAkFlow(uid: number, flow: AkFlow | null) {
+  await patchContext(uid, { ak_flow: flow });
+}
+
+type AkKeyboard = Array<Array<{ text: string; callback_data: string }>>;
+
+/** Edita el mensaje ancla del wizard; si no se puede, crea uno nuevo. */
+async function akRender(
+  chat_id: number,
+  uid: number,
+  text: string,
+  keyboard: AkKeyboard,
+  message_id?: number,
+  extra: Partial<AkFlow> = {},
+) {
+  let anchor = message_id ?? null;
+  if (anchor) {
+    const edited = await editMessageText("warehouse", chat_id, anchor, text, {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (!edited.ok) anchor = null;
+  }
+  if (!anchor) {
+    const sent = await _rawSendMessage("warehouse", chat_id, text, {
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (sent.ok && sent.result) {
+      anchor = sent.result.message_id;
+      sb.from("admin_trash")
+        .insert({ chat_id, message_id: anchor })
+        .then(() => {}, () => {});
+    }
+  }
+  if (anchor) {
+    await setAkFlow(uid, { chat_id, message_id: anchor, ...extra });
+  }
+  return anchor;
+}
+
+const AK_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
+
+async function adminListProducts(chat_id: number, uid: number, message_id?: number) {
   const { data: products } = await sb
     .from("products")
     .select("id, name, category")
     .eq("active", true)
     .order("sort_order");
   if (!products || products.length === 0) {
-    await sendMessage("warehouse", chat_id, `No hay productos cargados.`);
+    await akRender(chat_id, uid, `<b>Agregar Keys</b>\n\nNo hay productos cargados.`, [[AK_HOME_BTN]], message_id);
     return;
   }
-  const kb = products.map((p) => [
+  const kb: AkKeyboard = products.map((p) => [
     { text: `${p.name}  ·  ${p.category}`, callback_data: `akprod:${p.id}` },
   ]);
-  await sendMessage("warehouse", chat_id, `<b>Agregar Keys</b>\n\nElegí el producto:`, {
-    reply_markup: { inline_keyboard: kb },
-  });
+  kb.push([AK_HOME_BTN]);
+  await akRender(chat_id, uid, `<b>Agregar Keys</b>\n\nElegí el producto:`, kb, message_id);
 }
 
-async function adminListDurations(chat_id: number, product_id: string) {
+async function adminListDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: prices } = await sb
     .from("product_prices")
     .select("id, duration_label, products(name)")
@@ -639,35 +694,114 @@ async function adminListDurations(chat_id: number, product_id: string) {
     .eq("active", true)
     .order("sort_order");
   if (!prices || prices.length === 0) {
-    await sendMessage("warehouse", chat_id, `Ese producto no tiene duraciones cargadas.`);
+    await akRender(
+      chat_id,
+      uid,
+      `Ese producto no tiene duraciones cargadas.`,
+      [[{ text: "🔙 Atrás", callback_data: "akp:add" }, AK_HOME_BTN]],
+      message_id,
+      { product_id },
+    );
     return;
   }
   const name = (prices[0] as { products: { name: string } }).products.name;
-  const kb = prices.map((p) => [
+  const kb: AkKeyboard = prices.map((p) => [
     { text: `${p.duration_label}`, callback_data: `akdur:${p.id}` },
   ]);
-  await sendMessage("warehouse", chat_id, `<b>${name}</b>\n\nElegí la duración:`, {
-    reply_markup: { inline_keyboard: kb },
-  });
+  kb.push([{ text: "🔙 Atrás", callback_data: "akp:add" }, AK_HOME_BTN]);
+  await akRender(
+    chat_id,
+    uid,
+    `📦 <b>Producto:</b> ${escapeHtml(name)}\n\nElegí la duración:`,
+    kb,
+    message_id,
+    { product_id },
+  );
 }
 
-async function adminPromptKeys(chat_id: number, price_id: string) {
+async function adminPromptKeys(chat_id: number, uid: number, price_id: string, message_id?: number) {
   const { data: price } = await sb
     .from("product_prices")
-    .select("id, duration_label, products(name)")
+    .select("id, product_id, duration_label, products(name)")
     .eq("id", price_id)
     .maybeSingle();
   if (!price) {
-    await sendMessage("warehouse", chat_id, `Variante no encontrada.`);
+    await akRender(chat_id, uid, `Variante no encontrada.`, [[{ text: "🔙 Atrás", callback_data: "akp:add" }, AK_HOME_BTN]], message_id);
     return;
   }
-  await sendMessage(
-    "warehouse",
+  const name = (price as { products: { name: string } }).products.name;
+  await akRender(
     chat_id,
-    `<b>ADDKEYS:${price_id}</b>\n${(price as { products: { name: string } }).products.name}  ·  ${price.duration_label}\n\n` +
-      `Respondé a este mensaje pegando las keys (una por línea). Podés pegar muchas a la vez.`,
+    uid,
+    `📦 <b>Producto:</b> ${escapeHtml(name)}\n⏳ <b>Duración:</b> ${escapeHtml(price.duration_label)}\n\nEnviá las keys (una por línea).`,
+    [[{ text: "🔙 Atrás", callback_data: `akback:${price.product_id}` }, AK_HOME_BTN]],
+    message_id,
+    { product_id: price.product_id, price_id },
   );
 }
+
+/** Procesa las keys enviadas por el admin y edita el mismo mensaje del wizard. */
+async function akSubmitKeys(msg: TgMessage, flow: AkFlow, rawText: string) {
+  const uid = msg.from!.id;
+  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+
+  const { data: price } = await sb
+    .from("product_prices")
+    .select("id, product_id, duration_label, products(name)")
+    .eq("id", flow.price_id!)
+    .maybeSingle();
+  if (!price) {
+    await adminListProducts(flow.chat_id, uid, flow.message_id);
+    return;
+  }
+  const name = (price as { products: { name: string } }).products.name;
+
+  const parsedKeys = [...new Set(rawText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean))];
+  const backKb: AkKeyboard = [[{ text: "🔙 Atrás", callback_data: `akback:${price.product_id}` }, AK_HOME_BTN]];
+
+  if (parsedKeys.length === 0) {
+    await akRender(
+      flow.chat_id,
+      uid,
+      `📦 <b>Producto:</b> ${escapeHtml(name)}\n⏳ <b>Duración:</b> ${escapeHtml(price.duration_label)}\n\n⚠️ No detecté keys válidas. Enviá las keys (una por línea).`,
+      backKb,
+      flow.message_id,
+      { product_id: price.product_id, price_id: price.id },
+    );
+    return;
+  }
+
+  const { data: existing } = await sb
+    .from("product_stock_keys")
+    .select("key_value")
+    .in("key_value", parsedKeys);
+  const existingSet = new Set((existing ?? []).map((r) => r.key_value));
+  const newKeys = parsedKeys.filter((v) => !existingSet.has(v));
+
+  if (newKeys.length > 0) {
+    await sb.from("product_stock_keys").insert(
+      newKeys.map((key_value) => ({
+        product_id: price.product_id,
+        price_id: price.id,
+        key_value,
+      })),
+    );
+    invalidateCatalogCache();
+  }
+
+  const dup = parsedKeys.length - newKeys.length;
+  const text =
+    `✅ <b>Stock Agregado Correctamente</b>\n\n` +
+    `📦 <b>Producto:</b> ${escapeHtml(name)}\n` +
+    `⏳ <b>Duración:</b> ${escapeHtml(price.duration_label)}\n` +
+    `➕ <b>Agregadas:</b> ${newKeys.length}` +
+    (dup > 0 ? `\n♻️ <b>Duplicadas:</b> ${dup}` : "");
+
+  await akRender(flow.chat_id, uid, text, backKb, flow.message_id, {
+    product_id: price.product_id,
+  });
+}
+
 
 async function adminStockView(chat_id: number) {
   const [productsRes, pricesRes] = await Promise.all([
