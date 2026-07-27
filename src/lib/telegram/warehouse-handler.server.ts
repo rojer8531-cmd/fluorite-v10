@@ -670,6 +670,16 @@ async function akRender(
 
 const AK_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
 
+/** Abre el wizard desde la barra inferior: borra el ancla previa y crea una nueva. */
+async function akStartFresh(chat_id: number, uid: number) {
+  const prev = await getAkFlow(uid);
+  if (prev) {
+    await setAkFlow(uid, null);
+    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
+  }
+  await adminListProducts(chat_id, uid);
+}
+
 async function adminListProducts(chat_id: number, uid: number, message_id?: number) {
   const { data: products } = await sb
     .from("products")
@@ -1777,6 +1787,18 @@ async function handleMessage(msg: TgMessage) {
       await patchContext(msg.from.id, { awaiting_broadcast: 0 });
       await handleBroadcast(msg);
       return;
+    }
+  }
+
+  // ===== Wizard Agregar Keys: captura de keys (edita el mismo mensaje) =====
+  if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
+    const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO)];
+    if (!labels.includes(text)) {
+      const akFlow = await getAkFlow(msg.from.id);
+      if (akFlow?.price_id) {
+        await akSubmitKeys(msg, akFlow, text);
+        return;
+      }
     }
   }
 
