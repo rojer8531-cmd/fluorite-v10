@@ -2605,6 +2605,12 @@ async function handleCallback(cb: TgCallback) {
         await setAkFlow(cb.from.id, null);
         deleteMessage("warehouse", flow.chat_id, flow.message_id).catch(() => {});
       }
+      const pflow = await getPrFlow(cb.from.id);
+      if (pflow) {
+        await setPrFlow(cb.from.id, null);
+        deleteMessage("warehouse", pflow.chat_id, pflow.message_id).catch(() => {});
+      }
+
       await patchContext(cb.from.id, { bar_shown: false });
       const sent = await sendMessage(
         "warehouse",
