@@ -2,6 +2,7 @@
 import {
   sendMessage as _rawSendMessage,
   editMessageReplyMarkup,
+  editMessageText,
   deleteMessage,
   answerCallbackQuery,
   getWarehouseChatId,
@@ -2312,7 +2313,7 @@ async function handleMessage(msg: TgMessage) {
       await adminUsuarios(msg.chat.id);
       return;
     case ADMIN_BOTTOM.addkeys:
-      await adminListProducts(msg.chat.id);
+      await akStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_TODO.precios:
       await adminListaPrecios(msg.chat.id);
@@ -2383,7 +2384,7 @@ async function handleMessage(msg: TgMessage) {
       await sendMessage("warehouse", msg.chat.id, `Uso: /addkeys &lt;priceId&gt;`);
       return;
     }
-    await adminPromptKeys(msg.chat.id, resolvedPriceId);
+    await adminPromptKeys(msg.chat.id, msg.from.id, resolvedPriceId);
     return;
   }
 
@@ -2459,6 +2460,11 @@ async function handleCallback(cb: TgCallback) {
 
   if (data === "akp:inicio") {
     if (chat_id) {
+      const flow = await getAkFlow(cb.from.id);
+      if (flow) {
+        await setAkFlow(cb.from.id, null);
+        deleteMessage("warehouse", flow.chat_id, flow.message_id).catch(() => {});
+      }
       await patchContext(cb.from.id, { bar_shown: false });
       const sent = await sendMessage(
         "warehouse",
@@ -2473,7 +2479,7 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:add") {
-    if (chat_id) await adminListProducts(chat_id);
+    if (chat_id) await adminListProducts(chat_id, cb.from.id, cb.message?.message_id);
     return;
   }
   if (data === "akp:finduser") {
@@ -2578,11 +2584,15 @@ async function handleCallback(cb: TgCallback) {
 
 
   if (data.startsWith("akprod:")) {
-    if (chat_id) await adminListDurations(chat_id, data.slice(7));
+    if (chat_id) await adminListDurations(chat_id, cb.from.id, data.slice(7), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("akback:")) {
+    if (chat_id) await adminListDurations(chat_id, cb.from.id, data.slice(7), cb.message?.message_id);
     return;
   }
   if (data.startsWith("akdur:")) {
-    if (chat_id) await adminPromptKeys(chat_id, data.slice(6));
+    if (chat_id) await adminPromptKeys(chat_id, cb.from.id, data.slice(6), cb.message?.message_id);
     return;
   }
   if (data.startsWith("akusrp:")) {
