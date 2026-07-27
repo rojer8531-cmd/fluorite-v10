@@ -1098,6 +1098,15 @@ async function adminListaPrecios(chat_id: number, uid: number, message_id?: numb
   await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 Elegí el producto:`, kb, message_id);
 }
 
+async function prStartFresh(chat_id: number, uid: number) {
+  const prev = await getPrFlow(uid);
+  if (prev) {
+    await setPrFlow(uid, null);
+    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
+  }
+  await adminListaPrecios(chat_id, uid);
+}
+
 async function adminPriceDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: prices } = await sb
     .from("product_prices")
@@ -1898,6 +1907,11 @@ async function handleMessage(msg: TgMessage) {
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
     const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO)];
     if (!labels.includes(text)) {
+      const prFlow = await getPrFlow(msg.from.id);
+      if (prFlow?.price_id) {
+        await prSubmitPrice(msg, prFlow, text);
+        return;
+      }
       const akFlow = await getAkFlow(msg.from.id);
       if (akFlow?.price_id) {
         await akSubmitKeys(msg, akFlow, text);
@@ -2442,7 +2456,7 @@ async function handleMessage(msg: TgMessage) {
       await akStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_TODO.precios:
-      await adminListaPrecios(msg.chat.id);
+      await prStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.productos:
       await adminProductsList(msg.chat.id);
@@ -2470,7 +2484,7 @@ async function handleMessage(msg: TgMessage) {
   }
 
   if (text === "/stock") return adminStockView(msg.chat.id);
-  if (text === "/precios") return adminListaPrecios(msg.chat.id);
+  if (text === "/precios") return prStartFresh(msg.chat.id, msg.from.id);
 
   if (text.startsWith("/setprecio ")) {
     const [, rawPriceId, rawUsd] = text.split(/\s+/);
@@ -2755,15 +2769,19 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:prlist") {
-    if (chat_id) await adminListaPrecios(chat_id);
+    if (chat_id) await adminListaPrecios(chat_id, cb.from.id, cb.message?.message_id);
     return;
   }
   if (data.startsWith("prprod:")) {
-    if (chat_id) await adminPriceDurations(chat_id, data.slice(7));
+    if (chat_id) await adminPriceDurations(chat_id, cb.from.id, data.slice(7), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("prback:")) {
+    if (chat_id) await adminPriceDurations(chat_id, cb.from.id, data.slice(7), cb.message?.message_id);
     return;
   }
   if (data.startsWith("pred:")) {
-    if (chat_id) await adminPromptNewPrice(chat_id, data.slice(5));
+    if (chat_id) await adminPromptNewPrice(chat_id, cb.from.id, data.slice(5), cb.message?.message_id);
     return;
   }
 
