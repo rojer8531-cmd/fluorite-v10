@@ -1028,25 +1028,86 @@ async function adminPromptAnuncio(chat_id: number) {
   );
 }
 
-async function adminListaPrecios(chat_id: number) {
+// ===== Módulo "Precios" (un solo mensaje, siempre editado) =====
+interface PrFlow {
+  chat_id: number;
+  message_id: number;
+  product_id?: string;
+  price_id?: string;
+}
+
+async function getPrFlow(uid: number): Promise<PrFlow | null> {
+  const st = await getState(uid);
+  const flow = (st?.context as Record<string, unknown> | undefined)?.pr_flow as PrFlow | undefined;
+  return flow && flow.message_id ? flow : null;
+}
+
+async function setPrFlow(uid: number, flow: PrFlow | null) {
+  await patchContext(uid, { pr_flow: flow });
+}
+
+const PR_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
+
+async function prRender(
+  chat_id: number,
+  uid: number,
+  text: string,
+  keyboard: AkKeyboard,
+  message_id?: number,
+  extra: Partial<PrFlow> = {},
+) {
+  let anchor = message_id ?? null;
+  if (anchor) {
+    const edited = await editMessageText("warehouse", chat_id, anchor, text, {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (!edited.ok) anchor = null;
+  }
+  if (!anchor) {
+    const sent = await _rawSendMessage("warehouse", chat_id, text, {
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (sent.ok && sent.result) {
+      anchor = sent.result.message_id;
+      sb.from("admin_trash")
+        .insert({ chat_id, message_id: anchor })
+        .then(() => {}, () => {});
+    }
+  }
+  if (anchor) {
+    await setPrFlow(uid, { chat_id, message_id: anchor, ...extra });
+  }
+  return anchor;
+}
+
+async function adminListaPrecios(chat_id: number, uid: number, message_id?: number) {
   const { data: products } = await sb
     .from("products")
     .select("id, name, category")
     .eq("active", true)
     .order("sort_order");
   if (!products || products.length === 0) {
-    await sendMessage("warehouse", chat_id, `No hay productos cargados.`);
+    await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 No hay productos cargados.`, [[PR_HOME_BTN]], message_id);
     return;
   }
-  const kb = products.map((p) => [
-    { text: `${p.name}  ·  ${p.category}`, callback_data: `prprod:${p.id}` },
+  const kb: AkKeyboard = products.map((p) => [
+    { text: `${p.name}`, callback_data: `prprod:${p.id}` },
   ]);
-  await sendMessage("warehouse", chat_id, `<b>Editar Precios</b>\n\nElegí el producto:`, {
-    reply_markup: { inline_keyboard: kb },
-  });
+  kb.push([PR_HOME_BTN]);
+  await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 Elegí el producto:`, kb, message_id);
 }
 
-async function adminPriceDurations(chat_id: number, product_id: string) {
+async function prStartFresh(chat_id: number, uid: number) {
+  const prev = await getPrFlow(uid);
+  if (prev) {
+    await setPrFlow(uid, null);
+    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
+  }
+  await adminListaPrecios(chat_id, uid);
+}
+
+async function adminPriceDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: prices } = await sb
     .from("product_prices")
     .select("id, duration_label, price_usd, products(name)")
@@ -1054,40 +1115,92 @@ async function adminPriceDurations(chat_id: number, product_id: string) {
     .eq("active", true)
     .order("sort_order");
   if (!prices || prices.length === 0) {
-    await sendMessage("warehouse", chat_id, `Ese producto no tiene duraciones cargadas.`);
+    await prRender(
+      chat_id,
+      uid,
+      `💲 <b>Editar Precios</b>\n\n📦 Ese producto no tiene duraciones cargadas.`,
+      [[{ text: "🔚 Atrás", callback_data: "akp:prlist" }, PR_HOME_BTN]],
+      message_id,
+    );
     return;
   }
   const name = (prices[0] as { products: { name: string } }).products.name;
-  const kb = prices.map((p) => [
-    {
-      text: `${p.duration_label}  ·  $${Number(p.price_usd).toFixed(2)}`,
-      callback_data: `pred:${p.id}`,
-    },
+  const kb: AkKeyboard = prices.map((p) => [
+    { text: `${p.duration_label}`, callback_data: `pred:${p.id}` },
   ]);
-  kb.push([{ text: "Volver", callback_data: "akp:prlist" }]);
-  await sendMessage("warehouse", chat_id, `<b>${name}</b>\n\nElegí la duración a editar:`, {
-    reply_markup: { inline_keyboard: kb },
-  });
+  kb.push([{ text: "🔚 Atrás", callback_data: "akp:prlist" }, PR_HOME_BTN]);
+  await prRender(
+    chat_id,
+    uid,
+    `💲 <b>Editar Precios</b>\n\n📦 ${escapeHtml(name)}\n\nElegí la duración:`,
+    kb,
+    message_id,
+    { product_id },
+  );
 }
 
-async function adminPromptNewPrice(chat_id: number, price_id: string) {
+async function adminPromptNewPrice(chat_id: number, uid: number, price_id: string, message_id?: number) {
   const { data: p } = await sb
     .from("product_prices")
-    .select("duration_label, price_usd, products(name)")
+    .select("product_id, duration_label, price_usd, products(name)")
     .eq("id", price_id)
     .maybeSingle();
   if (!p) {
-    await sendMessage("warehouse", chat_id, `Variante no encontrada.`);
+    await prRender(chat_id, uid, `💲 <b>Editar Precio</b>\n\n📦 Variante no encontrada.`, [[PR_HOME_BTN]], message_id);
     return;
   }
   const name = (p as { products: { name: string } }).products.name;
-  await sendMessage(
-    "warehouse",
+  await prRender(
     chat_id,
-    `<b>PRICEEDIT:${price_id}</b>\n\n💲 <b>Editar precio</b>\n\n📦 Producto: <b>${escapeHtml(name)}</b>\n🗓️ Duración: <b>${escapeHtml(p.duration_label)}</b>\n💰 Precio actual: <b>$${Number(p.price_usd).toFixed(2)} USD</b>\n\n✏️ Responde a este mensaje con el nuevo precio en USD.\n\n📌 Ejemplo: <code>4.50</code>`,
-    { reply_markup: { force_reply: true, selective: true } },
+    uid,
+    `💲 <b>Editar Precio</b>\n\n📦 ${escapeHtml(name)}\n🛍️ ${escapeHtml(p.duration_label)}\n💰 $${Number(p.price_usd).toFixed(2)} USD\n\nEnviá el nuevo precio.\nEjemplo: <code>4.50</code>`,
+    [[{ text: "🔚 Atrás", callback_data: `prback:${p.product_id}` }, PR_HOME_BTN]],
+    message_id,
+    { product_id: p.product_id, price_id },
   );
 }
+
+async function prSubmitPrice(msg: TgMessage, flow: PrFlow, rawText: string) {
+  const uid = msg.from!.id;
+  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+
+  const { data: p } = await sb
+    .from("product_prices")
+    .select("product_id, duration_label, price_usd, products(name)")
+    .eq("id", flow.price_id!)
+    .maybeSingle();
+  if (!p) {
+    await adminListaPrecios(flow.chat_id, uid, flow.message_id);
+    return;
+  }
+  const name = (p as { products: { name: string } }).products.name;
+  const n = Number(rawText.trim().replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) {
+    await prRender(
+      flow.chat_id,
+      uid,
+      `💲 <b>Editar Precio</b>\n\n📦 ${escapeHtml(name)}\n🛍️ ${escapeHtml(p.duration_label)}\n💰 $${Number(p.price_usd).toFixed(2)} USD\n\nPrecio inválido. Enviá el nuevo precio.\nEjemplo: <code>4.50</code>`,
+      [[{ text: "🔚 Atrás", callback_data: `prback:${p.product_id}` }, PR_HOME_BTN]],
+      flow.message_id,
+      { product_id: p.product_id, price_id: flow.price_id },
+    );
+    return;
+  }
+
+  await sb.from("product_prices").update({ price_usd: n }).eq("id", flow.price_id!);
+  invalidateCatalogCache();
+
+  await prRender(
+    flow.chat_id,
+    uid,
+    `✅ <b>Precio actualizado.</b>\n\n📦 ${escapeHtml(name)}\n🛍️ ${escapeHtml(p.duration_label)}\n💰 $${n.toFixed(2)} USD`,
+    [[{ text: "🔚 Atrás", callback_data: `prback:${p.product_id}` }, PR_HOME_BTN]],
+    flow.message_id,
+    { product_id: p.product_id },
+  );
+}
+
+
 
 // ===== Gestión de productos (renombrar / borrar) =====
 async function adminProductsList(chat_id: number) {
@@ -1794,6 +1907,11 @@ async function handleMessage(msg: TgMessage) {
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
     const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO)];
     if (!labels.includes(text)) {
+      const prFlow = await getPrFlow(msg.from.id);
+      if (prFlow?.price_id) {
+        await prSubmitPrice(msg, prFlow, text);
+        return;
+      }
       const akFlow = await getAkFlow(msg.from.id);
       if (akFlow?.price_id) {
         await akSubmitKeys(msg, akFlow, text);
@@ -2338,7 +2456,7 @@ async function handleMessage(msg: TgMessage) {
       await akStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_TODO.precios:
-      await adminListaPrecios(msg.chat.id);
+      await prStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.productos:
       await adminProductsList(msg.chat.id);
@@ -2366,7 +2484,7 @@ async function handleMessage(msg: TgMessage) {
   }
 
   if (text === "/stock") return adminStockView(msg.chat.id);
-  if (text === "/precios") return adminListaPrecios(msg.chat.id);
+  if (text === "/precios") return prStartFresh(msg.chat.id, msg.from.id);
 
   if (text.startsWith("/setprecio ")) {
     const [, rawPriceId, rawUsd] = text.split(/\s+/);
@@ -2487,6 +2605,12 @@ async function handleCallback(cb: TgCallback) {
         await setAkFlow(cb.from.id, null);
         deleteMessage("warehouse", flow.chat_id, flow.message_id).catch(() => {});
       }
+      const pflow = await getPrFlow(cb.from.id);
+      if (pflow) {
+        await setPrFlow(cb.from.id, null);
+        deleteMessage("warehouse", pflow.chat_id, pflow.message_id).catch(() => {});
+      }
+
       await patchContext(cb.from.id, { bar_shown: false });
       const sent = await sendMessage(
         "warehouse",
@@ -2651,15 +2775,19 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:prlist") {
-    if (chat_id) await adminListaPrecios(chat_id);
+    if (chat_id) await adminListaPrecios(chat_id, cb.from.id, cb.message?.message_id);
     return;
   }
   if (data.startsWith("prprod:")) {
-    if (chat_id) await adminPriceDurations(chat_id, data.slice(7));
+    if (chat_id) await adminPriceDurations(chat_id, cb.from.id, data.slice(7), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("prback:")) {
+    if (chat_id) await adminPriceDurations(chat_id, cb.from.id, data.slice(7), cb.message?.message_id);
     return;
   }
   if (data.startsWith("pred:")) {
-    if (chat_id) await adminPromptNewPrice(chat_id, data.slice(5));
+    if (chat_id) await adminPromptNewPrice(chat_id, cb.from.id, data.slice(5), cb.message?.message_id);
     return;
   }
 
