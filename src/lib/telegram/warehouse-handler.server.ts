@@ -2987,63 +2987,71 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
 
-  // ===== Productos: gestión =====
-  if (data === "akp:prodlist") {
-    if (chat_id) await adminProductsList(chat_id);
+  // ===== Productos: gestión (un solo mensaje) =====
+  if (data === "akp:prodlist" || data === "pdcats") {
+    if (chat_id) await pdCategories(chat_id, cb.from.id, cb.message?.message_id);
     return;
   }
-  if (data.startsWith("prodm:")) {
-    if (chat_id) await adminProductMenu(chat_id, data.slice(6));
+  if (data.startsWith("pdcat:")) {
+    const idx = Number(data.slice(6));
+    const cat = PD_CATEGORIES[idx] ?? PD_CATEGORIES[0];
+    if (chat_id) await pdList(chat_id, cb.from.id, cat, cb.message?.message_id);
     return;
   }
-  if (data.startsWith("prodren:")) {
-    if (chat_id) await adminPromptProductRename(chat_id, data.slice(8));
-    return;
-  }
-  if (data.startsWith("prodtog:")) {
-    const pid = data.slice(8);
-    const { data: p } = await sb.from("products").select("active").eq("id", pid).maybeSingle();
-    if (p) {
-      await sb.from("products").update({ active: !p.active }).eq("id", pid);
-      invalidateCatalogCache();
-      await sb.from("admin_logs").insert({
-        admin_telegram_id: cb.from.id,
-        action: "product_toggle",
-        target_type: "product",
-        target_id: pid,
-        details: { active: !p.active } as never,
-      });
-    }
-    if (chat_id) await adminProductMenu(chat_id, pid);
-    return;
-  }
-  if (data.startsWith("proddel:")) {
-    if (chat_id) await adminConfirmProductDelete(chat_id, data.slice(8));
-    return;
-  }
-  if (data.startsWith("proddelok:")) {
-    const pid = data.slice(10);
-    // Borrar en cascada: keys, precios y producto
-    await sb.from("product_stock_keys").delete().eq("product_id", pid);
-    await sb.from("product_prices").delete().eq("product_id", pid);
-    const { error } = await sb.from("products").delete().eq("id", pid);
-    if (error) {
-      if (chat_id) await sendMessage("warehouse", chat_id, `Error: ${error.message}`);
-      return;
-    }
-    invalidateCatalogCache();
-    await sb.from("admin_logs").insert({
-      admin_telegram_id: cb.from.id,
-      action: "product_delete",
-      target_type: "product",
-      target_id: pid,
-    });
+  if (data === "pdback") {
+    const flow = await getPdFlow(cb.from.id);
     if (chat_id) {
-      await sendMessage("warehouse", chat_id, `🗑 Producto eliminado.`);
-      await adminProductsList(chat_id);
+      if (flow?.category) await pdList(chat_id, cb.from.id, flow.category, cb.message?.message_id);
+      else await pdCategories(chat_id, cb.from.id, cb.message?.message_id);
     }
     return;
   }
+  if (data.startsWith("pdp:")) {
+    if (chat_id) await pdProductMenu(chat_id, cb.from.id, data.slice(4), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pdren:")) {
+    if (chat_id) await pdPromptRename(chat_id, cb.from.id, data.slice(6), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pdtogok:")) {
+    if (chat_id) await pdApplyToggle(chat_id, cb.from.id, data.slice(8), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pdtog:")) {
+    if (chat_id) await pdConfirmDeactivate(chat_id, cb.from.id, data.slice(6), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pddelok:")) {
+    if (chat_id) await pdApplyDelete(chat_id, cb.from.id, data.slice(8), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pddel:")) {
+    if (chat_id) await pdConfirmDelete(chat_id, cb.from.id, data.slice(6), cb.message?.message_id);
+    return;
+  }
+  if (data === "pdadd") {
+    const flow = await getPdFlow(cb.from.id);
+    if (chat_id) await pdPromptAddName(chat_id, cb.from.id, flow?.category ?? PD_CATEGORIES[0], cb.message?.message_id);
+    return;
+  }
+  if (data === "pdprices") {
+    const flow = await getPdFlow(cb.from.id);
+    if (chat_id && flow) await pdPricesMenu(chat_id, cb.from.id, { ...flow, step: undefined }, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pdprset:")) {
+    const which = data.slice(8) as "1" | "7" | "30";
+    const flow = await getPdFlow(cb.from.id);
+    if (chat_id && flow) await pdPromptAddPrice(chat_id, cb.from.id, flow, which, cb.message?.message_id);
+    return;
+  }
+  if (data === "pdsave") {
+    const flow = await getPdFlow(cb.from.id);
+    if (chat_id && flow) await pdSaveProduct(chat_id, cb.from.id, { ...flow, message_id: cb.message?.message_id ?? flow.message_id });
+    return;
+  }
+
 
 
 
