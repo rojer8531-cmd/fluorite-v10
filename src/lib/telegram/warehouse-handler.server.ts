@@ -1202,264 +1202,460 @@ async function prSubmitPrice(msg: TgMessage, flow: PrFlow, rawText: string) {
 
 
 
-// ===== Gestión de productos (renombrar / borrar) =====
-async function adminProductsList(chat_id: number) {
-  const { data: products } = await sb
-    .from("products")
-    .select("id, name, category, active")
-    .order("category")
-    .order("sort_order");
-  if (!products || products.length === 0) {
-    await sendMessage("warehouse", chat_id, `No hay productos cargados.`);
-    return;
-  }
-  const kb: { text: string; callback_data: string }[][] = [
-    [{ text: "➕ Agregar Producto", callback_data: "padd:new" }],
-  ];
-  for (const p of products) {
-    kb.push([
-      {
-        text: `${p.active ? "" : "⏸ "}${p.name}  ·  ${p.category}`,
-        callback_data: `prodm:${p.id}`,
-      },
-    ]);
-  }
-  await sendMessage("warehouse", chat_id, `<b>📦 Productos (iOS / Android)</b>\n\nElegí un producto para editar o borrar, o agregá uno nuevo:`, {
-    reply_markup: { inline_keyboard: kb },
-  });
-}
+// ===== Módulo "Productos" (un solo mensaje, siempre editado) =====
+type PdCategory = "iOS" | "Android" | "Auxiliar de Famosos";
+const PD_CATEGORIES: PdCategory[] = ["iOS", "Android", "Auxiliar de Famosos"];
 
-// ===== Wizard: Agregar Producto =====
-interface ProductAddCtx {
-  category?: "iOS" | "Android" | "Auxiliar de Famosos";
+interface PdDraft {
   name?: string;
   p1?: number;
   p7?: number;
   p30?: number;
 }
 
-async function getProductAddCtx(telegram_id: number): Promise<ProductAddCtx> {
-  const st = await getState(telegram_id);
-  const raw = (st?.context as { padd?: ProductAddCtx } | undefined)?.padd;
-  return raw ?? {};
+interface PdFlow {
+  chat_id: number;
+  message_id: number;
+  category?: PdCategory;
+  product_id?: string;
+  step?: "rename" | "addname" | "addprice";
+  which?: "1" | "7" | "30";
+  draft?: PdDraft;
 }
 
-async function setProductAddCtx(telegram_id: number, patch: Partial<ProductAddCtx>) {
-  const cur = await getProductAddCtx(telegram_id);
-  await patchContext(telegram_id, { padd: { ...cur, ...patch } });
+async function getPdFlow(uid: number): Promise<PdFlow | null> {
+  const st = await getState(uid);
+  const flow = (st?.context as Record<string, unknown> | undefined)?.pd_flow as PdFlow | undefined;
+  return flow && flow.message_id ? flow : null;
 }
 
-async function clearProductAddCtx(telegram_id: number) {
-  await patchContext(telegram_id, { padd: null });
+async function setPdFlow(uid: number, flow: PdFlow | null) {
+  await patchContext(uid, { pd_flow: flow });
 }
 
-async function padStartCategory(chat_id: number, telegram_id: number) {
-  await clearProductAddCtx(telegram_id);
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>➕ Agregar Producto</b>\n\nPaso 1 de 5 — Elegí la plataforma:`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "📱 iOS", callback_data: "padd:cat:iOS" },
-            { text: "🤖 Android", callback_data: "padd:cat:Android" },
-          ],
-          [{ text: "⭐ Auxiliar de Famosos", callback_data: "padd:cat:Auxiliar de Famosos" }],
-          [{ text: "❌ Cancelar", callback_data: "padd:cancel" }],
-        ],
-      },
-    },
-  );
-}
+const PD_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
 
-async function padPromptName(chat_id: number) {
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>PRODADD:name</b>\n\nPaso 2 de 5 — Respondé con el <b>nombre del producto</b>.\n\nEjemplo: <code>DRIP CLIENT</code>`,
-    { reply_markup: { force_reply: true, selective: true } },
-  );
-}
-
-async function padPromptPrice(chat_id: number, which: "1" | "7" | "30", step: number) {
-  const label = which === "1" ? "1 Día" : which === "7" ? "7 Días" : "30 Días";
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>PRODADD:price:${which}</b>\n\nPaso ${step} de 5 — Respondé con el precio de <b>${label}</b> en USD.\n\nEjemplo: <code>4.00</code>`,
-    { reply_markup: { force_reply: true, selective: true } },
-  );
-}
-
-function fmtPricePreview(n: number) {
-  return Number.isInteger(n) ? `$${n}.00` : `$${n.toFixed(2)}`;
-}
-
-async function padShowPreview(chat_id: number, telegram_id: number) {
-  const c = await getProductAddCtx(telegram_id);
-  if (!c.name || c.p1 == null || c.p7 == null || c.p30 == null) {
-    await sendMessage("warehouse", chat_id, `Faltan datos, empezá de nuevo.`);
-    return;
+async function pdRender(
+  chat_id: number,
+  uid: number,
+  text: string,
+  keyboard: AkKeyboard,
+  message_id?: number,
+  extra: Partial<PdFlow> = {},
+) {
+  let anchor = message_id ?? null;
+  if (anchor) {
+    const edited = await editMessageText("warehouse", chat_id, anchor, text, {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (!edited.ok) anchor = null;
   }
-  const text =
-    `<b>Vista previa</b>\n\n` +
-    `📦 <b>${escapeHtml(c.name)}</b>  ·  ${c.category}\n` +
-    `Seleccioná una duración.\n\n` +
-    `⌛️ 1 Día • ${fmtPricePreview(c.p1)}\n` +
-    `⌛️ 7 Días • ${fmtPricePreview(c.p7)}\n` +
-    `⌛️ 30 Días • ${fmtPricePreview(c.p30)}`;
-  await sendMessage("warehouse", chat_id, text, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: "➕ Agregar Producto", callback_data: "padd:save" }],
-        [{ text: "✏️ Editar", callback_data: "padd:edit" }],
-        [{ text: "❌ Cancelar", callback_data: "padd:cancel" }],
-      ],
-    },
-  });
+  if (!anchor) {
+    const sent = await _rawSendMessage("warehouse", chat_id, text, {
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (sent.ok && sent.result) {
+      anchor = sent.result.message_id;
+      sb.from("admin_trash")
+        .insert({ chat_id, message_id: anchor })
+        .then(() => {}, () => {});
+    }
+  }
+  if (anchor) {
+    await setPdFlow(uid, { chat_id, message_id: anchor, ...extra });
+  }
+  return anchor;
 }
 
-async function padShowEditMenu(chat_id: number) {
-  await sendMessage("warehouse", chat_id, `✏️ ¿Qué querés editar?`, {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: "📱 Plataforma", callback_data: "padd:ecat" },
-          { text: "📝 Nombre", callback_data: "padd:ename" },
-        ],
-        [
-          { text: "1 Día", callback_data: "padd:ep:1" },
-          { text: "7 Días", callback_data: "padd:ep:7" },
-          { text: "30 Días", callback_data: "padd:ep:30" },
-        ],
-        [{ text: "⬅️ Volver a vista previa", callback_data: "padd:preview" }],
-      ],
-    },
-  });
-}
-
-async function padSaveProduct(chat_id: number, telegram_id: number, admin_id: number) {
-  const c = await getProductAddCtx(telegram_id);
-  if (!c.category || !c.name || c.p1 == null || c.p7 == null || c.p30 == null) {
-    await sendMessage("warehouse", chat_id, `Faltan datos, empezá de nuevo.`);
-    return;
-  }
-  const { data: maxRow } = await sb
-    .from("products")
-    .select("sort_order")
-    .eq("category", c.category)
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextSort = ((maxRow?.sort_order as number | undefined) ?? 0) + 1;
-  const { data: prod, error } = await sb
-    .from("products")
-    .insert({ name: c.name, category: c.category, active: true, sort_order: nextSort } as never)
-    .select("id")
-    .single();
-  if (error || !prod) {
-    await sendMessage("warehouse", chat_id, `Error: ${error?.message ?? "no se pudo crear el producto"}`);
-    return;
-  }
-  const pid = (prod as { id: string }).id;
-  const priceRows = [
-    { product_id: pid, duration_label: "1 Día", duration_days: 1, price_usd: c.p1, active: true, sort_order: 1 },
-    { product_id: pid, duration_label: "7 Días", duration_days: 7, price_usd: c.p7, active: true, sort_order: 2 },
-    { product_id: pid, duration_label: "30 Días", duration_days: 30, price_usd: c.p30, active: true, sort_order: 3 },
+async function pdCategories(chat_id: number, uid: number, message_id?: number) {
+  const kb: AkKeyboard = [
+    [
+      { text: "🏷️ iOS", callback_data: "pdcat:0" },
+      { text: "🏷️ Android", callback_data: "pdcat:1" },
+    ],
+    [{ text: "🏷️ Auxiliar de Famosos", callback_data: "pdcat:2" }],
+    [PD_HOME_BTN],
   ];
-  const { error: prErr } = await sb.from("product_prices").insert(priceRows as never);
-  if (prErr) {
-    await sb.from("products").delete().eq("id", pid);
-    await sendMessage("warehouse", chat_id, `Error creando precios: ${prErr.message}`);
-    return;
-  }
-  invalidateCatalogCache();
-  await sb.from("admin_logs").insert({
-    admin_telegram_id: admin_id,
-    action: "product_add",
-    target_type: "product",
-    target_id: pid,
-    details: { name: c.name, category: c.category, p1: c.p1, p7: c.p7, p30: c.p30 } as never,
-  });
-  await clearProductAddCtx(telegram_id);
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `✅ Producto agregado.\n\n📦 <b>${escapeHtml(c.name)}</b>  ·  ${c.category}\n⌛️ 1 Día • ${fmtPricePreview(c.p1)}\n⌛️ 7 Días • ${fmtPricePreview(c.p7)}\n⌛️ 30 Días • ${fmtPricePreview(c.p30)}\n\nYa está disponible para los usuarios.`,
-  );
-  await adminProductsList(chat_id);
+  await pdRender(chat_id, uid, `🛍️ <b>Categorías</b>`, kb, message_id, {});
 }
 
-async function adminProductMenu(chat_id: number, product_id: string) {
+async function pdStartFresh(chat_id: number, uid: number) {
+  const prev = await getPdFlow(uid);
+  if (prev) {
+    await setPdFlow(uid, null);
+    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
+  }
+  await pdCategories(chat_id, uid);
+}
+
+async function pdList(chat_id: number, uid: number, category: PdCategory, message_id?: number) {
+  const { data: products } = await sb
+    .from("products")
+    .select("id, name, active")
+    .eq("category", category)
+    .order("sort_order");
+  const kb: AkKeyboard = (products ?? []).map((p) => [
+    { text: `${p.active ? "🔜" : "⏸️"} ${p.name}`, callback_data: `pdp:${p.id}` },
+  ]);
+  kb.push([{ text: "➕ Agregar producto", callback_data: "pdadd" }]);
+  kb.push([{ text: "🔚 Atrás", callback_data: "pdcats" }, PD_HOME_BTN]);
+  await pdRender(
+    chat_id,
+    uid,
+    `❇️ <b>Lista de productos</b>\n\n🏷️ ${escapeHtml(category)}`,
+    kb,
+    message_id,
+    { category },
+  );
+}
+
+async function pdProductMenu(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: p } = await sb
     .from("products")
     .select("id, name, category, active")
     .eq("id", product_id)
     .maybeSingle();
   if (!p) {
-    await sendMessage("warehouse", chat_id, `Producto no encontrado.`);
+    await pdCategories(chat_id, uid, message_id);
     return;
   }
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>${escapeHtml(p.name)}</b>  ·  ${p.category}\n${p.active ? "✅ Activo" : "⏸ Inactivo"}\n\n¿Qué querés hacer?`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: "✏️ Renombrar", callback_data: `prodren:${p.id}` }],
-          [{ text: p.active ? "⏸ Desactivar" : "▶️ Activar", callback_data: `prodtog:${p.id}` }],
-          [{ text: "🗑 Borrar (definitivo)", callback_data: `proddel:${p.id}` }],
-          [{ text: "Volver", callback_data: "akp:prodlist" }],
-        ],
+  const category = p.category as PdCategory;
+  const kb: AkKeyboard = [
+    [{ text: "🔏 Renombrar", callback_data: `pdren:${p.id}` }],
+    [
+      {
+        text: p.active ? "🔏 Desactivar" : "🔏 Activar",
+        callback_data: `pdtog:${p.id}`,
       },
-    },
+    ],
+    [{ text: "🗑️ Eliminar definitivamente", callback_data: `pddel:${p.id}` }],
+    [{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN],
+  ];
+  await pdRender(
+    chat_id,
+    uid,
+    `${p.active ? "✅" : "⏸️"} <b>${escapeHtml(p.name)}</b> ${p.active ? "activo" : "desactivado"}`,
+    kb,
+    message_id,
+    { category, product_id: p.id },
   );
 }
 
-async function adminPromptProductRename(chat_id: number, product_id: string) {
-  const { data: p } = await sb
-    .from("products")
-    .select("name")
-    .eq("id", product_id)
-    .maybeSingle();
-  if (!p) {
-    await sendMessage("warehouse", chat_id, `Producto no encontrado.`);
-    return;
-  }
-  await sendMessage(
-    "warehouse",
+async function pdPromptRename(chat_id: number, uid: number, product_id: string, message_id?: number) {
+  const { data: p } = await sb.from("products").select("name, category").eq("id", product_id).maybeSingle();
+  if (!p) return pdCategories(chat_id, uid, message_id);
+  await pdRender(
     chat_id,
-    `<b>PRODRENAME:${product_id}</b>\nNombre actual: <b>${escapeHtml(p.name)}</b>\n\nRespondé a este mensaje con el nuevo nombre.`,
-    { reply_markup: { force_reply: true, selective: true } },
+    uid,
+    `🔏 <b>Renombrar</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n\n❇️ Envía el nuevo nombre del producto.`,
+    [[{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN]],
+    message_id,
+    { category: p.category as PdCategory, product_id, step: "rename" },
   );
 }
 
-async function adminConfirmProductDelete(chat_id: number, product_id: string) {
-  const { data: p } = await sb
-    .from("products")
-    .select("name")
-    .eq("id", product_id)
-    .maybeSingle();
-  if (!p) return;
-  await sendMessage(
-    "warehouse",
+async function pdConfirmDeactivate(chat_id: number, uid: number, product_id: string, message_id?: number) {
+  const { data: p } = await sb.from("products").select("name, category, active").eq("id", product_id).maybeSingle();
+  if (!p) return pdCategories(chat_id, uid, message_id);
+  await pdRender(
     chat_id,
-    `⚠️ <b>Borrar producto</b>\n\n<b>${escapeHtml(p.name)}</b>\n\nEsta acción elimina el producto, sus precios y sus keys disponibles. ¿Confirmás?`,
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "Confirmar borrado", callback_data: `proddelok:${product_id}` },
-            { text: "Cancelar", callback_data: `prodm:${product_id}` },
-          ],
-        ],
-      },
-    },
+    uid,
+    `🚨 <b>${p.active ? "Desactivar" : "Activar"} ${escapeHtml(p.name)}</b>`,
+    [
+      [
+        { text: "☑️ Yes", callback_data: `pdtogok:${product_id}` },
+        { text: "☑️ No", callback_data: `pdp:${product_id}` },
+      ],
+      [{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN],
+    ],
+    message_id,
+    { category: p.category as PdCategory, product_id },
   );
 }
+
+async function pdApplyToggle(chat_id: number, uid: number, product_id: string, message_id?: number) {
+  const { data: p } = await sb.from("products").select("name, category, active").eq("id", product_id).maybeSingle();
+  if (!p) return pdCategories(chat_id, uid, message_id);
+  const next = !p.active;
+  await sb.from("products").update({ active: next }).eq("id", product_id);
+  invalidateCatalogCache();
+  sb.from("admin_logs")
+    .insert({
+      admin_telegram_id: uid,
+      action: "product_toggle",
+      target_type: "product",
+      target_id: product_id,
+      details: { active: next } as never,
+    })
+    .then(() => {}, () => {});
+  await pdRender(
+    chat_id,
+    uid,
+    `✅ <b>${next ? "Activado" : "Desactivado"} correctamente.</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n📌 Estado: ${next ? "Activo" : "Desactivado"}`,
+    [[{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN]],
+    message_id,
+    { category: p.category as PdCategory, product_id },
+  );
+}
+
+async function pdConfirmDelete(chat_id: number, uid: number, product_id: string, message_id?: number) {
+  const { data: p } = await sb.from("products").select("name, category").eq("id", product_id).maybeSingle();
+  if (!p) return pdCategories(chat_id, uid, message_id);
+  await pdRender(
+    chat_id,
+    uid,
+    `⭕️ <b>Eliminar ${escapeHtml(p.name)}</b>`,
+    [
+      [
+        { text: "☑️ Yes", callback_data: `pddelok:${product_id}` },
+        { text: "☑️ Cancelar", callback_data: `pdp:${product_id}` },
+      ],
+      [{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN],
+    ],
+    message_id,
+    { category: p.category as PdCategory, product_id },
+  );
+}
+
+async function pdApplyDelete(chat_id: number, uid: number, product_id: string, message_id?: number) {
+  const { data: p } = await sb.from("products").select("name, category").eq("id", product_id).maybeSingle();
+  if (!p) return pdCategories(chat_id, uid, message_id);
+  await sb.from("product_stock_keys").delete().eq("product_id", product_id);
+  await sb.from("product_prices").delete().eq("product_id", product_id);
+  const { error } = await sb.from("products").delete().eq("id", product_id);
+  if (error) {
+    await pdProductMenu(chat_id, uid, product_id, message_id);
+    return;
+  }
+  invalidateCatalogCache();
+  sb.from("admin_logs")
+    .insert({
+      admin_telegram_id: uid,
+      action: "product_delete",
+      target_type: "product",
+      target_id: product_id,
+    })
+    .then(() => {}, () => {});
+  await pdRender(
+    chat_id,
+    uid,
+    `✅ <b>Eliminado correctamente.</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n📌 Eliminado: ${escapeHtml(p.name)}`,
+    [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+    message_id,
+    { category: p.category as PdCategory },
+  );
+}
+
+// ----- Agregar producto -----
+function pdFmtPrice(n?: number) {
+  if (n == null) return "—";
+  return Number.isInteger(n) ? `$${n} USD` : `$${n.toFixed(2)} USD`;
+}
+
+async function pdPromptAddName(chat_id: number, uid: number, category: PdCategory, message_id?: number) {
+  await pdRender(
+    chat_id,
+    uid,
+    `❇️ <b>Envía el nombre del producto.</b>`,
+    [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+    message_id,
+    { category, step: "addname", draft: {} },
+  );
+}
+
+async function pdPricesMenu(chat_id: number, uid: number, flow: PdFlow, message_id?: number) {
+  const d = flow.draft ?? {};
+  if (d.p1 != null && d.p7 != null && d.p30 != null) {
+    await pdRender(
+      chat_id,
+      uid,
+      `❇️ <b>Todo listo para agregar.</b>\n\n📦 Producto: ${escapeHtml(d.name ?? "")}\n💲 1 día: ${pdFmtPrice(d.p1)}\n💲 7 días: ${pdFmtPrice(d.p7)}\n💲 30 días: ${pdFmtPrice(d.p30)}`,
+      [
+        [
+          { text: "☑️ Yes", callback_data: "pdsave" },
+          { text: "☑️ Cancelar", callback_data: "pdback" },
+        ],
+        [{ text: "🔚 Atrás", callback_data: "pdprices" }, PD_HOME_BTN],
+      ],
+      message_id,
+      { category: flow.category, draft: d, step: undefined },
+    );
+    return;
+  }
+  await pdRender(
+    chat_id,
+    uid,
+    `🛍️ <b>Precios del producto</b>\n\n📦 Producto: ${escapeHtml(d.name ?? "")}`,
+    [
+      [{ text: `💲 1 día  ${pdFmtPrice(d.p1)}`, callback_data: "pdprset:1" }],
+      [{ text: `💲 7 días  ${pdFmtPrice(d.p7)}`, callback_data: "pdprset:7" }],
+      [{ text: `💲 30 días  ${pdFmtPrice(d.p30)}`, callback_data: "pdprset:30" }],
+      [{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN],
+    ],
+    message_id,
+    { category: flow.category, draft: d, step: undefined },
+  );
+}
+
+async function pdPromptAddPrice(
+  chat_id: number,
+  uid: number,
+  flow: PdFlow,
+  which: "1" | "7" | "30",
+  message_id?: number,
+) {
+  await pdRender(
+    chat_id,
+    uid,
+    `➕ <b>Envía el precio del producto.</b>\n\n📦 Producto: ${escapeHtml(flow.draft?.name ?? "")}\n💲 ${which} ${which === "1" ? "día" : "días"}`,
+    [[{ text: "🔚 Atrás", callback_data: "pdprices" }, PD_HOME_BTN]],
+    message_id,
+    { category: flow.category, draft: flow.draft ?? {}, step: "addprice", which },
+  );
+}
+
+async function pdSaveProduct(chat_id: number, uid: number, flow: PdFlow) {
+  const d = flow.draft ?? {};
+  const category = flow.category;
+  if (!category || !d.name || d.p1 == null || d.p7 == null || d.p30 == null) {
+    await pdCategories(chat_id, uid, flow.message_id);
+    return;
+  }
+  const { data: maxRow } = await sb
+    .from("products")
+    .select("sort_order")
+    .eq("category", category)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextSort = ((maxRow?.sort_order as number | undefined) ?? 0) + 1;
+  const { data: prod, error } = await sb
+    .from("products")
+    .insert({ name: d.name, category, active: true, sort_order: nextSort } as never)
+    .select("id")
+    .single();
+  if (error || !prod) {
+    await pdRender(
+      chat_id,
+      uid,
+      `⭕️ No se pudo crear el producto.`,
+      [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+      flow.message_id,
+      { category, draft: d },
+    );
+    return;
+  }
+  const pid = (prod as { id: string }).id;
+  const priceRows = [
+    { product_id: pid, duration_label: "1 Día", duration_days: 1, price_usd: d.p1, active: true, sort_order: 1 },
+    { product_id: pid, duration_label: "7 Días", duration_days: 7, price_usd: d.p7, active: true, sort_order: 2 },
+    { product_id: pid, duration_label: "30 Días", duration_days: 30, price_usd: d.p30, active: true, sort_order: 3 },
+  ];
+  const { error: prErr } = await sb.from("product_prices").insert(priceRows as never);
+  if (prErr) {
+    await sb.from("products").delete().eq("id", pid);
+    await pdRender(
+      chat_id,
+      uid,
+      `⭕️ No se pudieron crear los precios.`,
+      [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+      flow.message_id,
+      { category, draft: d },
+    );
+    return;
+  }
+  invalidateCatalogCache();
+  sb.from("admin_logs")
+    .insert({
+      admin_telegram_id: uid,
+      action: "product_add",
+      target_type: "product",
+      target_id: pid,
+      details: { name: d.name, category, p1: d.p1, p7: d.p7, p30: d.p30 } as never,
+    })
+    .then(() => {}, () => {});
+  await pdRender(
+    chat_id,
+    uid,
+    `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(d.name)}\n🏷️ ${escapeHtml(category)}\n💲 1 día: ${pdFmtPrice(d.p1)}\n💲 7 días: ${pdFmtPrice(d.p7)}\n💲 30 días: ${pdFmtPrice(d.p30)}`,
+    [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+    flow.message_id,
+    { category, product_id: pid },
+  );
+}
+
+/** Texto enviado durante el flujo de Productos. */
+async function pdSubmitText(msg: TgMessage, flow: PdFlow, rawText: string) {
+  const uid = msg.from!.id;
+  const chat_id = flow.chat_id;
+  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+  const text = rawText.trim().replace(/\s+/g, " ");
+
+  if (flow.step === "rename" && flow.product_id) {
+    const { data: p } = await sb.from("products").select("name, category").eq("id", flow.product_id).maybeSingle();
+    if (!p) return pdCategories(chat_id, uid, flow.message_id);
+    if (text.length < 2 || text.length > 60) {
+      await pdPromptRename(chat_id, uid, flow.product_id, flow.message_id);
+      return;
+    }
+    await sb.from("products").update({ name: text }).eq("id", flow.product_id);
+    invalidateCatalogCache();
+    sb.from("admin_logs")
+      .insert({
+        admin_telegram_id: uid,
+        action: "product_rename",
+        target_type: "product",
+        target_id: flow.product_id,
+        details: { name: text } as never,
+      })
+      .then(() => {}, () => {});
+    await pdRender(
+      chat_id,
+      uid,
+      `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n✏️ Nuevo nombre: ${escapeHtml(text)}`,
+      [[{ text: "🔚 Atrás", callback_data: `pdp:${flow.product_id}` }, PD_HOME_BTN]],
+      flow.message_id,
+      { category: p.category as PdCategory, product_id: flow.product_id },
+    );
+    return;
+  }
+
+  if (flow.step === "addname") {
+    if (text.length < 2 || text.length > 60) {
+      await pdPromptAddName(chat_id, uid, flow.category!, flow.message_id);
+      return;
+    }
+    const next: PdFlow = { ...flow, draft: { ...(flow.draft ?? {}), name: text }, step: undefined };
+    await pdPricesMenu(chat_id, uid, next, flow.message_id);
+    return;
+  }
+
+  if (flow.step === "addprice" && flow.which) {
+    const n = Number(text.replace(",", "."));
+    if (!Number.isFinite(n) || n < 0 || n > 100000) {
+      await pdPromptAddPrice(chat_id, uid, flow, flow.which, flow.message_id);
+      return;
+    }
+    const key = flow.which === "1" ? "p1" : flow.which === "7" ? "p7" : "p30";
+    const draft = { ...(flow.draft ?? {}), [key]: n } as PdDraft;
+    const next: PdFlow = { ...flow, draft, step: undefined, which: undefined };
+    if (draft.p1 != null && draft.p7 != null && draft.p30 != null) {
+      await pdPricesMenu(chat_id, uid, next, flow.message_id);
+      return;
+    }
+    await pdRender(
+      chat_id,
+      uid,
+      `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(draft.name ?? "")}\n💲 ${flow.which} ${flow.which === "1" ? "día" : "días"}: ${pdFmtPrice(n)}`,
+      [[{ text: "🔚 Atrás", callback_data: "pdprices" }, PD_HOME_BTN]],
+      flow.message_id,
+      { category: flow.category, draft },
+    );
+    return;
+  }
+}
+
 
 // ===== Edición de recarga mínima =====
 async function adminPromptMinRecharge(chat_id: number) {
@@ -1907,6 +2103,11 @@ async function handleMessage(msg: TgMessage) {
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
     const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO)];
     if (!labels.includes(text)) {
+      const pdFlow = await getPdFlow(msg.from.id);
+      if (pdFlow?.step) {
+        await pdSubmitText(msg, pdFlow, text);
+        return;
+      }
       const prFlow = await getPrFlow(msg.from.id);
       if (prFlow?.price_id) {
         await prSubmitPrice(msg, prFlow, text);
@@ -1981,41 +2182,8 @@ async function handleMessage(msg: TgMessage) {
       );
       return;
     }
-    // ===== Wizard Agregar Producto: nombre =====
-    if (replySource.includes("PRODADD:name")) {
-      const name = text.trim().replace(/\s+/g, " ");
-      if (name.length < 2 || name.length > 60) {
-        await sendMessage("warehouse", msg.chat.id, `Nombre inválido (2-60 caracteres). Volvé a intentar.`);
-        return;
-      }
-      await setProductAddCtx(msg.from.id, { name });
-      const c = await getProductAddCtx(msg.from.id);
-      if (c.p1 != null && c.p7 != null && c.p30 != null) {
-        await padShowPreview(msg.chat.id, msg.from.id);
-      } else {
-        await padPromptPrice(msg.chat.id, "1", 3);
-      }
-      return;
-    }
 
-    // ===== Wizard Agregar Producto: precios =====
-    const padPriceMatch = replySource.match(/PRODADD:price:(1|7|30)/);
-    if (padPriceMatch) {
-      const which = padPriceMatch[1] as "1" | "7" | "30";
-      const n = Number(text.replace(",", ".").trim());
-      if (!Number.isFinite(n) || n < 0 || n > 100000) {
-        await sendMessage("warehouse", msg.chat.id, `Precio inválido. Ejemplo: <code>4.00</code>`);
-        return;
-      }
-      const key = which === "1" ? "p1" : which === "7" ? "p7" : "p30";
-      await setProductAddCtx(msg.from.id, { [key]: n } as Partial<ProductAddCtx>);
-      const c = await getProductAddCtx(msg.from.id);
-      if (c.p1 == null) return padPromptPrice(msg.chat.id, "1", 3);
-      if (c.p7 == null) return padPromptPrice(msg.chat.id, "7", 4);
-      if (c.p30 == null) return padPromptPrice(msg.chat.id, "30", 5);
-      await padShowPreview(msg.chat.id, msg.from.id);
-      return;
-    }
+
 
 
     // ===== Agregar método (paso 1: pedir nombre del país) =====
@@ -2185,32 +2353,8 @@ async function handleMessage(msg: TgMessage) {
     }
 
 
-    // ===== Renombrar producto =====
-    const prodRenameMatch = replySource.match(/PRODRENAME:([a-f0-9-]{36})/);
-    if (prodRenameMatch) {
-      const productId = prodRenameMatch[1];
-      const newName = text.trim();
-      if (newName.length < 2 || newName.length > 60) {
-        await sendMessage("warehouse", msg.chat.id, `Nombre inválido (2-60 caracteres).`);
-        return;
-      }
-      const { error } = await sb.from("products").update({ name: newName }).eq("id", productId);
-      if (error) {
-        await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`);
-        return;
-      }
-      invalidateCatalogCache();
-      await sb.from("admin_logs").insert({
-        admin_telegram_id: msg.from.id,
-        action: "product_rename",
-        target_type: "product",
-        target_id: productId,
-        details: { name: newName } as never,
-      });
-      await sendMessage("warehouse", msg.chat.id, `✅ Producto renombrado a <b>${escapeHtml(newName)}</b>.`);
-      await adminProductMenu(msg.chat.id, productId);
-      return;
-    }
+
+
 
     // ===== Cambiar recarga mínima =====
     if (replySource.includes("MINRECHARGE")) {
@@ -2459,7 +2603,8 @@ async function handleMessage(msg: TgMessage) {
       await prStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.productos:
-      await adminProductsList(msg.chat.id);
+      await pdStartFresh(msg.chat.id, msg.from.id);
+
       return;
     case ADMIN_TODO.minrecharge:
       await adminPromptMinRecharge(msg.chat.id);
@@ -2553,49 +2698,8 @@ async function handleCallback(cb: TgCallback) {
   answerCallbackQuery("warehouse", cb.id).catch(() => {});
   const data = cb.data ?? "";
   const chat_id = cb.message?.chat.id;
-  // ===== Wizard Agregar Producto =====
-  if (data === "padd:new") {
-    if (chat_id) await padStartCategory(chat_id, cb.from.id);
-    return;
-  }
-  if (data.startsWith("padd:cat:")) {
-    const raw = data.slice(9);
-    const cat: "iOS" | "Android" | "Auxiliar de Famosos" =
-      raw === "iOS" ? "iOS" : raw === "Android" ? "Android" : "Auxiliar de Famosos";
-    await setProductAddCtx(cb.from.id, { category: cat });
-    if (chat_id) await padPromptName(chat_id);
-    return;
-  }
-  if (data === "padd:cancel") {
-    await clearProductAddCtx(cb.from.id);
-    if (chat_id) await sendMessage("warehouse", chat_id, `❌ Cancelado. No se guardó ningún producto.`);
-    return;
-  }
-  if (data === "padd:preview") {
-    if (chat_id) await padShowPreview(chat_id, cb.from.id);
-    return;
-  }
-  if (data === "padd:edit") {
-    if (chat_id) await padShowEditMenu(chat_id);
-    return;
-  }
-  if (data === "padd:ecat") {
-    if (chat_id) await padStartCategory(chat_id, cb.from.id);
-    return;
-  }
-  if (data === "padd:ename") {
-    if (chat_id) await padPromptName(chat_id);
-    return;
-  }
-  if (data.startsWith("padd:ep:")) {
-    const which = data.slice(8) as "1" | "7" | "30";
-    if (chat_id) await padPromptPrice(chat_id, which, which === "1" ? 3 : which === "7" ? 4 : 5);
-    return;
-  }
-  if (data === "padd:save") {
-    if (chat_id) await padSaveProduct(chat_id, cb.from.id, cb.from.id);
-    return;
-  }
+
+
 
 
   if (data === "akp:inicio") {
@@ -2610,6 +2714,13 @@ async function handleCallback(cb: TgCallback) {
         await setPrFlow(cb.from.id, null);
         deleteMessage("warehouse", pflow.chat_id, pflow.message_id).catch(() => {});
       }
+      const dflow = await getPdFlow(cb.from.id);
+      if (dflow) {
+        await setPdFlow(cb.from.id, null);
+        deleteMessage("warehouse", dflow.chat_id, dflow.message_id).catch(() => {});
+      }
+
+
 
       await patchContext(cb.from.id, { bar_shown: false });
       const sent = await sendMessage(
@@ -2791,63 +2902,71 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
 
-  // ===== Productos: gestión =====
-  if (data === "akp:prodlist") {
-    if (chat_id) await adminProductsList(chat_id);
+  // ===== Productos: gestión (un solo mensaje) =====
+  if (data === "akp:prodlist" || data === "pdcats") {
+    if (chat_id) await pdCategories(chat_id, cb.from.id, cb.message?.message_id);
     return;
   }
-  if (data.startsWith("prodm:")) {
-    if (chat_id) await adminProductMenu(chat_id, data.slice(6));
+  if (data.startsWith("pdcat:")) {
+    const idx = Number(data.slice(6));
+    const cat = PD_CATEGORIES[idx] ?? PD_CATEGORIES[0];
+    if (chat_id) await pdList(chat_id, cb.from.id, cat, cb.message?.message_id);
     return;
   }
-  if (data.startsWith("prodren:")) {
-    if (chat_id) await adminPromptProductRename(chat_id, data.slice(8));
-    return;
-  }
-  if (data.startsWith("prodtog:")) {
-    const pid = data.slice(8);
-    const { data: p } = await sb.from("products").select("active").eq("id", pid).maybeSingle();
-    if (p) {
-      await sb.from("products").update({ active: !p.active }).eq("id", pid);
-      invalidateCatalogCache();
-      await sb.from("admin_logs").insert({
-        admin_telegram_id: cb.from.id,
-        action: "product_toggle",
-        target_type: "product",
-        target_id: pid,
-        details: { active: !p.active } as never,
-      });
-    }
-    if (chat_id) await adminProductMenu(chat_id, pid);
-    return;
-  }
-  if (data.startsWith("proddel:")) {
-    if (chat_id) await adminConfirmProductDelete(chat_id, data.slice(8));
-    return;
-  }
-  if (data.startsWith("proddelok:")) {
-    const pid = data.slice(10);
-    // Borrar en cascada: keys, precios y producto
-    await sb.from("product_stock_keys").delete().eq("product_id", pid);
-    await sb.from("product_prices").delete().eq("product_id", pid);
-    const { error } = await sb.from("products").delete().eq("id", pid);
-    if (error) {
-      if (chat_id) await sendMessage("warehouse", chat_id, `Error: ${error.message}`);
-      return;
-    }
-    invalidateCatalogCache();
-    await sb.from("admin_logs").insert({
-      admin_telegram_id: cb.from.id,
-      action: "product_delete",
-      target_type: "product",
-      target_id: pid,
-    });
+  if (data === "pdback") {
+    const flow = await getPdFlow(cb.from.id);
     if (chat_id) {
-      await sendMessage("warehouse", chat_id, `🗑 Producto eliminado.`);
-      await adminProductsList(chat_id);
+      if (flow?.category) await pdList(chat_id, cb.from.id, flow.category, cb.message?.message_id);
+      else await pdCategories(chat_id, cb.from.id, cb.message?.message_id);
     }
     return;
   }
+  if (data.startsWith("pdp:")) {
+    if (chat_id) await pdProductMenu(chat_id, cb.from.id, data.slice(4), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pdren:")) {
+    if (chat_id) await pdPromptRename(chat_id, cb.from.id, data.slice(6), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pdtogok:")) {
+    if (chat_id) await pdApplyToggle(chat_id, cb.from.id, data.slice(8), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pdtog:")) {
+    if (chat_id) await pdConfirmDeactivate(chat_id, cb.from.id, data.slice(6), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pddelok:")) {
+    if (chat_id) await pdApplyDelete(chat_id, cb.from.id, data.slice(8), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pddel:")) {
+    if (chat_id) await pdConfirmDelete(chat_id, cb.from.id, data.slice(6), cb.message?.message_id);
+    return;
+  }
+  if (data === "pdadd") {
+    const flow = await getPdFlow(cb.from.id);
+    if (chat_id) await pdPromptAddName(chat_id, cb.from.id, flow?.category ?? PD_CATEGORIES[0], cb.message?.message_id);
+    return;
+  }
+  if (data === "pdprices") {
+    const flow = await getPdFlow(cb.from.id);
+    if (chat_id && flow) await pdPricesMenu(chat_id, cb.from.id, { ...flow, step: undefined }, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("pdprset:")) {
+    const which = data.slice(8) as "1" | "7" | "30";
+    const flow = await getPdFlow(cb.from.id);
+    if (chat_id && flow) await pdPromptAddPrice(chat_id, cb.from.id, flow, which, cb.message?.message_id);
+    return;
+  }
+  if (data === "pdsave") {
+    const flow = await getPdFlow(cb.from.id);
+    if (chat_id && flow) await pdSaveProduct(chat_id, cb.from.id, { ...flow, message_id: cb.message?.message_id ?? flow.message_id });
+    return;
+  }
+
 
 
 
