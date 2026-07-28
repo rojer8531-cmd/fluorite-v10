@@ -2655,7 +2655,8 @@ async function handleMessage(msg: TgMessage) {
       await prStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.productos:
-      await adminProductsList(msg.chat.id);
+      await pdStartFresh(msg.chat.id, msg.from.id);
+
       return;
     case ADMIN_TODO.minrecharge:
       await adminPromptMinRecharge(msg.chat.id);
