@@ -2381,32 +2381,8 @@ async function handleMessage(msg: TgMessage) {
     }
 
 
-    // ===== Renombrar producto =====
-    const prodRenameMatch = replySource.match(/PRODRENAME:([a-f0-9-]{36})/);
-    if (prodRenameMatch) {
-      const productId = prodRenameMatch[1];
-      const newName = text.trim();
-      if (newName.length < 2 || newName.length > 60) {
-        await sendMessage("warehouse", msg.chat.id, `Nombre inválido (2-60 caracteres).`);
-        return;
-      }
-      const { error } = await sb.from("products").update({ name: newName }).eq("id", productId);
-      if (error) {
-        await sendMessage("warehouse", msg.chat.id, `Error: ${error.message}`);
-        return;
-      }
-      invalidateCatalogCache();
-      await sb.from("admin_logs").insert({
-        admin_telegram_id: msg.from.id,
-        action: "product_rename",
-        target_type: "product",
-        target_id: productId,
-        details: { name: newName } as never,
-      });
-      await sendMessage("warehouse", msg.chat.id, `✅ Producto renombrado a <b>${escapeHtml(newName)}</b>.`);
-      await adminProductMenu(msg.chat.id, productId);
-      return;
-    }
+
+
 
     // ===== Cambiar recarga mínima =====
     if (replySource.includes("MINRECHARGE")) {
