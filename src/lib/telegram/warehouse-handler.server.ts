@@ -2714,6 +2714,13 @@ async function handleCallback(cb: TgCallback) {
         await setPrFlow(cb.from.id, null);
         deleteMessage("warehouse", pflow.chat_id, pflow.message_id).catch(() => {});
       }
+      const dflow = await getPdFlow(cb.from.id);
+      if (dflow) {
+        await setPdFlow(cb.from.id, null);
+        deleteMessage("warehouse", dflow.chat_id, dflow.message_id).catch(() => {});
+      }
+
+
 
       await patchContext(cb.from.id, { bar_shown: false });
       const sent = await sendMessage(
