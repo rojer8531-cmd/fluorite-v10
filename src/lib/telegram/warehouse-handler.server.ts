@@ -2956,7 +2956,7 @@ async function handleMessage(msg: TgMessage) {
       await adminStockView(msg.chat.id);
       return;
     case ADMIN_TODO.usuarios:
-      await adminUsuarios(msg.chat.id);
+      await usStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.addkeys:
       await akStartFresh(msg.chat.id, msg.from.id);
@@ -3047,7 +3047,7 @@ async function handleMessage(msg: TgMessage) {
     return;
   }
 
-  if (text === "/usuarios") return adminUsuarios(msg.chat.id);
+  if (text === "/usuarios") return usStartFresh(msg.chat.id, msg.from.id);
 }
 
 // ===== Callbacks =====
