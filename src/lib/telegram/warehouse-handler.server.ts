@@ -3209,13 +3209,69 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data.startsWith("akusrp:")) {
-    if (chat_id) await adminUsuarios(chat_id, parseInt(data.slice(7), 10) || 0);
+    if (chat_id) await usList(chat_id, cb.from.id, parseInt(data.slice(7), 10) || 0, cb.message?.message_id);
     return;
   }
   if (data.startsWith("akusr:")) {
-    if (chat_id) await adminUserDetail(chat_id, parseInt(data.slice(6), 10));
+    if (chat_id) await usDetail(chat_id, cb.from.id, parseInt(data.slice(6), 10), cb.message?.message_id);
     return;
   }
+  // ===== Usuarios (un solo mensaje) =====
+  if (data === "noop") return;
+  if (data === "usback") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id) await usList(chat_id, cb.from.id, flow?.page ?? 0, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usp:")) {
+    if (chat_id) await usList(chat_id, cb.from.id, parseInt(data.slice(4), 10) || 0, cb.message?.message_id);
+    return;
+  }
+  if (data === "usfind") {
+    if (chat_id) await usPromptFind(chat_id, cb.from.id, cb.message?.message_id);
+    return;
+  }
+  if (data === "usu:back") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usDetail(chat_id, cb.from.id, flow.tg, cb.message?.message_id);
+    else if (chat_id) await usList(chat_id, cb.from.id, flow?.page ?? 0, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usu:")) {
+    if (chat_id) await usDetail(chat_id, cb.from.id, parseInt(data.slice(4), 10), cb.message?.message_id);
+    return;
+  }
+  if (data === "usmsg") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usPromptMessage(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data === "usblock") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usConfirmBlock(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data === "usblockok") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usApplyBlock(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data === "usdisc") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usDiscountProducts(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usdp:")) {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usDiscountDurations(chat_id, cb.from.id, flow, data.slice(5), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usde:")) {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usPromptDiscount(chat_id, cb.from.id, flow, data.slice(5), cb.message?.message_id);
+    return;
+  }
+
   if (data.startsWith("akusrmsg:")) {
     if (chat_id) {
       const tgId = parseInt(data.slice(9), 10);
