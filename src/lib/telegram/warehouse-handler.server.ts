@@ -1657,6 +1657,362 @@ async function pdSubmitText(msg: TgMessage, flow: PdFlow, rawText: string) {
 }
 
 
+// ===== Módulo "Usuarios" (un solo mensaje, siempre editado) =====
+interface UsFlow {
+  chat_id: number;
+  message_id: number;
+  page?: number;
+  tg?: number;
+  product_id?: string;
+  price_id?: string;
+  step?: "find" | "msg" | "disc";
+}
+
+const US_PAGE_SIZE = 6;
+const US_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
+
+async function getUsFlow(uid: number): Promise<UsFlow | null> {
+  const st = await getState(uid);
+  const flow = (st?.context as Record<string, unknown> | undefined)?.us_flow as UsFlow | undefined;
+  return flow && flow.message_id ? flow : null;
+}
+
+async function setUsFlow(uid: number, flow: UsFlow | null) {
+  await patchContext(uid, { us_flow: flow });
+}
+
+async function usRender(
+  chat_id: number,
+  uid: number,
+  text: string,
+  keyboard: AkKeyboard,
+  message_id?: number,
+  extra: Partial<UsFlow> = {},
+) {
+  let anchor = message_id ?? null;
+  if (anchor) {
+    const edited = await editMessageText("warehouse", chat_id, anchor, text, {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (!edited.ok) anchor = null;
+  }
+  if (!anchor) {
+    const sent = await _rawSendMessage("warehouse", chat_id, text, {
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (sent.ok && sent.result) {
+      anchor = sent.result.message_id;
+      sb.from("admin_trash")
+        .insert({ chat_id, message_id: anchor })
+        .then(() => {}, () => {});
+    }
+  }
+  if (anchor) await setUsFlow(uid, { chat_id, message_id: anchor, ...extra });
+  return anchor;
+}
+
+function usLabel(u: { display_name: string | null; username: string | null }) {
+  const name = u.display_name ?? u.username ?? "";
+  return name ? `🔘 ${name}` : "⭕️ Usuario";
+}
+
+async function usList(chat_id: number, uid: number, page = 0, message_id?: number) {
+  const { count } = await sb.from("bot_users").select("id", { count: "exact", head: true });
+  const total = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / US_PAGE_SIZE));
+  const p = Math.min(Math.max(0, page), totalPages - 1);
+  const from = p * US_PAGE_SIZE;
+  const { data: users } = await sb
+    .from("bot_users")
+    .select("telegram_id, username, display_name")
+    .order("last_seen_at", { ascending: false })
+    .range(from, from + US_PAGE_SIZE - 1);
+
+  const kb: AkKeyboard = [];
+  const list = users ?? [];
+  for (let i = 0; i < list.length; i += 2) {
+    const row = [{ text: usLabel(list[i]), callback_data: `usu:${list[i].telegram_id}` }];
+    if (list[i + 1]) row.push({ text: usLabel(list[i + 1]), callback_data: `usu:${list[i + 1].telegram_id}` });
+    kb.push(row);
+  }
+  kb.push([
+    { text: "🔚", callback_data: `usp:${p > 0 ? p - 1 : totalPages - 1}` },
+    { text: `${p + 1}/${totalPages}`, callback_data: "noop" },
+    { text: "🔜", callback_data: `usp:${p + 1 < totalPages ? p + 1 : 0}` },
+  ]);
+  kb.push([{ text: "🔏 Buscar ID", callback_data: "usfind" }]);
+  kb.push([US_HOME_BTN]);
+
+  await usRender(chat_id, uid, `❇️ <b>Lista de usuarios disponibles</b>`, kb, message_id, { page: p });
+}
+
+async function usStartFresh(chat_id: number, uid: number) {
+  const prev = await getUsFlow(uid);
+  if (prev) {
+    await setUsFlow(uid, null);
+    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
+  }
+  await usList(chat_id, uid, 0);
+}
+
+async function usPromptFind(chat_id: number, uid: number, message_id?: number) {
+  const flow = await getUsFlow(uid);
+  await usRender(
+    chat_id,
+    uid,
+    `❇️ <b>Envía el ID.</b>`,
+    [[{ text: "🔚 Atrás", callback_data: "usback" }, US_HOME_BTN]],
+    message_id,
+    { page: flow?.page ?? 0, step: "find" },
+  );
+}
+
+async function usDetail(
+  chat_id: number,
+  uid: number,
+  telegram_id: number,
+  message_id?: number,
+  found = false,
+) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("telegram_id, username, display_name, balance")
+    .eq("telegram_id", telegram_id)
+    .maybeSingle();
+  const flow = await getUsFlow(uid);
+  if (!u) {
+    await usRender(
+      chat_id,
+      uid,
+      `⭕️ <b>Usuario no encontrado.</b>`,
+      [[{ text: "🔚 Atrás", callback_data: "usback" }, US_HOME_BTN]],
+      message_id,
+      { page: flow?.page ?? 0 },
+    );
+    return;
+  }
+  const name = u.display_name ?? u.username ?? "Usuario";
+  const head = found
+    ? `🔏 <b>Usuario encontrado</b>\n\n⭕️ ${escapeHtml(name)}\n🆔 <code>${u.telegram_id}</code>\n💲 Saldo: ${Number(u.balance).toFixed(2)} USD`
+    : `⭕️ <b>${escapeHtml(name)}</b>\n\n🆔 <code>${u.telegram_id}</code>\n💲 Saldo: ${Number(u.balance).toFixed(2)} USD`;
+  await usRender(
+    chat_id,
+    uid,
+    head,
+    [
+      [
+        { text: "🔜 Mensaje", callback_data: "usmsg" },
+        { text: "🔜 Bloquear", callback_data: "usblock" },
+      ],
+      [{ text: "🔜 Descuento", callback_data: "usdisc" }],
+      [{ text: "🔚 Atrás", callback_data: "usback" }, US_HOME_BTN],
+    ],
+    message_id,
+    { page: flow?.page ?? 0, tg: u.telegram_id },
+  );
+}
+
+async function usPromptMessage(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
+  await usRender(
+    chat_id,
+    uid,
+    `❇️ <b>Envía el mensaje.</b>`,
+    [[{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]],
+    message_id,
+    { page: flow.page, tg: flow.tg, step: "msg" },
+  );
+}
+
+async function usConfirmBlock(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("display_name, username, telegram_id")
+    .eq("telegram_id", flow.tg!)
+    .maybeSingle();
+  if (!u) return usList(chat_id, uid, flow.page ?? 0, message_id);
+  const name = u.display_name ?? u.username ?? "Usuario";
+  await usRender(
+    chat_id,
+    uid,
+    `⛔️ <b>¿Quieres bloquear al usuario?</b>\n\n⭕️ ${escapeHtml(name)}\n🆔 <code>${u.telegram_id}</code>`,
+    [
+      [
+        { text: "🔘 Yes", callback_data: "usblockok" },
+        { text: "🔘 Nop", callback_data: "usu:back" },
+      ],
+      [{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN],
+    ],
+    message_id,
+    { page: flow.page, tg: flow.tg },
+  );
+}
+
+async function usApplyBlock(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("display_name, username")
+    .eq("telegram_id", flow.tg!)
+    .maybeSingle();
+  const name = u?.display_name ?? u?.username ?? "Usuario";
+  await blockUserPermanent(flow.tg!, "admin_block");
+  sb.from("admin_logs")
+    .insert({
+      admin_telegram_id: uid,
+      action: "block_user",
+      target_type: "telegram_id",
+      target_id: String(flow.tg),
+    })
+    .then(() => {}, () => {});
+  await usRender(
+    chat_id,
+    uid,
+    `✅ <b>Bloqueado correctamente.</b>\n\n📦 Usuario: ${escapeHtml(name)}\n🔴 Duración: Permanente`,
+    [[{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]],
+    message_id,
+    { page: flow.page, tg: flow.tg },
+  );
+}
+
+async function usDiscountProducts(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
+  const { data: products } = await sb
+    .from("products")
+    .select("id, name")
+    .eq("active", true)
+    .order("sort_order");
+  const kb: AkKeyboard = (products ?? []).map((p) => [
+    { text: p.name, callback_data: `usdp:${p.id}` },
+  ]);
+  kb.push([{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]);
+  await usRender(chat_id, uid, `❇️ <b>Lista de productos disponibles</b>`, kb, message_id, {
+    page: flow.page,
+    tg: flow.tg,
+  });
+}
+
+async function usDiscountDurations(
+  chat_id: number,
+  uid: number,
+  flow: UsFlow,
+  product_id: string,
+  message_id?: number,
+) {
+  const [{ data: prod }, { data: prices }] = await Promise.all([
+    sb.from("products").select("name").eq("id", product_id).maybeSingle(),
+    sb
+      .from("product_prices")
+      .select("id, duration_label, price_usd")
+      .eq("product_id", product_id)
+      .eq("active", true)
+      .order("sort_order"),
+  ]);
+  const kb: AkKeyboard = (prices ?? []).map((p) => [
+    { text: `💲 ${p.duration_label}`, callback_data: `usde:${p.id}` },
+  ]);
+  kb.push([{ text: "🔚 Atrás", callback_data: "usdisc" }, US_HOME_BTN]);
+  await usRender(
+    chat_id,
+    uid,
+    `⭕️ <b>Descuento personal</b>\n\n🔏 ${escapeHtml(prod?.name ?? "")}`,
+    kb,
+    message_id,
+    { page: flow.page, tg: flow.tg, product_id },
+  );
+}
+
+async function usPromptDiscount(
+  chat_id: number,
+  uid: number,
+  flow: UsFlow,
+  price_id: string,
+  message_id?: number,
+) {
+  await usRender(
+    chat_id,
+    uid,
+    `➕ <b>Envía el descuento del producto.</b>`,
+    [[{ text: "🔚 Atrás", callback_data: `usdp:${flow.product_id}` }, US_HOME_BTN]],
+    message_id,
+    { page: flow.page, tg: flow.tg, product_id: flow.product_id, price_id, step: "disc" },
+  );
+}
+
+/** Texto enviado durante el flujo de Usuarios. */
+async function usSubmitText(msg: TgMessage, flow: UsFlow, rawText: string) {
+  const uid = msg.from!.id;
+  const chat_id = flow.chat_id;
+  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+  const text = rawText.trim();
+
+  if (flow.step === "find") {
+    const id = parseInt(text.replace(/\D/g, ""), 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      await usRender(
+        chat_id,
+        uid,
+        `⭕️ <b>Usuario no encontrado.</b>`,
+        [[{ text: "🔚 Atrás", callback_data: "usback" }, US_HOME_BTN]],
+        flow.message_id,
+        { page: flow.page ?? 0 },
+      );
+      return;
+    }
+    await usDetail(chat_id, uid, id, flow.message_id, true);
+    return;
+  }
+
+  if (flow.step === "msg" && flow.tg) {
+    const { data: target } = await sb
+      .from("bot_users")
+      .select("chat_id, display_name, username")
+      .eq("telegram_id", flow.tg)
+      .maybeSingle();
+    if (!target) {
+      await usList(chat_id, uid, flow.page ?? 0, flow.message_id);
+      return;
+    }
+    const name = target.display_name ?? target.username ?? "Usuario";
+    await sendMessage("shop", target.chat_id, `<b>Mensaje del Admin</b>\n\n${escapeHtml(text)}`);
+    await usRender(
+      chat_id,
+      uid,
+      `✅ <b>Enviado correctamente.</b>\n\nEl mensaje fue enviado únicamente al usuario.\n\n⭕️ ${escapeHtml(name)}: Enviado`,
+      [[{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]],
+      flow.message_id,
+      { page: flow.page, tg: flow.tg },
+    );
+    return;
+  }
+
+  if (flow.step === "disc" && flow.tg && flow.price_id) {
+    const n = Number(text.replace(",", "."));
+    if (!Number.isFinite(n) || n < 0 || n > 100000) {
+      await usPromptDiscount(chat_id, uid, flow, flow.price_id, flow.message_id);
+      return;
+    }
+    await sb.from("user_price_overrides").upsert(
+      { telegram_id: flow.tg, price_id: flow.price_id, price_usd: n },
+      { onConflict: "telegram_id,price_id" },
+    );
+    const { data: p } = await sb
+      .from("product_prices")
+      .select("duration_label, products(name)")
+      .eq("id", flow.price_id)
+      .maybeSingle();
+    const pname = (p as { products?: { name: string } } | null)?.products?.name ?? "";
+    await usRender(
+      chat_id,
+      uid,
+      `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(pname)}\n💲 ${escapeHtml(p?.duration_label ?? "")}: $${n.toFixed(2)} USD`,
+      [[{ text: "🔚 Atrás", callback_data: "usdisc" }, US_HOME_BTN]],
+      flow.message_id,
+      { page: flow.page, tg: flow.tg, product_id: flow.product_id },
+    );
+    return;
+  }
+}
+
+
 // ===== Edición de recarga mínima =====
 async function adminPromptMinRecharge(chat_id: number) {
   const { data } = await sb
@@ -2103,7 +2459,13 @@ async function handleMessage(msg: TgMessage) {
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
     const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO)];
     if (!labels.includes(text)) {
+      const usFlow = await getUsFlow(msg.from.id);
+      if (usFlow?.step) {
+        await usSubmitText(msg, usFlow, text);
+        return;
+      }
       const pdFlow = await getPdFlow(msg.from.id);
+
       if (pdFlow?.step) {
         await pdSubmitText(msg, pdFlow, text);
         return;
@@ -2594,7 +2956,7 @@ async function handleMessage(msg: TgMessage) {
       await adminStockView(msg.chat.id);
       return;
     case ADMIN_TODO.usuarios:
-      await adminUsuarios(msg.chat.id);
+      await usStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.addkeys:
       await akStartFresh(msg.chat.id, msg.from.id);
@@ -2685,7 +3047,7 @@ async function handleMessage(msg: TgMessage) {
     return;
   }
 
-  if (text === "/usuarios") return adminUsuarios(msg.chat.id);
+  if (text === "/usuarios") return usStartFresh(msg.chat.id, msg.from.id);
 }
 
 // ===== Callbacks =====
@@ -2719,6 +3081,12 @@ async function handleCallback(cb: TgCallback) {
         await setPdFlow(cb.from.id, null);
         deleteMessage("warehouse", dflow.chat_id, dflow.message_id).catch(() => {});
       }
+      const uflow = await getUsFlow(cb.from.id);
+      if (uflow) {
+        await setUsFlow(cb.from.id, null);
+        deleteMessage("warehouse", uflow.chat_id, uflow.message_id).catch(() => {});
+      }
+
 
 
 
@@ -2752,9 +3120,10 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:users") {
-    if (chat_id) await adminUsuarios(chat_id);
+    if (chat_id) await usStartFresh(chat_id, cb.from.id);
     return;
   }
+
   if (data === "akp:anuncio") {
     if (chat_id) await adminPromptAnuncio(chat_id);
     return;
@@ -2853,13 +3222,69 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data.startsWith("akusrp:")) {
-    if (chat_id) await adminUsuarios(chat_id, parseInt(data.slice(7), 10) || 0);
+    if (chat_id) await usList(chat_id, cb.from.id, parseInt(data.slice(7), 10) || 0, cb.message?.message_id);
     return;
   }
   if (data.startsWith("akusr:")) {
-    if (chat_id) await adminUserDetail(chat_id, parseInt(data.slice(6), 10));
+    if (chat_id) await usDetail(chat_id, cb.from.id, parseInt(data.slice(6), 10), cb.message?.message_id);
     return;
   }
+  // ===== Usuarios (un solo mensaje) =====
+  if (data === "noop") return;
+  if (data === "usback") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id) await usList(chat_id, cb.from.id, flow?.page ?? 0, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usp:")) {
+    if (chat_id) await usList(chat_id, cb.from.id, parseInt(data.slice(4), 10) || 0, cb.message?.message_id);
+    return;
+  }
+  if (data === "usfind") {
+    if (chat_id) await usPromptFind(chat_id, cb.from.id, cb.message?.message_id);
+    return;
+  }
+  if (data === "usu:back") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usDetail(chat_id, cb.from.id, flow.tg, cb.message?.message_id);
+    else if (chat_id) await usList(chat_id, cb.from.id, flow?.page ?? 0, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usu:")) {
+    if (chat_id) await usDetail(chat_id, cb.from.id, parseInt(data.slice(4), 10), cb.message?.message_id);
+    return;
+  }
+  if (data === "usmsg") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usPromptMessage(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data === "usblock") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usConfirmBlock(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data === "usblockok") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usApplyBlock(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data === "usdisc") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usDiscountProducts(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usdp:")) {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usDiscountDurations(chat_id, cb.from.id, flow, data.slice(5), cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usde:")) {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usPromptDiscount(chat_id, cb.from.id, flow, data.slice(5), cb.message?.message_id);
+    return;
+  }
+
   if (data.startsWith("akusrmsg:")) {
     if (chat_id) {
       const tgId = parseInt(data.slice(9), 10);
