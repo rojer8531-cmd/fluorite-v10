@@ -3075,6 +3075,12 @@ async function handleCallback(cb: TgCallback) {
         await setPdFlow(cb.from.id, null);
         deleteMessage("warehouse", dflow.chat_id, dflow.message_id).catch(() => {});
       }
+      const uflow = await getUsFlow(cb.from.id);
+      if (uflow) {
+        await setUsFlow(cb.from.id, null);
+        deleteMessage("warehouse", uflow.chat_id, uflow.message_id).catch(() => {});
+      }
+
 
 
 
