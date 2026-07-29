@@ -3108,9 +3108,10 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:users") {
-    if (chat_id) await adminUsuarios(chat_id);
+    if (chat_id) await usStartFresh(chat_id, cb.from.id);
     return;
   }
+
   if (data === "akp:anuncio") {
     if (chat_id) await adminPromptAnuncio(chat_id);
     return;
