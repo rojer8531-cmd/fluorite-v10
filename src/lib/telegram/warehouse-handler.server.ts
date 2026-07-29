@@ -2459,7 +2459,13 @@ async function handleMessage(msg: TgMessage) {
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
     const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO)];
     if (!labels.includes(text)) {
+      const usFlow = await getUsFlow(msg.from.id);
+      if (usFlow?.step) {
+        await usSubmitText(msg, usFlow, text);
+        return;
+      }
       const pdFlow = await getPdFlow(msg.from.id);
+
       if (pdFlow?.step) {
         await pdSubmitText(msg, pdFlow, text);
         return;
