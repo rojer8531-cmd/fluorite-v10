@@ -981,7 +981,7 @@ async function routeBottomMenu(
     more: showMoreOptions,
     status: showOrderStatus,
     keys: showMyKeys,
-    announcements: showAnnouncements,
+    
     share: showShareBot,
     support: showSupport,
     download_panel: showDownloadPanel,
