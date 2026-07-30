@@ -209,7 +209,7 @@ const BOTTOM_MENU = {
   // Opciones extras (solo accesibles vía "Todo" como inline buttons)
   status: "📦 Estado",
   keys: "🔑 Mis Keys",
-  announcements: "Anuncios",
+  
   share: "Compartir Bot",
   support: "💬 Soporte",
   download_panel: "📥 Descargar Panel",
