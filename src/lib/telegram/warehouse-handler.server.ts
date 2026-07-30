@@ -589,6 +589,289 @@ function extractPmMetadata(raw: string): {
   return { method_name, holder_name, account_info };
 }
 
+// ===== Módulo "Métodos de pago" (un solo mensaje, siempre editado) =====
+interface PmFlow {
+  chat_id: number;
+  message_id: number;
+  step?: "country" | "body";
+  country?: string;
+  cc?: string;
+  body?: string;
+}
+
+const PM_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
+
+async function getPmFlow(uid: number): Promise<PmFlow | null> {
+  const st = await getState(uid);
+  const flow = (st?.context as Record<string, unknown> | undefined)?.pm_flow as PmFlow | undefined;
+  return flow && flow.message_id ? flow : null;
+}
+
+async function setPmFlow(uid: number, flow: PmFlow | null) {
+  await patchContext(uid, { pm_flow: flow });
+}
+
+async function pmRender(
+  chat_id: number,
+  uid: number,
+  text: string,
+  keyboard: AkKeyboard,
+  message_id?: number,
+  extra: Partial<PmFlow> = {},
+) {
+  let anchor = message_id ?? null;
+  if (anchor) {
+    const edited = await editMessageText("warehouse", chat_id, anchor, text, {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (!edited.ok) anchor = null;
+  }
+  if (!anchor) {
+    const sent = await _rawSendMessage("warehouse", chat_id, text, {
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (sent.ok && sent.result) {
+      anchor = sent.result.message_id;
+      sb.from("admin_trash")
+        .insert({ chat_id, message_id: anchor })
+        .then(() => {}, () => {});
+    }
+  }
+  if (anchor) await setPmFlow(uid, { chat_id, message_id: anchor, ...extra });
+  return anchor;
+}
+
+/** Limpia los valores dinámicos (Recarga, Monto, Pagas, Total) dejando la plantilla. */
+function pmCleanTemplate(raw: string): string {
+  const dyn = /^(\s*(?:🆔\s*Recarga|💰\s*Monto|🧾\s*Pagas|💵\s*Total)\s*:).*$/i;
+  return raw
+    .split(/\r?\n/)
+    .map((line) => {
+      const m = line.match(dyn);
+      return m ? `${m[1]}` : line;
+    })
+    .join("\n")
+    .trim();
+}
+
+async function pmStartFresh(chat_id: number, uid: number) {
+  const prev = await getPmFlow(uid);
+  if (prev) {
+    await setPmFlow(uid, null);
+    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
+  }
+  await pmMenuFlow(chat_id, uid);
+}
+
+async function pmMenuFlow(chat_id: number, uid: number, message_id?: number, header?: string) {
+  const head = header ? `${header}\n\n` : "";
+  await pmRender(
+    chat_id,
+    uid,
+    `${head}❇️ <b>Administrar métodos de pago</b>`,
+    [
+      [{ text: "➕ Agregar método", callback_data: "pmf:add" }],
+      [{ text: "➖ Eliminar método", callback_data: "pmf:dellist" }],
+      [{ text: "📦 Todos los disponibles", callback_data: "pmf:all" }],
+      [PM_HOME_BTN],
+    ],
+    message_id,
+  );
+}
+
+async function pmAskCountry(chat_id: number, uid: number, message_id?: number) {
+  await pmRender(
+    chat_id,
+    uid,
+    `❇️ <b>Envía el nombre del país.</b>\n\nEjemplo:\n<code>Nicaragua</code>`,
+    [[{ text: "🔚 Atrás", callback_data: "pmf:menu" }, PM_HOME_BTN]],
+    message_id,
+    { step: "country" },
+  );
+}
+
+async function pmAskBody(chat_id: number, uid: number, country: string, cc: string, message_id?: number) {
+  await pmRender(
+    chat_id,
+    uid,
+    `❇️ <b>Envía los datos del nuevo método.</b>\n\n🌎 ${flagFromCC(cc)} ${escapeHtml(country)}`,
+    [[{ text: "🔚 Atrás", callback_data: "pmf:add" }, PM_HOME_BTN]],
+    message_id,
+    { step: "body", country, cc },
+  );
+}
+
+async function pmPreview(chat_id: number, uid: number, flow: PmFlow, body: string) {
+  await pmRender(
+    chat_id,
+    uid,
+    `❇️ <b>Todo listo.</b>\n\n⭕️ <b>Nuevo método</b>\n\n${escapeHtml(body)}`,
+    [
+      [
+        { text: "🔘 Guardar", callback_data: "pmf:save" },
+        { text: "🔚 Atrás", callback_data: "pmf:menu" },
+      ],
+    ],
+    flow.message_id,
+    { country: flow.country, cc: flow.cc, body },
+  );
+}
+
+async function pmSaveFlow(chat_id: number, uid: number, flow: PmFlow) {
+  if (!flow.cc || !flow.country || !flow.body) {
+    await pmMenuFlow(chat_id, uid, flow.message_id, `⭕️ <b>No hay datos para guardar.</b>`);
+    return;
+  }
+  const meta = extractPmMetadata(flow.body);
+  await sb.from("payment_methods").delete().eq("country_code", flow.cc);
+  const { error } = await sb.from("payment_methods").insert({
+    country_code: flow.cc,
+    country_name: flow.country,
+    method_name: meta.method_name ?? "Pago",
+    holder_name: meta.holder_name,
+    account_info: meta.account_info,
+    extra_info: null,
+    currency: "USD",
+    usd_rate: 1,
+    body_raw: flow.body,
+    active: true,
+  } as never);
+  if (error) {
+    await pmMenuFlow(chat_id, uid, flow.message_id, `⭕️ <b>Error:</b> ${escapeHtml(error.message)}`);
+    return;
+  }
+  await pmRender(
+    chat_id,
+    uid,
+    `✅ <b>${escapeHtml(flow.country)} guardado correctamente.</b>`,
+    [[{ text: "🔚 Atrás", callback_data: "pmf:menu" }, PM_HOME_BTN]],
+    flow.message_id,
+  );
+}
+
+async function pmCountriesList(): Promise<Array<{ code: string; name: string }>> {
+  const { data } = await sb
+    .from("payment_methods")
+    .select("country_code, country_name")
+    .eq("active", true)
+    .order("country_name");
+  const seen = new Set<string>();
+  const out: Array<{ code: string; name: string }> = [];
+  for (const m of data ?? []) {
+    if (seen.has(m.country_code)) continue;
+    seen.add(m.country_code);
+    out.push({ code: m.country_code, name: m.country_name });
+  }
+  return out;
+}
+
+async function pmDelListFlow(chat_id: number, uid: number, message_id?: number) {
+  const countries = await pmCountriesList();
+  if (countries.length === 0) {
+    await pmMenuFlow(chat_id, uid, message_id, `⭕️ <b>No hay métodos registrados.</b>`);
+    return;
+  }
+  const kb: AkKeyboard = [];
+  for (let i = 0; i < countries.length; i += 2) {
+    const row = [{ text: countries[i].name, callback_data: `pmf:delc:${countries[i].code}` }];
+    if (countries[i + 1]) row.push({ text: countries[i + 1].name, callback_data: `pmf:delc:${countries[i + 1].code}` });
+    kb.push(row);
+  }
+  kb.push([{ text: "🔚 Atrás", callback_data: "pmf:menu" }, PM_HOME_BTN]);
+  await pmRender(chat_id, uid, `❇️ <b>Métodos disponibles</b>`, kb, message_id);
+}
+
+async function pmDelConfirmFlow(chat_id: number, uid: number, cc: string, message_id?: number) {
+  const { data: m } = await sb
+    .from("payment_methods")
+    .select("country_name")
+    .eq("country_code", cc)
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+  if (!m) {
+    await pmDelListFlow(chat_id, uid, message_id);
+    return;
+  }
+  await pmRender(
+    chat_id,
+    uid,
+    `❇️ <b>Método de pago</b>\n\n${flagFromCC(cc)} ${escapeHtml(m.country_name)}`,
+    [
+      [
+        { text: "🗑️ Eliminar", callback_data: `pmf:delgo:${cc}` },
+        { text: "🔏 Cancelar", callback_data: "pmf:dellist" },
+      ],
+      [{ text: "🔚 Atrás", callback_data: "pmf:dellist" }, PM_HOME_BTN],
+    ],
+    message_id,
+  );
+}
+
+async function pmDelGoFlow(chat_id: number, uid: number, cc: string, message_id?: number) {
+  const { data: m } = await sb
+    .from("payment_methods")
+    .select("country_name")
+    .eq("country_code", cc)
+    .limit(1)
+    .maybeSingle();
+  const name = m?.country_name ?? cc;
+  await sb.from("payment_methods").delete().eq("country_code", cc);
+  await pmRender(
+    chat_id,
+    uid,
+    `❇️ <b>${escapeHtml(name)} eliminado correctamente.</b>`,
+    [[{ text: "🔚 Atrás", callback_data: "pmf:dellist" }, PM_HOME_BTN]],
+    message_id,
+  );
+}
+
+async function pmAllFlow(chat_id: number, uid: number, message_id?: number) {
+  const countries = await pmCountriesList();
+  const list = countries.length
+    ? countries.map((c) => `${flagFromCC(c.code)} ${escapeHtml(c.name)}`).join("\n")
+    : "Sin métodos registrados.";
+  await pmRender(
+    chat_id,
+    uid,
+    `❇️ <b>Métodos disponibles</b>\n\n${list}`,
+    [[{ text: "🔚 Atrás", callback_data: "pmf:menu" }, PM_HOME_BTN]],
+    message_id,
+  );
+}
+
+/** Texto enviado durante el flujo de Métodos. */
+async function pmSubmitText(msg: TgMessage, flow: PmFlow, rawText: string) {
+  const uid = msg.from!.id;
+  const chat_id = flow.chat_id;
+  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+
+  if (flow.step === "country") {
+    const country = rawText.trim().replace(/\s+/g, " ");
+    if (country.length < 2 || country.length > 40) {
+      await pmAskCountry(chat_id, uid, flow.message_id);
+      return;
+    }
+    await pmAskBody(chat_id, uid, country, deriveCountryCode(country), flow.message_id);
+    return;
+  }
+
+  if (flow.step === "body" && flow.cc && flow.country) {
+    const body = pmCleanTemplate(rawText);
+    if (!body) {
+      await pmAskBody(chat_id, uid, flow.country, flow.cc, flow.message_id);
+      return;
+    }
+    await pmPreview(chat_id, uid, flow, body);
+    return;
+  }
+
+  await pmMenuFlow(chat_id, uid, flow.message_id);
+}
+
+
+
 
 async function pmConfirmDelete(chat_id: number, pm_id: string) {
   const { data: m } = await sb.from("payment_methods").select("country_name, method_name").eq("id", pm_id).maybeSingle();
