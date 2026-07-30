@@ -115,28 +115,27 @@ function isAdmin(telegram_id: number) {
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
   inicio: "🏠 Inicio",
-  addkeys: "Agregar Keys",
+  addkeys: "➕ Agregar Keys",
   productos: "📦 Productos",
+  precios: "💰 Precios",
   metodos: "💳 Métodos",
-  todo: "⚙️ Todo",
+  todo: "❇️ Todo",
 };
 
 // Opciones agrupadas dentro del menú "Todo"
 const ADMIN_TODO = {
   stock: "Stock",
-  anuncio: "Anuncio",
   minrecharge: "Recarga Mínima",
   usuarios: "Usuarios",
-  precios: "Precios",
   borrar: "Borrar",
 };
 
 function adminBottomKeyboard() {
   return {
     keyboard: [
-      [{ text: ADMIN_BOTTOM.inicio }],
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.productos }],
-      [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_BOTTOM.todo }],
+      [{ text: ADMIN_BOTTOM.precios }, { text: ADMIN_BOTTOM.metodos }],
+      [{ text: ADMIN_BOTTOM.todo }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -153,11 +152,12 @@ async function showTodoMenu(chat_id: number) {
       reply_markup: {
         inline_keyboard: [
           [{ text: ADMIN_TODO.stock, callback_data: "akp:stock" }, { text: ADMIN_TODO.usuarios, callback_data: "akp:users" }],
-          [{ text: ADMIN_TODO.precios, callback_data: "akp:prlist" }, { text: ADMIN_TODO.minrecharge, callback_data: "akp:minrec" }],
-          [{ text: ADMIN_TODO.anuncio, callback_data: "akp:anuncio" }, { text: ADMIN_TODO.borrar, callback_data: "akp:borrar" }],
+          [{ text: ADMIN_TODO.minrecharge, callback_data: "akp:minrec" }, { text: ADMIN_TODO.borrar, callback_data: "akp:borrar" }],
+          [{ text: "🏠 Inicio", callback_data: "akp:inicio" }],
         ],
       },
     },
+
   );
 }
 
