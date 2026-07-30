@@ -3404,12 +3404,26 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await usStartFresh(chat_id, cb.from.id);
     return;
   }
-
-  if (data === "akp:anuncio") {
-    if (chat_id) await adminPromptAnuncio(chat_id);
+  if (data === "akp:pm" || data === "pmf:menu") {
+    if (chat_id) {
+      const f = await getPmFlow(cb.from.id);
+      await pmMenuFlow(chat_id, cb.from.id, cb.message?.message_id ?? f?.message_id);
+    }
     return;
   }
-  if (data === "akp:pm") { if (chat_id) await pmMenu(chat_id); return; }
+  if (data === "pmf:add") { if (chat_id) await pmAskCountry(chat_id, cb.from.id, cb.message?.message_id); return; }
+  if (data === "pmf:dellist") { if (chat_id) await pmDelListFlow(chat_id, cb.from.id, cb.message?.message_id); return; }
+  if (data === "pmf:all") { if (chat_id) await pmAllFlow(chat_id, cb.from.id, cb.message?.message_id); return; }
+  if (data.startsWith("pmf:delc:")) { if (chat_id) await pmDelConfirmFlow(chat_id, cb.from.id, data.slice("pmf:delc:".length), cb.message?.message_id); return; }
+  if (data.startsWith("pmf:delgo:")) { if (chat_id) await pmDelGoFlow(chat_id, cb.from.id, data.slice("pmf:delgo:".length), cb.message?.message_id); return; }
+  if (data === "pmf:save") {
+    if (chat_id) {
+      const f = await getPmFlow(cb.from.id);
+      if (f) await pmSaveFlow(chat_id, cb.from.id, { ...f, message_id: cb.message?.message_id ?? f.message_id });
+    }
+    return;
+  }
+
   if (data === "pm:addnew") { if (chat_id) await pmPromptAddCountry(chat_id); return; }
   if (data === "pm:add") { if (chat_id) await pmPromptAddStep1(chat_id); return; }
   if (data === "pmadd:cancel") {
