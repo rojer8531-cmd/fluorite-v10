@@ -3244,7 +3244,7 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_BOTTOM.addkeys:
       await akStartFresh(msg.chat.id, msg.from.id);
       return;
-    case ADMIN_TODO.precios:
+    case ADMIN_BOTTOM.precios:
       await prStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.productos:
@@ -3254,12 +3254,10 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_TODO.minrecharge:
       await adminPromptMinRecharge(msg.chat.id);
       return;
-    case ADMIN_TODO.anuncio:
-      await adminPromptAnuncio(msg.chat.id);
-      return;
     case ADMIN_BOTTOM.metodos:
-      await pmMenu(msg.chat.id);
+      await pmStartFresh(msg.chat.id, msg.from.id);
       return;
+
     case ADMIN_TODO.borrar:
       await cleanAdminChat(msg.chat.id, msg.from.id);
       return;
