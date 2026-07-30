@@ -262,9 +262,9 @@ async function showMoreOptions(_telegram_id: number, chat_id: number) {
           { text: BOTTOM_MENU.keys, callback_data: "more:keys" },
         ],
         [
-          { text: BOTTOM_MENU.announcements, callback_data: "more:ann" },
           { text: BOTTOM_MENU.share, callback_data: "more:share" },
         ],
+
         [
           { text: BOTTOM_MENU.support, callback_data: "more:support" },
           { text: BOTTOM_MENU.download_panel, callback_data: "more:panel" },
