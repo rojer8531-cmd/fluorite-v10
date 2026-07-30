@@ -209,7 +209,7 @@ const BOTTOM_MENU = {
   // Opciones extras (solo accesibles vía "Todo" como inline buttons)
   status: "📦 Estado",
   keys: "🔑 Mis Keys",
-  announcements: "Anuncios",
+  
   share: "Compartir Bot",
   support: "💬 Soporte",
   download_panel: "📥 Descargar Panel",
@@ -262,9 +262,9 @@ async function showMoreOptions(_telegram_id: number, chat_id: number) {
           { text: BOTTOM_MENU.keys, callback_data: "more:keys" },
         ],
         [
-          { text: BOTTOM_MENU.announcements, callback_data: "more:ann" },
           { text: BOTTOM_MENU.share, callback_data: "more:share" },
         ],
+
         [
           { text: BOTTOM_MENU.support, callback_data: "more:support" },
           { text: BOTTOM_MENU.download_panel, callback_data: "more:panel" },
@@ -981,7 +981,7 @@ async function routeBottomMenu(
     more: showMoreOptions,
     status: showOrderStatus,
     keys: showMyKeys,
-    announcements: showAnnouncements,
+    
     share: showShareBot,
     support: showSupport,
     download_panel: showDownloadPanel,
@@ -1866,10 +1866,8 @@ async function handleCallback(cb: TgCallback) {
   if (data === "menu:buy") return showBuyWithBalance(telegram_id, chat_id);
   if (data === "menu:recharge") return startRecharge(telegram_id, chat_id);
   if (data === "menu:support") return showSupport(telegram_id, chat_id);
-  if (data === "menu:announcements") return showAnnouncements(telegram_id, chat_id);
   if (data === "more:status") return showOrderStatus(telegram_id, chat_id);
   if (data === "more:keys") return showMyKeys(telegram_id, chat_id);
-  if (data === "more:ann") return showAnnouncements(telegram_id, chat_id);
   if (data === "more:share") return showShareBot(telegram_id, chat_id);
   if (data === "more:support") return showSupport(telegram_id, chat_id);
   if (data === "more:panel") return showDownloadPanel(telegram_id, chat_id);
