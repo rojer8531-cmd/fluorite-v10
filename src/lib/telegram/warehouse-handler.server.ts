@@ -2817,7 +2817,7 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== Wizard Agregar Keys: captura de keys (edita el mismo mensaje) =====
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
-    const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO)];
+    const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO), ADMIN_BACK_LABEL, `👥 ${ADMIN_TODO.usuarios}`];
     if (!labels.includes(text)) {
       const pmFlow = await getPmFlow(msg.from.id);
       if (pmFlow?.step) {
