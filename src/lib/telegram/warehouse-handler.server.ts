@@ -143,6 +143,40 @@ function adminBottomKeyboard() {
   };
 }
 
+// ===== Teclado temporal "⬅️ Atrás" =====
+const ADMIN_BACK_LABEL = "⬅️ Atrás";
+
+function adminBackKeyboard() {
+  return {
+    keyboard: [[{ text: ADMIN_BACK_LABEL }]],
+    resize_keyboard: true,
+    is_persistent: true,
+    one_time_keyboard: false,
+  };
+}
+
+/** Reemplaza la barra inferior por el único botón ⬅️ Atrás (sin texto visible). */
+async function showBackBar(chat_id: number, admin_id: number) {
+  const sent = await sendMessage("warehouse", chat_id, "\u2063", {
+    reply_markup: adminBackKeyboard(),
+  });
+  if (sent.ok && sent.result) {
+    deleteMessage("warehouse", chat_id, sent.result.message_id).catch(() => {});
+  }
+  await patchContext(admin_id, { bar_shown: true }).catch(() => {});
+}
+
+/** Restaura la barra principal y muestra el menú principal. */
+async function restoreMainBar(chat_id: number, admin_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>🏠 Menú Principal</b>\n\nSelecciona Una Opción.`,
+    { reply_markup: adminBottomKeyboard() },
+  );
+  await patchContext(admin_id, { bar_shown: true }).catch(() => {});
+}
+
 async function showTodoMenu(chat_id: number) {
   await sendMessage(
     "warehouse",
@@ -2783,7 +2817,7 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== Wizard Agregar Keys: captura de keys (edita el mismo mensaje) =====
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
-    const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO)];
+    const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO), ADMIN_BACK_LABEL, `👥 ${ADMIN_TODO.usuarios}`];
     if (!labels.includes(text)) {
       const pmFlow = await getPmFlow(msg.from.id);
       if (pmFlow?.step) {
@@ -3274,37 +3308,41 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== barra inferior persistente =====
   switch (text) {
+    case ADMIN_BACK_LABEL:
+      deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+      await restoreMainBar(msg.chat.id, msg.from.id);
+      return;
     case ADMIN_BOTTOM.inicio:
       await patchContext(msg.from.id, { bar_shown: false });
-      await sendMessage(
-        "warehouse",
-        msg.chat.id,
-        `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
-        { reply_markup: adminBottomKeyboard() },
-      );
-      await patchContext(msg.from.id, { bar_shown: true });
+      await restoreMainBar(msg.chat.id, msg.from.id);
       return;
     case ADMIN_TODO.stock:
+      await showBackBar(msg.chat.id, msg.from.id);
       await adminStockView(msg.chat.id);
       return;
     case `👥 ${ADMIN_TODO.usuarios}`:
     case ADMIN_TODO.usuarios:
+      await showBackBar(msg.chat.id, msg.from.id);
       await usStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.addkeys:
+      await showBackBar(msg.chat.id, msg.from.id);
       await akStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.precios:
+      await showBackBar(msg.chat.id, msg.from.id);
       await prStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.productos:
+      await showBackBar(msg.chat.id, msg.from.id);
       await pdStartFresh(msg.chat.id, msg.from.id);
-
       return;
     case ADMIN_TODO.minrecharge:
+      await showBackBar(msg.chat.id, msg.from.id);
       await adminPromptMinRecharge(msg.chat.id);
       return;
     case ADMIN_BOTTOM.metodos:
+      await showBackBar(msg.chat.id, msg.from.id);
       await pmStartFresh(msg.chat.id, msg.from.id);
       return;
 
@@ -3312,6 +3350,7 @@ async function handleMessage(msg: TgMessage) {
       await cleanAdminChat(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.todo:
+      await showBackBar(msg.chat.id, msg.from.id);
       await showTodoMenu(msg.chat.id);
       return;
   }
@@ -3428,15 +3467,7 @@ async function handleCallback(cb: TgCallback) {
 
 
       await patchContext(cb.from.id, { bar_shown: false });
-      const sent = await sendMessage(
-        "warehouse",
-        chat_id,
-        `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
-        { reply_markup: adminBottomKeyboard() },
-      );
-      if (sent.ok && sent.result) {
-        await patchContext(cb.from.id, { bar_shown: true });
-      }
+      await restoreMainBar(chat_id, cb.from.id);
     }
     return;
   }
