@@ -3308,37 +3308,41 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== barra inferior persistente =====
   switch (text) {
+    case ADMIN_BACK_LABEL:
+      deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+      await restoreMainBar(msg.chat.id, msg.from.id);
+      return;
     case ADMIN_BOTTOM.inicio:
       await patchContext(msg.from.id, { bar_shown: false });
-      await sendMessage(
-        "warehouse",
-        msg.chat.id,
-        `<b>Almacén listo ✅</b>\nUsá la barra inferior para todas las funciones.`,
-        { reply_markup: adminBottomKeyboard() },
-      );
-      await patchContext(msg.from.id, { bar_shown: true });
+      await restoreMainBar(msg.chat.id, msg.from.id);
       return;
     case ADMIN_TODO.stock:
+      await showBackBar(msg.chat.id, msg.from.id);
       await adminStockView(msg.chat.id);
       return;
     case `👥 ${ADMIN_TODO.usuarios}`:
     case ADMIN_TODO.usuarios:
+      await showBackBar(msg.chat.id, msg.from.id);
       await usStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.addkeys:
+      await showBackBar(msg.chat.id, msg.from.id);
       await akStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.precios:
+      await showBackBar(msg.chat.id, msg.from.id);
       await prStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.productos:
+      await showBackBar(msg.chat.id, msg.from.id);
       await pdStartFresh(msg.chat.id, msg.from.id);
-
       return;
     case ADMIN_TODO.minrecharge:
+      await showBackBar(msg.chat.id, msg.from.id);
       await adminPromptMinRecharge(msg.chat.id);
       return;
     case ADMIN_BOTTOM.metodos:
+      await showBackBar(msg.chat.id, msg.from.id);
       await pmStartFresh(msg.chat.id, msg.from.id);
       return;
 
@@ -3346,6 +3350,7 @@ async function handleMessage(msg: TgMessage) {
       await cleanAdminChat(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.todo:
+      await showBackBar(msg.chat.id, msg.from.id);
       await showTodoMenu(msg.chat.id);
       return;
   }
