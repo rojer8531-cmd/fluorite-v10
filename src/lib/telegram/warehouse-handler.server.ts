@@ -143,6 +143,40 @@ function adminBottomKeyboard() {
   };
 }
 
+// ===== Teclado temporal "⬅️ Atrás" =====
+const ADMIN_BACK_LABEL = "⬅️ Atrás";
+
+function adminBackKeyboard() {
+  return {
+    keyboard: [[{ text: ADMIN_BACK_LABEL }]],
+    resize_keyboard: true,
+    is_persistent: true,
+    one_time_keyboard: false,
+  };
+}
+
+/** Reemplaza la barra inferior por el único botón ⬅️ Atrás (sin texto visible). */
+async function showBackBar(chat_id: number, admin_id: number) {
+  const sent = await sendMessage("warehouse", chat_id, "\u2063", {
+    reply_markup: adminBackKeyboard(),
+  });
+  if (sent.ok && sent.result) {
+    deleteMessage("warehouse", chat_id, sent.result.message_id).catch(() => {});
+  }
+  await patchContext(admin_id, { bar_shown: true }).catch(() => {});
+}
+
+/** Restaura la barra principal y muestra el menú principal. */
+async function restoreMainBar(chat_id: number, admin_id: number) {
+  await sendMessage(
+    "warehouse",
+    chat_id,
+    `<b>🏠 Menú Principal</b>\n\nSelecciona Una Opción.`,
+    { reply_markup: adminBottomKeyboard() },
+  );
+  await patchContext(admin_id, { bar_shown: true }).catch(() => {});
+}
+
 async function showTodoMenu(chat_id: number) {
   await sendMessage(
     "warehouse",
