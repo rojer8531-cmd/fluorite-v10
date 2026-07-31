@@ -1097,9 +1097,55 @@ async function akSubmitKeys(msg: TgMessage, flow: AkFlow, rawText: string) {
 }
 
 
-async function adminStockView(chat_id: number) {
+const ST_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
+
+async function stRender(
+  chat_id: number,
+  text: string,
+  keyboard: AkKeyboard,
+  message_id?: number,
+) {
+  if (message_id) {
+    const edited = await editMessageText("warehouse", chat_id, message_id, text, {
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    if (edited.ok) return;
+  }
+  const sent = await _rawSendMessage("warehouse", chat_id, text, {
+    parse_mode: "HTML",
+    reply_markup: { inline_keyboard: keyboard },
+  });
+  if (sent.ok && sent.result) {
+    sb.from("admin_trash")
+      .insert({ chat_id, message_id: sent.result.message_id })
+      .then(() => {}, () => {});
+  }
+}
+
+async function adminStockView(chat_id: number, message_id?: number) {
+  const kb: AkKeyboard = [
+    [
+      { text: "🎟️ iOS", callback_data: "stcat:0" },
+      { text: "🎟️ Android", callback_data: "stcat:1" },
+    ],
+    [{ text: "🎟️ Auxilio de Famosos", callback_data: "stcat:2" }],
+    [ST_HOME_BTN],
+  ];
+  await stRender(chat_id, `🛍️ <b>Categorías</b>`, kb, message_id);
+}
+
+async function adminStockCategory(
+  chat_id: number,
+  category: string,
+  message_id?: number,
+) {
   const [productsRes, pricesRes] = await Promise.all([
-    sb.from("products").select("id, name, category").eq("active", true).order("sort_order"),
+    sb
+      .from("products")
+      .select("id, name")
+      .eq("active", true)
+      .eq("category", category as never)
+      .order("sort_order"),
     sb
       .from("product_prices")
       .select("id, product_id, duration_label")
@@ -1110,29 +1156,26 @@ async function adminStockView(chat_id: number) {
   const prices = pricesRes.data ?? [];
   const stock = await getStockByPriceId();
 
+  const kb: AkKeyboard = [[{ text: "🔚 Atrás", callback_data: "akp:stock" }, ST_HOME_BTN]];
+
   if (products.length === 0) {
-    await sendMessage("warehouse", chat_id, `No hay productos cargados.`);
+    await stRender(chat_id, `❇️ <b>Stock disponible</b>\n\nNo hay productos en esta categoría.`, kb, message_id);
     return;
   }
 
-  const lines: string[] = [];
-  let grandTotal = 0;
+  const blocks: string[] = [];
   for (const product of products) {
-    const productPrices = prices.filter((p) => p.product_id === product.id);
-    const productTotal = productPrices.reduce((sum, p) => sum + (stock.get(p.id) ?? 0), 0);
-    grandTotal += productTotal;
-    lines.push(`\n<b>${product.name}</b>  ·  total ${productTotal}`);
-    for (const p of productPrices) {
-      lines.push(`   ${p.duration_label}   ${stock.get(p.id) ?? 0}`);
+    const lines = [`🔘 <b>${escapeHtml(product.name)}</b>`];
+    for (const p of prices.filter((x) => x.product_id === product.id)) {
+      lines.push(`💲 ${escapeHtml(p.duration_label)} 🟰 ${stock.get(p.id) ?? 0}`);
     }
+    blocks.push(lines.join("\n"));
   }
 
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>Stock disponible</b>\nTotal general  <b>${grandTotal}</b>\n${lines.join("\n")}`,
-  );
+  await stRender(chat_id, `❇️ <b>Stock disponible</b>\n\n${blocks.join("\n\n")}`, kb, message_id);
 }
+
+
 
 function adminId() {
   return Number(getWarehouseChatId() ?? 0);
