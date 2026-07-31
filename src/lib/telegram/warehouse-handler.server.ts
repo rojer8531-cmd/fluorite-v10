@@ -3287,6 +3287,7 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_TODO.stock:
       await adminStockView(msg.chat.id);
       return;
+    case `👥 ${ADMIN_TODO.usuarios}`:
     case ADMIN_TODO.usuarios:
       await usStartFresh(msg.chat.id, msg.from.id);
       return;
@@ -3448,7 +3449,13 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:stock") {
-    if (chat_id) await adminStockView(chat_id);
+    if (chat_id) await adminStockView(chat_id, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("stcat:")) {
+    const idx = Number(data.split(":")[1]);
+    const cat = PD_CATEGORIES[idx];
+    if (chat_id && cat) await adminStockCategory(chat_id, cat, cb.message?.message_id);
     return;
   }
   if (data === "akp:pend") {
