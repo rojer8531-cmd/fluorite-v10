@@ -135,7 +135,7 @@ function adminBottomKeyboard() {
     keyboard: [
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.productos }],
       [{ text: ADMIN_BOTTOM.precios }, { text: ADMIN_BOTTOM.metodos }],
-      [{ text: ADMIN_BOTTOM.todo }],
+      [{ text: `👥 ${ADMIN_TODO.usuarios}` }, { text: ADMIN_BOTTOM.todo }],
     ],
     resize_keyboard: true,
     is_persistent: true,
