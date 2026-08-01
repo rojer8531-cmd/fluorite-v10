@@ -201,11 +201,11 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
-  products: "🛒 Productos",
-  recharge: "💰 Recargar Saldo",
-  official_channel: "Canal Oficial",
-  profile: "👤 Mi Perfil",
-  more: "📋 Todo",
+  products: "🛍️ Productos",
+  recharge: "💰 Recargar saldo",
+  official_channel: "💬 Canal Oficial",
+  profile: "👤 Mi perfil",
+  more: "❇️ Todo",
   // Opciones extras (solo accesibles vía "Todo" como inline buttons)
   status: "📦 Estado",
   keys: "🔑 Mis Keys",
@@ -216,15 +216,19 @@ const BOTTOM_MENU = {
 };
 
 const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
+  "🛍️ Productos": "products",
   "🛒 Productos": "products",
+  "Productos": "products",
   "💰 Recargar": "recharge",
   "💰 Recargar saldo": "recharge",
   "💰 Recargar Saldo": "recharge",
+  "💬 Canal Oficial": "official_channel",
   "Canal Oficial": "official_channel",
   "👤 Cuenta": "profile",
   "👤 Perfil": "profile",
   "👤 Mi perfil": "profile",
   "👤 Mi Perfil": "profile",
+  "❇️ Todo": "more",
   "📋 Todo": "more",
   "📋 Más": "more",
 };
