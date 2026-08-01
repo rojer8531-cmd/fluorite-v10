@@ -1454,11 +1454,8 @@ async function adminListaPrecios(chat_id: number, uid: number, message_id?: numb
 
 async function prStartFresh(chat_id: number, uid: number) {
   const prev = await getPrFlow(uid);
-  if (prev) {
-    await setPrFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await adminListaPrecios(chat_id, uid);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await adminListaPrecios(chat_id, uid, anchor);
 }
 
 async function adminPriceDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
