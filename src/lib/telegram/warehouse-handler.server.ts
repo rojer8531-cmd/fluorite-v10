@@ -934,12 +934,13 @@ async function pmSubmitText(msg: TgMessage, flow: PmFlow, rawText: string) {
   }
 
   if (flow.step === "body" && flow.cc && flow.country) {
+    const { currency, rate } = parsePmRate(rawText);
     const body = pmCleanTemplate(rawText);
     if (!body) {
       await pmAskBody(chat_id, uid, flow.country, flow.cc, flow.message_id);
       return;
     }
-    await pmPreview(chat_id, uid, flow, body);
+    await pmPreview(chat_id, uid, flow, body, currency, rate);
     return;
   }
 
