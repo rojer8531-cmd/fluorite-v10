@@ -893,7 +893,17 @@ async function pmDelGoFlow(chat_id: number, uid: number, cc: string, message_id?
     .limit(1)
     .maybeSingle();
   const name = m?.country_name ?? cc;
-  await sb.from("payment_methods").delete().eq("country_code", cc);
+  // Desactivar SIEMPRE primero (funciona aunque existan órdenes que referencian el método)
+  const { error: offErr } = await sb
+    .from("payment_methods")
+    .update({ active: false })
+    .eq("country_code", cc);
+  // Intento de borrado físico; si hay órdenes ligadas, queda sólo desactivado.
+  await sb.from("payment_methods").delete().eq("country_code", cc).eq("active", false);
+  if (offErr) {
+    await pmDelListFlow(chat_id, uid, message_id);
+    return;
+  }
   await pmRender(
     chat_id,
     uid,
