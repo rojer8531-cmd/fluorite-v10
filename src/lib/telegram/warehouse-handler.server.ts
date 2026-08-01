@@ -691,11 +691,8 @@ function pmCleanTemplate(raw: string): string {
 
 async function pmStartFresh(chat_id: number, uid: number) {
   const prev = await getPmFlow(uid);
-  if (prev) {
-    await setPmFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await pmMenuFlow(chat_id, uid);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await pmMenuFlow(chat_id, uid, anchor);
 }
 
 async function pmMenuFlow(chat_id: number, uid: number, message_id?: number, header?: string) {
