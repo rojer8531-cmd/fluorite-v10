@@ -987,11 +987,8 @@ const AK_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
 /** Abre el wizard desde la barra inferior: borra el ancla previa y crea una nueva. */
 async function akStartFresh(chat_id: number, uid: number) {
   const prev = await getAkFlow(uid);
-  if (prev) {
-    await setAkFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await adminListProducts(chat_id, uid);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await adminListProducts(chat_id, uid, anchor);
 }
 
 async function adminListProducts(chat_id: number, uid: number, message_id?: number) {
