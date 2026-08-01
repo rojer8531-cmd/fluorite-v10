@@ -764,11 +764,22 @@ async function pmAskBody(chat_id: number, uid: number, country: string, cc: stri
   );
 }
 
-async function pmPreview(chat_id: number, uid: number, flow: PmFlow, body: string) {
+async function pmPreview(
+  chat_id: number,
+  uid: number,
+  flow: PmFlow,
+  body: string,
+  currency: string,
+  rate: number,
+) {
+  const rateLine =
+    rate && rate !== 1
+      ? `\n\n💱 Tasa detectada: <b>1 USD = ${rate.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${escapeHtml(currency)}</b>`
+      : `\n\n💱 Tasa detectada: <b>1 USD = 1 ${escapeHtml(currency)}</b>`;
   await pmRender(
     chat_id,
     uid,
-    `❇️ <b>Todo listo.</b>\n\n⭕️ <b>Nuevo método</b>\n\n${escapeHtml(body)}`,
+    `❇️ <b>Todo listo.</b>\n\n⭕️ <b>Nuevo método</b>\n\n${escapeHtml(body)}${rateLine}`,
     [
       [
         { text: "🔘 Guardar", callback_data: "pmf:save" },
@@ -776,7 +787,7 @@ async function pmPreview(chat_id: number, uid: number, flow: PmFlow, body: strin
       ],
     ],
     flow.message_id,
-    { country: flow.country, cc: flow.cc, body },
+    { country: flow.country, cc: flow.cc, body, currency, rate },
   );
 }
 
@@ -786,7 +797,10 @@ async function pmSaveFlow(chat_id: number, uid: number, flow: PmFlow) {
     return;
   }
   const meta = extractPmMetadata(flow.body);
-  await sb.from("payment_methods").delete().eq("country_code", flow.cc);
+  const currency = flow.currency || "USD";
+  const rate = Number.isFinite(flow.rate) && (flow.rate as number) > 0 ? (flow.rate as number) : 1;
+  // Desactivamos los anteriores (no se borran por integridad con órdenes previas)
+  await sb.from("payment_methods").update({ active: false }).eq("country_code", flow.cc);
   const { error } = await sb.from("payment_methods").insert({
     country_code: flow.cc,
     country_name: flow.country,
@@ -794,8 +808,8 @@ async function pmSaveFlow(chat_id: number, uid: number, flow: PmFlow) {
     holder_name: meta.holder_name,
     account_info: meta.account_info,
     extra_info: null,
-    currency: "USD",
-    usd_rate: 1,
+    currency,
+    usd_rate: rate,
     body_raw: flow.body,
     active: true,
   } as never);
