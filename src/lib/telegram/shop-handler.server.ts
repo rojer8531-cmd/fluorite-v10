@@ -367,19 +367,19 @@ async function showSupport(telegram_id: number, chat_id: number) {
   );
 }
 
+/** Etiqueta visible de cada categoría (el callback conserva el nombre real). */
+function categoryLabel(category: string): string {
+  if (/auxili/i.test(category)) return "Auxilios FFH4X";
+  return category;
+}
+
 function categoryButtons(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>["grouped"]) {
-  const rows: Array<Array<{ text: string; callback_data: string }>> = [];
-  const btns = grouped.map((section) => ({
-    text: section.category,
-    callback_data: `cat:${section.category}`,
-  }));
-  if (btns.length >= 2) {
-    rows.push([btns[0], btns[1]]);
-    for (const b of btns.slice(2)) rows.push([b]);
-  } else {
-    for (const b of btns) rows.push([b]);
-  }
-  return rows;
+  return grouped.map((section) => [
+    {
+      text: `⏺️ ${categoryLabel(section.category)}`,
+      callback_data: `cat:${section.category}`,
+    },
+  ]);
 }
 
 
