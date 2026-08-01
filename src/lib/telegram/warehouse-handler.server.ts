@@ -631,6 +631,37 @@ interface PmFlow {
   country?: string;
   cc?: string;
   body?: string;
+  currency?: string;
+  rate?: number;
+}
+
+/**
+ * Deduce la moneda y la tasa (moneda local por 1 USD) desde la plantilla que
+ * pegó el admin, usando las líneas dinámicas 💰 Monto / 🧾 Pagas / 💵 Total.
+ * Ej: "💰 Monto: 1 USD" + "💵 Total: 40 NIO" => { currency: "NIO", rate: 40 }.
+ */
+function parsePmRate(raw: string): { currency: string; rate: number } {
+  const num = (s: string) => {
+    const clean = s.replace(/\s/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".");
+    const m = clean.match(/-?\d+(?:\.\d+)?/);
+    return m ? Number(m[0]) : NaN;
+  };
+  let usd = NaN;
+  let local = NaN;
+  let currency = "";
+  for (const line of raw.split(/\r?\n/)) {
+    const mMonto = line.match(/💰\s*Monto\s*:\s*(.+)/i);
+    if (mMonto && !Number.isFinite(usd)) usd = num(mMonto[1]);
+    const mLocal = line.match(/(?:💵\s*Total|🧾\s*Pagas)\s*:\s*(.+)/i);
+    if (mLocal && !Number.isFinite(local)) {
+      local = num(mLocal[1]);
+      const cur = mLocal[1].replace(/<[^>]+>/g, "").match(/([A-Za-zÁÉÍÓÚÑáéíóúñ]{2,10})\s*$/);
+      if (cur) currency = cur[1].toUpperCase();
+    }
+  }
+  if (!Number.isFinite(usd) || usd <= 0) usd = 1;
+  const rate = Number.isFinite(local) && local > 0 ? local / usd : 1;
+  return { currency: currency || "USD", rate };
 }
 
 const PM_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
@@ -691,11 +722,8 @@ function pmCleanTemplate(raw: string): string {
 
 async function pmStartFresh(chat_id: number, uid: number) {
   const prev = await getPmFlow(uid);
-  if (prev) {
-    await setPmFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await pmMenuFlow(chat_id, uid);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await pmMenuFlow(chat_id, uid, anchor);
 }
 
 async function pmMenuFlow(chat_id: number, uid: number, message_id?: number, header?: string) {
@@ -736,11 +764,22 @@ async function pmAskBody(chat_id: number, uid: number, country: string, cc: stri
   );
 }
 
-async function pmPreview(chat_id: number, uid: number, flow: PmFlow, body: string) {
+async function pmPreview(
+  chat_id: number,
+  uid: number,
+  flow: PmFlow,
+  body: string,
+  currency: string,
+  rate: number,
+) {
+  const rateLine =
+    rate && rate !== 1
+      ? `\n\n💱 Tasa detectada: <b>1 USD = ${rate.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${escapeHtml(currency)}</b>`
+      : `\n\n💱 Tasa detectada: <b>1 USD = 1 ${escapeHtml(currency)}</b>`;
   await pmRender(
     chat_id,
     uid,
-    `❇️ <b>Todo listo.</b>\n\n⭕️ <b>Nuevo método</b>\n\n${escapeHtml(body)}`,
+    `❇️ <b>Todo listo.</b>\n\n⭕️ <b>Nuevo método</b>\n\n${escapeHtml(body)}${rateLine}`,
     [
       [
         { text: "🔘 Guardar", callback_data: "pmf:save" },
@@ -748,7 +787,7 @@ async function pmPreview(chat_id: number, uid: number, flow: PmFlow, body: strin
       ],
     ],
     flow.message_id,
-    { country: flow.country, cc: flow.cc, body },
+    { country: flow.country, cc: flow.cc, body, currency, rate },
   );
 }
 
@@ -758,7 +797,10 @@ async function pmSaveFlow(chat_id: number, uid: number, flow: PmFlow) {
     return;
   }
   const meta = extractPmMetadata(flow.body);
-  await sb.from("payment_methods").delete().eq("country_code", flow.cc);
+  const currency = flow.currency || "USD";
+  const rate = Number.isFinite(flow.rate) && (flow.rate as number) > 0 ? (flow.rate as number) : 1;
+  // Desactivamos los anteriores (no se borran por integridad con órdenes previas)
+  await sb.from("payment_methods").update({ active: false }).eq("country_code", flow.cc);
   const { error } = await sb.from("payment_methods").insert({
     country_code: flow.cc,
     country_name: flow.country,
@@ -766,8 +808,8 @@ async function pmSaveFlow(chat_id: number, uid: number, flow: PmFlow) {
     holder_name: meta.holder_name,
     account_info: meta.account_info,
     extra_info: null,
-    currency: "USD",
-    usd_rate: 1,
+    currency,
+    usd_rate: rate,
     body_raw: flow.body,
     active: true,
   } as never);
@@ -851,7 +893,17 @@ async function pmDelGoFlow(chat_id: number, uid: number, cc: string, message_id?
     .limit(1)
     .maybeSingle();
   const name = m?.country_name ?? cc;
-  await sb.from("payment_methods").delete().eq("country_code", cc);
+  // Desactivar SIEMPRE primero (funciona aunque existan órdenes que referencian el método)
+  const { error: offErr } = await sb
+    .from("payment_methods")
+    .update({ active: false })
+    .eq("country_code", cc);
+  // Intento de borrado físico; si hay órdenes ligadas, queda sólo desactivado.
+  await sb.from("payment_methods").delete().eq("country_code", cc).eq("active", false);
+  if (offErr) {
+    await pmDelListFlow(chat_id, uid, message_id);
+    return;
+  }
   await pmRender(
     chat_id,
     uid,
@@ -892,12 +944,13 @@ async function pmSubmitText(msg: TgMessage, flow: PmFlow, rawText: string) {
   }
 
   if (flow.step === "body" && flow.cc && flow.country) {
+    const { currency, rate } = parsePmRate(rawText);
     const body = pmCleanTemplate(rawText);
     if (!body) {
       await pmAskBody(chat_id, uid, flow.country, flow.cc, flow.message_id);
       return;
     }
-    await pmPreview(chat_id, uid, flow, body);
+    await pmPreview(chat_id, uid, flow, body, currency, rate);
     return;
   }
 
@@ -990,11 +1043,8 @@ const AK_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
 /** Abre el wizard desde la barra inferior: borra el ancla previa y crea una nueva. */
 async function akStartFresh(chat_id: number, uid: number) {
   const prev = await getAkFlow(uid);
-  if (prev) {
-    await setAkFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await adminListProducts(chat_id, uid);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await adminListProducts(chat_id, uid, anchor);
 }
 
 async function adminListProducts(chat_id: number, uid: number, message_id?: number) {
@@ -1460,11 +1510,8 @@ async function adminListaPrecios(chat_id: number, uid: number, message_id?: numb
 
 async function prStartFresh(chat_id: number, uid: number) {
   const prev = await getPrFlow(uid);
-  if (prev) {
-    await setPrFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await adminListaPrecios(chat_id, uid);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await adminListaPrecios(chat_id, uid, anchor);
 }
 
 async function adminPriceDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
@@ -1642,11 +1689,8 @@ async function pdCategories(chat_id: number, uid: number, message_id?: number) {
 
 async function pdStartFresh(chat_id: number, uid: number) {
   const prev = await getPdFlow(uid);
-  if (prev) {
-    await setPdFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await pdCategories(chat_id, uid);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await pdCategories(chat_id, uid, anchor);
 }
 
 async function pdList(chat_id: number, uid: number, category: PdCategory, message_id?: number) {
@@ -2109,11 +2153,8 @@ async function usList(chat_id: number, uid: number, page = 0, message_id?: numbe
 
 async function usStartFresh(chat_id: number, uid: number) {
   const prev = await getUsFlow(uid);
-  if (prev) {
-    await setUsFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await usList(chat_id, uid, 0);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await usList(chat_id, uid, 0, anchor);
 }
 
 async function usPromptFind(chat_id: number, uid: number, message_id?: number) {
