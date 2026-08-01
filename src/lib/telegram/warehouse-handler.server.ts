@@ -2097,11 +2097,8 @@ async function usList(chat_id: number, uid: number, page = 0, message_id?: numbe
 
 async function usStartFresh(chat_id: number, uid: number) {
   const prev = await getUsFlow(uid);
-  if (prev) {
-    await setUsFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await usList(chat_id, uid, 0);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await usList(chat_id, uid, 0, anchor);
 }
 
 async function usPromptFind(chat_id: number, uid: number, message_id?: number) {
