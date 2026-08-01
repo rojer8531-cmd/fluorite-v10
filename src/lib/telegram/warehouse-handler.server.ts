@@ -1633,11 +1633,8 @@ async function pdCategories(chat_id: number, uid: number, message_id?: number) {
 
 async function pdStartFresh(chat_id: number, uid: number) {
   const prev = await getPdFlow(uid);
-  if (prev) {
-    await setPdFlow(uid, null);
-    deleteMessage("warehouse", prev.chat_id, prev.message_id).catch(() => {});
-  }
-  await pdCategories(chat_id, uid);
+  const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
+  await pdCategories(chat_id, uid, anchor);
 }
 
 async function pdList(chat_id: number, uid: number, category: PdCategory, message_id?: number) {
