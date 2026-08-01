@@ -442,8 +442,14 @@ async function showProducts(telegram_id: number, chat_id: number) {
   await screen(
     telegram_id,
     chat_id,
-    `🛒 <b>Productos</b>\n\nElegí una categoría:`,
-    [...categoryButtons(grouped), BACK_BUTTON],
+    `✳️ <b>Selecciona una categoría</b>`,
+    [
+      ...categoryButtons(grouped),
+      [
+        { text: "🔚 Atrás", callback_data: "menu:main" },
+        { text: "🏠 Inicio", callback_data: "menu:main" },
+      ],
+    ],
   );
 }
 
