@@ -631,6 +631,37 @@ interface PmFlow {
   country?: string;
   cc?: string;
   body?: string;
+  currency?: string;
+  rate?: number;
+}
+
+/**
+ * Deduce la moneda y la tasa (moneda local por 1 USD) desde la plantilla que
+ * pegó el admin, usando las líneas dinámicas 💰 Monto / 🧾 Pagas / 💵 Total.
+ * Ej: "💰 Monto: 1 USD" + "💵 Total: 40 NIO" => { currency: "NIO", rate: 40 }.
+ */
+function parsePmRate(raw: string): { currency: string; rate: number } {
+  const num = (s: string) => {
+    const clean = s.replace(/\s/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", ".");
+    const m = clean.match(/-?\d+(?:\.\d+)?/);
+    return m ? Number(m[0]) : NaN;
+  };
+  let usd = NaN;
+  let local = NaN;
+  let currency = "";
+  for (const line of raw.split(/\r?\n/)) {
+    const mMonto = line.match(/💰\s*Monto\s*:\s*(.+)/i);
+    if (mMonto && !Number.isFinite(usd)) usd = num(mMonto[1]);
+    const mLocal = line.match(/(?:💵\s*Total|🧾\s*Pagas)\s*:\s*(.+)/i);
+    if (mLocal && !Number.isFinite(local)) {
+      local = num(mLocal[1]);
+      const cur = mLocal[1].replace(/<[^>]+>/g, "").match(/([A-Za-zÁÉÍÓÚÑáéíóúñ]{2,10})\s*$/);
+      if (cur) currency = cur[1].toUpperCase();
+    }
+  }
+  if (!Number.isFinite(usd) || usd <= 0) usd = 1;
+  const rate = Number.isFinite(local) && local > 0 ? local / usd : 1;
+  return { currency: currency || "USD", rate };
 }
 
 const PM_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
