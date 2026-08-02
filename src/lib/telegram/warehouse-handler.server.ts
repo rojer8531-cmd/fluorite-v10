@@ -151,7 +151,6 @@ const ADMIN_BACK_LABEL = "⬅️ Atrás";
  * simplemente se asegura que siga visible (no se reemplaza por "⬅️ Atrás").
  */
 async function showBackBar(chat_id: number, admin_id: number) {
-  await patchContext(admin_id, { bar_shown: false }).catch(() => {});
   await ensureAdminBar(chat_id, admin_id).catch(() => {});
 }
 
