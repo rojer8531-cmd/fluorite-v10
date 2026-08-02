@@ -167,13 +167,32 @@ async function showBackBar(chat_id: number, admin_id: number) {
 }
 
 /** Restaura la barra principal y muestra el menú principal. */
-async function restoreMainBar(chat_id: number, admin_id: number) {
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>🏠 Menú Principal</b>\n\nSelecciona Una Opción.`,
-    { reply_markup: adminBottomKeyboard() },
-  );
+async function restoreMainBar(
+  chat_id: number,
+  admin_id: number,
+  message_id?: number,
+) {
+  const MAIN_TEXT = `<b>🏠 Menú Principal</b>\n\nSelecciona una opción.`;
+  if (message_id) {
+    // Editar el mensaje actual: no se envían mensajes nuevos ni se borra nada.
+    const edited = await editMessageText("warehouse", chat_id, message_id, MAIN_TEXT, {
+      reply_markup: { inline_keyboard: [] },
+    }).catch(() => ({ ok: false }) as { ok: boolean });
+    if (edited.ok) {
+      // Reponer la barra inferior sin dejar mensaje visible
+      const sent = await sendMessage("warehouse", chat_id, "\u2063", {
+        reply_markup: adminBottomKeyboard(),
+      });
+      if (sent.ok && sent.result) {
+        deleteMessage("warehouse", chat_id, sent.result.message_id).catch(() => {});
+      }
+      await patchContext(admin_id, { bar_shown: true }).catch(() => {});
+      return;
+    }
+  }
+  await sendMessage("warehouse", chat_id, MAIN_TEXT, {
+    reply_markup: adminBottomKeyboard(),
+  });
   await patchContext(admin_id, { bar_shown: true }).catch(() => {});
 }
 
@@ -241,10 +260,7 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
     // Solo limpieza/barra en mensajes de texto. En callbacks NO bloqueamos
     // la respuesta: el botón debe sentirse instantáneo.
     if (update.message) {
-      const idleMs = await getIdleMs(admin_id);
-      if (idleMs >= ADMIN_IDLE_PURGE_MS) {
-        purgeAdminTrash(chat_id, admin_id).catch(() => {});
-      }
+      // Ya no se purgan mensajes anteriores: la navegación es por edición.
       touchAdminSeen(admin_id).catch(() => {});
       if (!isStartLike) {
         ensureAdminBar(chat_id, admin_id).catch(() => {});
@@ -356,7 +372,11 @@ async function replaceAdminList(
   const ids = (ctx.list_msgs ?? {}) as Record<string, number>;
   const prev = ids[listKey];
   if (prev) {
-    deleteMessage("warehouse", chat_id, prev).catch(() => {});
+    // Editar el mensaje anterior en lugar de borrarlo
+    const edited = await editMessageText("warehouse", chat_id, prev, text, {
+      reply_markup: kb ? { inline_keyboard: kb } : undefined,
+    }).catch(() => ({ ok: false }) as { ok: boolean });
+    if (edited.ok) return;
   }
   const sent = await sendMessage("warehouse", chat_id, text, kb ? { reply_markup: { inline_keyboard: kb } } : {});
   if (sent.ok && sent.result) {
@@ -3477,38 +3497,15 @@ async function handleCallback(cb: TgCallback) {
 
   if (data === "akp:inicio") {
     if (chat_id) {
-      const flow = await getAkFlow(cb.from.id);
-      if (flow) {
-        await setAkFlow(cb.from.id, null);
-        deleteMessage("warehouse", flow.chat_id, flow.message_id).catch(() => {});
-      }
-      const pflow = await getPrFlow(cb.from.id);
-      if (pflow) {
-        await setPrFlow(cb.from.id, null);
-        deleteMessage("warehouse", pflow.chat_id, pflow.message_id).catch(() => {});
-      }
-      const dflow = await getPdFlow(cb.from.id);
-      if (dflow) {
-        await setPdFlow(cb.from.id, null);
-        deleteMessage("warehouse", dflow.chat_id, dflow.message_id).catch(() => {});
-      }
-      const uflow = await getUsFlow(cb.from.id);
-      if (uflow) {
-        await setUsFlow(cb.from.id, null);
-        deleteMessage("warehouse", uflow.chat_id, uflow.message_id).catch(() => {});
-      }
-      const mflow = await getPmFlow(cb.from.id);
-      if (mflow) {
-        await setPmFlow(cb.from.id, null);
-        deleteMessage("warehouse", mflow.chat_id, mflow.message_id).catch(() => {});
-      }
-
-
-
-
+      // Cerrar flujos sin borrar mensajes: el mensaje actual se edita.
+      if (await getAkFlow(cb.from.id)) await setAkFlow(cb.from.id, null);
+      if (await getPrFlow(cb.from.id)) await setPrFlow(cb.from.id, null);
+      if (await getPdFlow(cb.from.id)) await setPdFlow(cb.from.id, null);
+      if (await getUsFlow(cb.from.id)) await setUsFlow(cb.from.id, null);
+      if (await getPmFlow(cb.from.id)) await setPmFlow(cb.from.id, null);
 
       await patchContext(cb.from.id, { bar_shown: false });
-      await restoreMainBar(chat_id, cb.from.id);
+      await restoreMainBar(chat_id, cb.from.id, cb.message?.message_id);
     }
     return;
   }
