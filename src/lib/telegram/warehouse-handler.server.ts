@@ -353,7 +353,11 @@ async function replaceAdminList(
   const ids = (ctx.list_msgs ?? {}) as Record<string, number>;
   const prev = ids[listKey];
   if (prev) {
-    deleteMessage("warehouse", chat_id, prev).catch(() => {});
+    // Editar el mensaje anterior en lugar de borrarlo
+    const edited = await editMessageText("warehouse", chat_id, prev, text, {
+      reply_markup: kb ? { inline_keyboard: kb } : undefined,
+    }).catch(() => ({ ok: false }) as { ok: boolean });
+    if (edited.ok) return;
   }
   const sent = await sendMessage("warehouse", chat_id, text, kb ? { reply_markup: { inline_keyboard: kb } } : {});
   if (sent.ok && sent.result) {
