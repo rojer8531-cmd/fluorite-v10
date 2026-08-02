@@ -241,10 +241,7 @@ export async function handleWarehouseUpdate(update: Update): Promise<void> {
     // Solo limpieza/barra en mensajes de texto. En callbacks NO bloqueamos
     // la respuesta: el botón debe sentirse instantáneo.
     if (update.message) {
-      const idleMs = await getIdleMs(admin_id);
-      if (idleMs >= ADMIN_IDLE_PURGE_MS) {
-        purgeAdminTrash(chat_id, admin_id).catch(() => {});
-      }
+      // Ya no se purgan mensajes anteriores: la navegación es por edición.
       touchAdminSeen(admin_id).catch(() => {});
       if (!isStartLike) {
         ensureAdminBar(chat_id, admin_id).catch(() => {});
