@@ -1,8 +1,8 @@
 // Admin Bot — handler (UI limpia, barra inferior persistente)
 import {
   sendMessage as _rawSendMessage,
-  editMessageReplyMarkup,
-  editMessageText,
+  editMessageReplyMarkup as _rawEditMessageReplyMarkup,
+  editMessageText as _rawEditMessageText,
   deleteMessage,
   answerCallbackQuery,
   getWarehouseChatId,
@@ -70,25 +70,48 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Admin actualmente activo (para tracking de mensajes a limpiar)
 let _currentAdminId: number | null = null;
 
+/** Elimina el botón "🏠 Inicio" de cualquier teclado inline del almacén. */
+function stripInicio<T extends Record<string, unknown>>(extra: T): T {
+  const rm = extra?.reply_markup as
+    | { inline_keyboard?: Array<Array<{ text?: string; callback_data?: string }>> }
+    | undefined;
+  if (!rm || !Array.isArray(rm.inline_keyboard)) return extra;
+  const cleaned = rm.inline_keyboard
+    .map((row) => (Array.isArray(row) ? row.filter((b) => b?.callback_data !== "akp:inicio") : row))
+    .filter((row) => !Array.isArray(row) || row.length > 0);
+  return { ...extra, reply_markup: { ...rm, inline_keyboard: cleaned } };
+}
+
+async function editMessageText(
+  bot: "shop" | "warehouse",
+  chat_id: number | string,
+  message_id: number,
+  text: string,
+  extra: Record<string, unknown> = {},
+) {
+  return _rawEditMessageText(bot, chat_id, message_id, text, bot === "warehouse" ? stripInicio(extra) : extra);
+}
+
+async function editMessageReplyMarkup(
+  bot: "shop" | "warehouse",
+  chat_id: number | string,
+  message_id: number,
+  reply_markup: unknown,
+) {
+  const rm =
+    bot === "warehouse"
+      ? (stripInicio({ reply_markup } as Record<string, unknown>).reply_markup as unknown)
+      : reply_markup;
+  return _rawEditMessageReplyMarkup(bot, chat_id, message_id, rm as never);
+}
+
 async function sendMessage(
   bot: "shop" | "warehouse",
   chat_id: number | string,
   text: string,
   extra: Record<string, unknown> = {},
 ) {
-  // Para mensajes del almacén con teclado inline, anexamos el botón
-  // "🏠 Inicio" para que el admin siempre tenga forma de volver a la barra.
-  if (bot === "warehouse") {
-    const rm = extra.reply_markup as { inline_keyboard?: Array<Array<{ text: string; callback_data?: string }>> } | undefined;
-    if (rm && Array.isArray(rm.inline_keyboard)) {
-      const last = rm.inline_keyboard[rm.inline_keyboard.length - 1];
-      const alreadyHasInicio = Array.isArray(last) && last.some((b) => b?.callback_data === "akp:inicio");
-      if (!alreadyHasInicio) {
-        rm.inline_keyboard = [...rm.inline_keyboard, [{ text: "🏠 Inicio", callback_data: "akp:inicio" }]];
-        extra = { ...extra, reply_markup: rm };
-      }
-    }
-  }
+  if (bot === "warehouse") extra = stripInicio(extra);
   const r = await _rawSendMessage(bot, chat_id, text, extra);
   if (bot === "warehouse" && r.ok && r.result) {
     sb.from("admin_trash")
