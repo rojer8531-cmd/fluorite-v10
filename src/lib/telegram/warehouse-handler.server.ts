@@ -1,8 +1,8 @@
 // Admin Bot — handler (UI limpia, barra inferior persistente)
 import {
   sendMessage as _rawSendMessage,
-  editMessageReplyMarkup,
-  editMessageText,
+  editMessageReplyMarkup as _rawEditMessageReplyMarkup,
+  editMessageText as _rawEditMessageText,
   deleteMessage,
   answerCallbackQuery,
   getWarehouseChatId,
