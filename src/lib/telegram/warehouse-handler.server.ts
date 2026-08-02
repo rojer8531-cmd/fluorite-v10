@@ -3497,38 +3497,15 @@ async function handleCallback(cb: TgCallback) {
 
   if (data === "akp:inicio") {
     if (chat_id) {
-      const flow = await getAkFlow(cb.from.id);
-      if (flow) {
-        await setAkFlow(cb.from.id, null);
-        deleteMessage("warehouse", flow.chat_id, flow.message_id).catch(() => {});
-      }
-      const pflow = await getPrFlow(cb.from.id);
-      if (pflow) {
-        await setPrFlow(cb.from.id, null);
-        deleteMessage("warehouse", pflow.chat_id, pflow.message_id).catch(() => {});
-      }
-      const dflow = await getPdFlow(cb.from.id);
-      if (dflow) {
-        await setPdFlow(cb.from.id, null);
-        deleteMessage("warehouse", dflow.chat_id, dflow.message_id).catch(() => {});
-      }
-      const uflow = await getUsFlow(cb.from.id);
-      if (uflow) {
-        await setUsFlow(cb.from.id, null);
-        deleteMessage("warehouse", uflow.chat_id, uflow.message_id).catch(() => {});
-      }
-      const mflow = await getPmFlow(cb.from.id);
-      if (mflow) {
-        await setPmFlow(cb.from.id, null);
-        deleteMessage("warehouse", mflow.chat_id, mflow.message_id).catch(() => {});
-      }
-
-
-
-
+      // Cerrar flujos sin borrar mensajes: el mensaje actual se edita.
+      if (await getAkFlow(cb.from.id)) await setAkFlow(cb.from.id, null);
+      if (await getPrFlow(cb.from.id)) await setPrFlow(cb.from.id, null);
+      if (await getPdFlow(cb.from.id)) await setPdFlow(cb.from.id, null);
+      if (await getUsFlow(cb.from.id)) await setUsFlow(cb.from.id, null);
+      if (await getPmFlow(cb.from.id)) await setPmFlow(cb.from.id, null);
 
       await patchContext(cb.from.id, { bar_shown: false });
-      await restoreMainBar(chat_id, cb.from.id);
+      await restoreMainBar(chat_id, cb.from.id, cb.message?.message_id);
     }
     return;
   }
