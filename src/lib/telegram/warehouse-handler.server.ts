@@ -167,13 +167,32 @@ async function showBackBar(chat_id: number, admin_id: number) {
 }
 
 /** Restaura la barra principal y muestra el menú principal. */
-async function restoreMainBar(chat_id: number, admin_id: number) {
-  await sendMessage(
-    "warehouse",
-    chat_id,
-    `<b>🏠 Menú Principal</b>\n\nSelecciona Una Opción.`,
-    { reply_markup: adminBottomKeyboard() },
-  );
+async function restoreMainBar(
+  chat_id: number,
+  admin_id: number,
+  message_id?: number,
+) {
+  const MAIN_TEXT = `<b>🏠 Menú Principal</b>\n\nSelecciona una opción.`;
+  if (message_id) {
+    // Editar el mensaje actual: no se envían mensajes nuevos ni se borra nada.
+    const edited = await editMessageText("warehouse", chat_id, message_id, MAIN_TEXT, {
+      reply_markup: { inline_keyboard: [] },
+    }).catch(() => ({ ok: false }) as { ok: boolean });
+    if (edited.ok) {
+      // Reponer la barra inferior sin dejar mensaje visible
+      const sent = await sendMessage("warehouse", chat_id, "\u2063", {
+        reply_markup: adminBottomKeyboard(),
+      });
+      if (sent.ok && sent.result) {
+        deleteMessage("warehouse", chat_id, sent.result.message_id).catch(() => {});
+      }
+      await patchContext(admin_id, { bar_shown: true }).catch(() => {});
+      return;
+    }
+  }
+  await sendMessage("warehouse", chat_id, MAIN_TEXT, {
+    reply_markup: adminBottomKeyboard(),
+  });
   await patchContext(admin_id, { bar_shown: true }).catch(() => {});
 }
 
