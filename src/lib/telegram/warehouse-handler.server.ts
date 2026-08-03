@@ -321,13 +321,10 @@ async function ensureAdminBar(chat_id: number, admin_id: number) {
   const st = await getState(admin_id);
   const ctx = (st?.context ?? {}) as Record<string, unknown>;
   if (ctx.bar_shown) return;
-  // Adjuntar la barra inferior sin mostrar texto visible
-  const sent = await sendMessage("warehouse", chat_id, "\u2063", {
+  // Adjuntar la barra inferior sin borrar ningún mensaje
+  await sendMessage("warehouse", chat_id, "\u2063", {
     reply_markup: adminBottomKeyboard(),
   });
-  if (sent.ok && sent.result) {
-    deleteMessage("warehouse", chat_id, sent.result.message_id).catch(() => {});
-  }
   await patchContext(admin_id, { bar_shown: true });
 }
 
