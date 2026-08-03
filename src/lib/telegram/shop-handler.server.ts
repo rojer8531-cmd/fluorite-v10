@@ -183,9 +183,9 @@ function adminReceiptKeyboard(order_id: string, telegram_id: number) {
     inline_keyboard: [
       [
         { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
-        { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
+        { text: "⭕️ Rechazar", callback_data: `adm:reject:${order_id}` },
       ],
-      [{ text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` }],
+      [{ text: "✴️ Bloquear permanentemente", callback_data: `adm:block:${telegram_id}` }],
     ],
   };
 }
@@ -1330,7 +1330,7 @@ async function processReceiptPhotoReview(opts: {
 
   const { data: order } = await sb
     .from("orders")
-    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, method_name, holder_name, account_info, usd_rate, currency)")
+    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, country_code, method_name, holder_name, account_info, usd_rate, currency)")
     .eq("id", order_id)
     .single();
 
