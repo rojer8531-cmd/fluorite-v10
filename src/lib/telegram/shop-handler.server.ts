@@ -183,9 +183,9 @@ function adminReceiptKeyboard(order_id: string, telegram_id: number) {
     inline_keyboard: [
       [
         { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
-        { text: "❌ Rechazar", callback_data: `adm:reject:${order_id}` },
+        { text: "⭕️ Rechazar", callback_data: `adm:reject:${order_id}` },
       ],
-      [{ text: "⛔ Bloquear", callback_data: `adm:block:${telegram_id}` }],
+      [{ text: "✴️ Bloquear permanentemente", callback_data: `adm:block:${telegram_id}` }],
     ],
   };
 }
@@ -1330,7 +1330,7 @@ async function processReceiptPhotoReview(opts: {
 
   const { data: order } = await sb
     .from("orders")
-    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, method_name, holder_name, account_info, usd_rate, currency)")
+    .select("*, products(name), product_prices(duration_label), payment_methods(country_name, country_code, method_name, holder_name, account_info, usd_rate, currency)")
     .eq("id", order_id)
     .single();
 
@@ -1343,7 +1343,7 @@ async function processReceiptPhotoReview(opts: {
     keys_qty: number;
     products: { name: string } | null;
     product_prices: { duration_label: string } | null;
-    payment_methods: { country_name: string; method_name: string; holder_name: string | null; account_info: string | null; usd_rate: number | string | null; currency: string | null } | null;
+    payment_methods: { country_name: string; country_code?: string | null; method_name: string; holder_name: string | null; account_info: string | null; usd_rate: number | string | null; currency: string | null } | null;
   };
   const pid = tpId(o.created_at);
 
@@ -1351,21 +1351,17 @@ async function processReceiptPhotoReview(opts: {
   // para que él haga la verificación 100% manual.
   const userTag = escapeHtml(user.username ? `@${user.username}` : (user.display_name ?? "—"));
   const country = escapeHtml(o.payment_methods?.country_name ?? "—");
-  const method = escapeHtml(o.payment_methods?.method_name ?? "—");
-  const productName = escapeHtml(o.products?.name ?? "—");
-  const duration = o.product_prices?.duration_label ? ` · ${escapeHtml(o.product_prices.duration_label)}` : "";
-  const kind = isRecharge ? "Recarga" : `Compra · ${productName}${duration}`;
+  const flag = countryFlag(o.payment_methods?.country_code ?? "");
+  void isRecharge;
 
   const caption =
-    `📩 <b>Nuevo Comprobante</b>\n\n` +
-    `👤 Usuario: ${userTag}\n` +
-    `🆔 ID: <code>${telegram_id}</code>\n` +
-    `🧾 Pending: <code>${pid}</code>\n\n` +
-    `💵 Monto: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
-    `💰 Saldo: <b>${Number(user.balance).toFixed(2)} USD</b>\n\n` +
-    `🌎 País: ${country}\n` +
-    `🏦 Método: ${method}\n` +
-    `📦 Tipo: ${kind}`;
+    `📥 <b>Nuevo Comprobante</b>\n\n` +
+    `✳️ ${userTag}\n\n` +
+    `🆔 <code>${telegram_id}</code>\n\n` +
+    `🏦 Recarga: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n\n` +
+    `*️⃣ Saldo: <b>${Number(user.balance).toFixed(2)} USD</b>\n\n` +
+    `${flag ? `${flag} ` : ""}${country}`;
+  void pid;
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) {

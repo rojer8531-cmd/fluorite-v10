@@ -161,13 +161,13 @@ async function finalizeReceiptCaption(opts: {
   statusIcon: string;
   extraBalanceUsd?: number | null; // saldo final para mostrar (post-aprobación)
 }) {
-  const { cb, order_id, status, headerIcon, headerText, extraBalanceUsd } = opts;
+  const { cb, order_id, status, extraBalanceUsd } = opts;
   const chat_id = cb.message?.chat.id;
   const message_id = cb.message?.message_id;
 
   const { data: order } = await sb
     .from("orders")
-    .select("id, telegram_id, total_usd, created_at, admin_message_id, payment_methods(country_name, method_name), bot_users(balance, username, display_name)")
+    .select("id, telegram_id, total_usd, created_at, admin_message_id, payment_methods(country_name, country_code, method_name), bot_users(balance, username, display_name)")
     .eq("id", order_id)
     .maybeSingle();
   if (!order) return;
@@ -176,25 +176,32 @@ async function finalizeReceiptCaption(opts: {
     total_usd: number;
     created_at: string;
     admin_message_id: number | null;
-    payment_methods: { country_name: string; method_name: string } | null;
+    payment_methods: { country_name: string; country_code?: string | null; method_name: string } | null;
     bot_users: { balance: number; username: string | null; display_name: string | null } | null;
   };
   const bal = extraBalanceUsd != null ? extraBalanceUsd : Number(o.bot_users?.balance ?? 0);
   const userTag = o.bot_users?.username ? `@${o.bot_users.username}` : (o.bot_users?.display_name ?? "—");
   const country = o.payment_methods?.country_name ?? "—";
-  const isBlock = status === "BLOQUEADO";
+  const cc = (o.payment_methods?.country_code ?? "").toUpperCase();
+  const flag =
+    cc.length === 2
+      ? String.fromCodePoint(0x1f1e6 + cc.charCodeAt(0) - 65, 0x1f1e6 + cc.charCodeAt(1) - 65)
+      : "";
 
-  const amountBlock = isBlock
-    ? `💰 Saldo: <b>${bal.toFixed(2)} USD</b>`
-    : `💵 Recarga: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n💰 Saldo: <b>${bal.toFixed(2)} USD</b>`;
+  const header =
+    status === "APROBADO"
+      ? "✅ <b>Comprobante Aceptado</b>"
+      : status === "RECHAZADO"
+        ? "❌ <b>Comprobante Rechazado</b>"
+        : "🚫 <b>Bloqueado &amp; Pendejo 🤣</b>";
 
   const newCaption =
-    `${headerIcon} <b>${headerText}</b>\n\n` +
-    `👤 Usuario: ${escapeHtml(userTag)}\n` +
-    `🆔 ID: <code>${o.telegram_id}</code>\n\n` +
-    `${amountBlock}\n\n` +
-    `🌎 País: ${escapeHtml(country)}\n\n` +
-    `📦 Estado: <b>${status}</b>`;
+    `${header}\n\n` +
+    `✳️ ${escapeHtml(userTag)}\n\n` +
+    `🆔 <code>${o.telegram_id}</code>\n\n` +
+    `🏦 Recarga: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n\n` +
+    `*️⃣ Saldo: <b>${bal.toFixed(2)} USD</b>\n\n` +
+    `${flag ? `${flag} ` : ""}${escapeHtml(country)}`;
 
   const target_mid = o.admin_message_id ?? message_id;
   if (!chat_id || !target_mid) return;
