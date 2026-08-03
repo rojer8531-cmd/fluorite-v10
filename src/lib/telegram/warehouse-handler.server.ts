@@ -170,30 +170,13 @@ async function showBackBar(chat_id: number, admin_id: number) {
   await ensureAdminBar(chat_id, admin_id).catch(() => {});
 }
 
-/** Restaura la barra principal y muestra el menú principal. */
+/** Muestra el menú principal y garantiza la barra inferior. Nunca borra mensajes. */
 async function restoreMainBar(
   chat_id: number,
   admin_id: number,
-  message_id?: number,
+  _message_id?: number,
 ) {
   const MAIN_TEXT = `<b>🏠 Menú Principal</b>\n\nSelecciona una opción.`;
-  if (message_id) {
-    // Editar el mensaje actual: no se envían mensajes nuevos ni se borra nada.
-    const edited = await editMessageText("warehouse", chat_id, message_id, MAIN_TEXT, {
-      reply_markup: { inline_keyboard: [] },
-    }).catch(() => ({ ok: false }) as { ok: boolean });
-    if (edited.ok) {
-      // Reponer la barra inferior sin dejar mensaje visible
-      const sent = await sendMessage("warehouse", chat_id, "\u2063", {
-        reply_markup: adminBottomKeyboard(),
-      });
-      if (sent.ok && sent.result) {
-        deleteMessage("warehouse", chat_id, sent.result.message_id).catch(() => {});
-      }
-      await patchContext(admin_id, { bar_shown: true }).catch(() => {});
-      return;
-    }
-  }
   await sendMessage("warehouse", chat_id, MAIN_TEXT, {
     reply_markup: adminBottomKeyboard(),
   });
@@ -338,13 +321,10 @@ async function ensureAdminBar(chat_id: number, admin_id: number) {
   const st = await getState(admin_id);
   const ctx = (st?.context ?? {}) as Record<string, unknown>;
   if (ctx.bar_shown) return;
-  // Adjuntar la barra inferior sin mostrar texto visible
-  const sent = await sendMessage("warehouse", chat_id, "\u2063", {
+  // Adjuntar la barra inferior sin borrar ningún mensaje
+  await sendMessage("warehouse", chat_id, "\u2063", {
     reply_markup: adminBottomKeyboard(),
   });
-  if (sent.ok && sent.result) {
-    deleteMessage("warehouse", chat_id, sent.result.message_id).catch(() => {});
-  }
   await patchContext(admin_id, { bar_shown: true });
 }
 
@@ -955,7 +935,7 @@ async function pmAllFlow(chat_id: number, uid: number, message_id?: number) {
 async function pmSubmitText(msg: TgMessage, flow: PmFlow, rawText: string) {
   const uid = msg.from!.id;
   const chat_id = flow.chat_id;
-  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+  // no borrar mensajes del chat almacén
 
   if (flow.step === "country") {
     const country = rawText.trim().replace(/\s+/g, " ");
@@ -1145,7 +1125,7 @@ async function adminPromptKeys(chat_id: number, uid: number, price_id: string, m
 /** Procesa las keys enviadas por el admin y edita el mismo mensaje del wizard. */
 async function akSubmitKeys(msg: TgMessage, flow: AkFlow, rawText: string) {
   const uid = msg.from!.id;
-  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+  // no borrar mensajes del chat almacén
 
   const { data: price } = await sb
     .from("product_prices")
@@ -1593,7 +1573,7 @@ async function adminPromptNewPrice(chat_id: number, uid: number, price_id: strin
 
 async function prSubmitPrice(msg: TgMessage, flow: PrFlow, rawText: string) {
   const uid = msg.from!.id;
-  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+  // no borrar mensajes del chat almacén
 
   const { data: p } = await sb
     .from("product_prices")
@@ -2017,7 +1997,7 @@ async function pdSaveProduct(chat_id: number, uid: number, flow: PdFlow) {
 async function pdSubmitText(msg: TgMessage, flow: PdFlow, rawText: string) {
   const uid = msg.from!.id;
   const chat_id = flow.chat_id;
-  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+  // no borrar mensajes del chat almacén
   const text = rawText.trim().replace(/\s+/g, " ");
 
   if (flow.step === "rename" && flow.product_id) {
@@ -2366,7 +2346,7 @@ async function usPromptDiscount(
 async function usSubmitText(msg: TgMessage, flow: UsFlow, rawText: string) {
   const uid = msg.from!.id;
   const chat_id = flow.chat_id;
-  deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+  // no borrar mensajes del chat almacén
   const text = rawText.trim();
 
   if (flow.step === "find") {
@@ -2966,8 +2946,8 @@ async function handleMessage(msg: TgMessage) {
           duration_label: (pr as { duration_label: string } | null)?.duration_label,
         });
       }
-      deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
-      deleteMessage("warehouse", msg.chat.id, msg.reply_to_message.message_id).catch(() => {});
+      // no borrar mensajes del chat almacén
+      // no borrar mensajes del chat almacén
       await sendMessage(
         "warehouse",
         msg.chat.id,
@@ -3374,7 +3354,7 @@ async function handleMessage(msg: TgMessage) {
   // ===== barra inferior persistente =====
   switch (text) {
     case ADMIN_BACK_LABEL:
-      deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+      // no borrar mensajes del chat almacén
       await restoreMainBar(msg.chat.id, msg.from.id);
       return;
     case ADMIN_BOTTOM.inicio:
