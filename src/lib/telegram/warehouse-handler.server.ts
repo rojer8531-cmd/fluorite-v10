@@ -70,16 +70,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Admin actualmente activo (para tracking de mensajes a limpiar)
 let _currentAdminId: number | null = null;
 
-/** Elimina el botón "🏠 Inicio" de cualquier teclado inline del almacén. */
+/** El botón "🏠 Inicio" vuelve a estar activo: no se filtra nada. */
 function stripInicio<T extends Record<string, unknown>>(extra: T): T {
-  const rm = extra?.reply_markup as
-    | { inline_keyboard?: Array<Array<{ text?: string; callback_data?: string }>> }
-    | undefined;
-  if (!rm || !Array.isArray(rm.inline_keyboard)) return extra;
-  const cleaned = rm.inline_keyboard
-    .map((row) => (Array.isArray(row) ? row.filter((b) => b?.callback_data !== "akp:inicio") : row))
-    .filter((row) => !Array.isArray(row) || row.length > 0);
-  return { ...extra, reply_markup: { ...rm, inline_keyboard: cleaned } };
+  return extra;
 }
 
 async function editMessageText(
