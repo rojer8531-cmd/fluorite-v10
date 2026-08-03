@@ -196,11 +196,11 @@ async function finalizeReceiptCaption(opts: {
         : "🚫 <b>Bloqueado &amp; Pendejo 🤣</b>";
 
   const newCaption =
-    `${header}\n\n` +
-    `✳️ ${escapeHtml(userTag)}\n\n` +
-    `🆔 <code>${o.telegram_id}</code>\n\n` +
-    `🏦 Recarga: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n\n` +
-    `*️⃣ Saldo: <b>${bal.toFixed(2)} USD</b>\n\n` +
+    `${header}\n` +
+    `✳️ ${escapeHtml(userTag)}\n` +
+    `🆔 <code>${o.telegram_id}</code>\n` +
+    `🏦 Recarga: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
+    `*️⃣ Saldo: <b>${bal.toFixed(2)} USD</b>\n` +
     `${flag ? `${flag} ` : ""}${escapeHtml(country)}`;
 
   const target_mid = o.admin_message_id ?? message_id;
