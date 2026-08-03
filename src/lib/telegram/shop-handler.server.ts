@@ -1355,11 +1355,11 @@ async function processReceiptPhotoReview(opts: {
   void isRecharge;
 
   const caption =
-    `📥 <b>Nuevo Comprobante</b>\n\n` +
-    `✳️ ${userTag}\n\n` +
-    `🆔 <code>${telegram_id}</code>\n\n` +
-    `🏦 Recarga: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n\n` +
-    `*️⃣ Saldo: <b>${Number(user.balance).toFixed(2)} USD</b>\n\n` +
+    `📥 <b>Nuevo Comprobante</b>\n` +
+    `✳️ ${userTag}\n` +
+    `🆔 <code>${telegram_id}</code>\n` +
+    `🏦 Recarga: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
+    `*️⃣ Saldo: <b>${Number(user.balance).toFixed(2)} USD</b>\n` +
     `${flag ? `${flag} ` : ""}${country}`;
   void pid;
 
