@@ -13,8 +13,9 @@ export default defineConfig({
     server: { entry: "server" },
   },
   nitro: {
-    // Cloudflare enables Node compatibility by default for current deployments.
-    // Emitting the legacy flag now prevents every server route from starting.
-    cloudflare: { nodeCompat: false },
+    // Pin before the platform's 2026-08-04 compatibility transition. This keeps
+    // the Node APIs used by the Telegram handlers without emitting an invalid
+    // redundant compatibility configuration for today's runtime.
+    compatibilityDate: "2026-08-03",
   },
 });
