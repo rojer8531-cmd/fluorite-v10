@@ -16,6 +16,17 @@ function resolveStableBaseUrl(request: Request) {
   const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   const currentHost = forwardedHost || request.headers.get("host") || url.host;
 
+  // Keep a stable published/custom host when setup is invoked there. Only
+  // translate temporary preview hosts to the public development hostname.
+  if (
+    !currentHost.startsWith("id-preview--") &&
+    !currentHost.includes("lovableproject.com") &&
+    !currentHost.includes("localhost") &&
+    !currentHost.includes("127.0.0.1")
+  ) {
+    return `${forwardedProto || url.protocol.replace(":", "") || "https"}://${currentHost}`;
+  }
+
   if (envProjectId) {
     if (currentHost.includes("lovable.app") || currentHost.includes("lovableproject.com")) {
       return `https://project--${envProjectId}-dev.lovable.app`;
