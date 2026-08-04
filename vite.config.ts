@@ -12,4 +12,9 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  nitro: {
+    // Node compatibility is enabled by the platform for current deployments.
+    // Emitting the legacy flag now prevents every server route from starting.
+    cloudflare: { nodeCompat: false },
+  },
 });
