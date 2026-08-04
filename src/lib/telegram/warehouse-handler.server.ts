@@ -2860,6 +2860,10 @@ async function handleMessage(msg: TgMessage) {
     }
   }
 
+  // Borra el mensaje temporal que envía el admin (dato solicitado por el bot).
+  const dropAdminInput = () =>
+    deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+
   // ===== Wizard Agregar Keys: captura de keys (edita el mismo mensaje) =====
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
     const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO), ADMIN_BACK_LABEL, `👥 ${ADMIN_TODO.usuarios}`];
@@ -2867,11 +2871,13 @@ async function handleMessage(msg: TgMessage) {
       const pmFlow = await getPmFlow(msg.from.id);
       if (pmFlow?.step) {
         await pmSubmitText(msg, pmFlow, text);
+        await dropAdminInput();
         return;
       }
       const usFlow = await getUsFlow(msg.from.id);
       if (usFlow?.step) {
         await usSubmitText(msg, usFlow, text);
+        await dropAdminInput();
         return;
       }
 
@@ -2879,16 +2885,19 @@ async function handleMessage(msg: TgMessage) {
 
       if (pdFlow?.step) {
         await pdSubmitText(msg, pdFlow, text);
+        await dropAdminInput();
         return;
       }
       const prFlow = await getPrFlow(msg.from.id);
       if (prFlow?.price_id) {
         await prSubmitPrice(msg, prFlow, text);
+        await dropAdminInput();
         return;
       }
       const akFlow = await getAkFlow(msg.from.id);
       if (akFlow?.price_id) {
         await akSubmitKeys(msg, akFlow, text);
+        await dropAdminInput();
         return;
       }
     }
@@ -2896,7 +2905,9 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== respuestas (reply) =====
   if (msg.reply_to_message) {
+    void dropAdminInput();
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
+
 
 
 
