@@ -1092,14 +1092,15 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
   const keyVal = String(purchase.key_value ?? "");
 
   const text =
-    `✅ <b>Compra Realizada</b>\n\n` +
+    `✅ <b>Compra Realizada, ¡Disfruta!</b>\n\n` +
     `📦 <b>Producto:</b> ${escapeHtml(productName)}\n` +
     `⏳ <b>Duración:</b> ${escapeHtml(duration)}\n` +
     `💵 <b>Total:</b> ${total.toFixed(2)} USD\n\n` +
     `🔑 <b>Tu Key</b>\n<code>${escapeHtml(keyVal)}</code>\n\n` +
     `🧾 <b>Orden:</b> ${escapeHtml(orderId)}\n` +
     `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
-    `¡Gracias por tu compra! Disfruta tu producto.`;
+    `¡Gracias por tu compra!`;
+
 
   await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
 }
