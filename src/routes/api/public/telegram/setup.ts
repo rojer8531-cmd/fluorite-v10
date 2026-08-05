@@ -8,18 +8,20 @@ function deriveSecret(token: string) {
 }
 
 const FALLBACK_PROJECT_ID = "627c1309-1099-40e6-a05b-99eb855aef94";
+const FALLBACK_WEBHOOK_BASE_URL = `https://project--${FALLBACK_PROJECT_ID}.lovable.app`;
 
 function resolveStableBaseUrl(request: Request) {
   const url = new URL(request.url);
-  const envProjectId = process.env.LOVABLE_PROJECT_ID ?? process.env.__LOVABLE_PROJECT_ID ?? FALLBACK_PROJECT_ID;
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
   const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   const currentHost = forwardedHost || request.headers.get("host") || url.host;
 
-  // Keep a stable published/custom host when setup is invoked there. Only
-  // translate temporary preview hosts to the public development hostname.
+  // A custom or published hostname is safe to keep. Preview/dev hosts are not:
+  // Telegram webhooks must remain on the immutable production hostname so an
+  // unhealthy preview can never freeze all three bots at once.
   if (
     !currentHost.startsWith("id-preview--") &&
+    !currentHost.startsWith("project--") &&
     !currentHost.includes("lovableproject.com") &&
     !currentHost.includes("localhost") &&
     !currentHost.includes("127.0.0.1")
@@ -27,25 +29,7 @@ function resolveStableBaseUrl(request: Request) {
     return `${forwardedProto || url.protocol.replace(":", "") || "https"}://${currentHost}`;
   }
 
-  if (envProjectId) {
-    if (currentHost.includes("lovable.app") || currentHost.includes("lovableproject.com")) {
-      return `https://project--${envProjectId}-dev.lovable.app`;
-    }
-    const customHost = currentHost.replace(/^id-preview--[^.]+\./, "");
-    if (customHost !== currentHost) {
-      return `https://project--${envProjectId}-dev.${customHost}`;
-    }
-  }
-
-  if (currentHost.startsWith("project--")) {
-    return `https://${currentHost}`;
-  }
-
-  if (currentHost.includes("localhost") || currentHost.includes("127.0.0.1")) {
-    return `https://project--${envProjectId}-dev.lovable.app`;
-  }
-
-  return `${forwardedProto || url.protocol.replace(":", "") || "https"}://${currentHost}`;
+  return FALLBACK_WEBHOOK_BASE_URL;
 }
 
 export const Route = createFileRoute("/api/public/telegram/setup")({

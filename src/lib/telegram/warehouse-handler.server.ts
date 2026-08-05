@@ -2871,13 +2871,13 @@ async function handleMessage(msg: TgMessage) {
       const pmFlow = await getPmFlow(msg.from.id);
       if (pmFlow?.step) {
         await pmSubmitText(msg, pmFlow, text);
-        await dropAdminInput();
+        void dropAdminInput();
         return;
       }
       const usFlow = await getUsFlow(msg.from.id);
       if (usFlow?.step) {
         await usSubmitText(msg, usFlow, text);
-        await dropAdminInput();
+        void dropAdminInput();
         return;
       }
 
@@ -2885,19 +2885,19 @@ async function handleMessage(msg: TgMessage) {
 
       if (pdFlow?.step) {
         await pdSubmitText(msg, pdFlow, text);
-        await dropAdminInput();
+        void dropAdminInput();
         return;
       }
       const prFlow = await getPrFlow(msg.from.id);
       if (prFlow?.price_id) {
         await prSubmitPrice(msg, prFlow, text);
-        await dropAdminInput();
+        void dropAdminInput();
         return;
       }
       const akFlow = await getAkFlow(msg.from.id);
       if (akFlow?.price_id) {
         await akSubmitKeys(msg, akFlow, text);
-        await dropAdminInput();
+        void dropAdminInput();
         return;
       }
     }
