@@ -569,7 +569,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   const header =
     `<b>${productTitle} Product - Free Fire ${escapeHtml(short)} Category</b>\n\n` +
     `🏛️ <b>Saldo:</b> • ${balance.toFixed(2)} 💲USD\n\n` +
-    `${stockLines}\n\n` +
+    `${stockBlock}\n\n` +
     `Selecciona una duración ${productTitle}:`;
 
   await screen(telegram_id, chat_id, header, rows);
