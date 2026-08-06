@@ -785,7 +785,7 @@ async function pmPreview(
     [
       [
         { text: "Accept", callback_data: "pmf:save" },
-        { text: "Reject", callback_data: "pmf:add" },
+        { text: "Reject", callback_data: "pmf:redo" },
       ],
     ],
     flow.message_id,
