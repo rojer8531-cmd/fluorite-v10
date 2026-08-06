@@ -381,17 +381,35 @@ async function showSupport(telegram_id: number, chat_id: number) {
 /** Etiqueta visible de cada categoría (el callback conserva el nombre real). */
 function categoryLabel(category: string): string {
   if (/auxili/i.test(category)) return "Auxilios";
+  if (/ios/i.test(category)) return "Free Fire: iOS";
+  if (/android/i.test(category)) return "Free Fire: Android";
   return category;
+}
+
+/** Título usado dentro del texto: "Free Fire (iOS)". */
+function categoryTitle(category: string): string {
+  if (/auxili/i.test(category)) return "Auxilios";
+  if (/ios/i.test(category)) return "Free Fire (iOS)";
+  if (/android/i.test(category)) return "Free Fire (Android)";
+  return category;
+}
+
+/** Sufijo corto usado en los títulos de producto: "iOS" / "Android". */
+function categoryShort(category: string): string {
+  if (/ios/i.test(category)) return "iOS";
+  if (/android/i.test(category)) return "Android";
+  return categoryLabel(category);
 }
 
 function categoryButtons(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>["grouped"]) {
   return grouped.map((section) => [
     {
-      text: `🫟 ${categoryLabel(section.category)}`,
+      text: categoryLabel(section.category),
       callback_data: `cat:${section.category}`,
     },
   ]);
 }
+
 
 
 
