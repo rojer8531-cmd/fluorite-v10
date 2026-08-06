@@ -1354,17 +1354,30 @@ async function processReceiptPhotoReview(opts: {
   // para que él haga la verificación 100% manual.
   const userTag = escapeHtml(user.username ? `@${user.username}` : (user.display_name ?? "—"));
   const country = escapeHtml(o.payment_methods?.country_name ?? "—");
-  const flag = countryFlag(o.payment_methods?.country_code ?? "");
+  void countryFlag;
   void isRecharge;
 
+  const localCurrency = o.currency ?? o.payment_methods?.currency ?? null;
+  const localAmount =
+    o.total_local != null
+      ? Number(o.total_local)
+      : o.payment_methods?.usd_rate != null
+        ? Number(o.total_usd) * Number(o.payment_methods.usd_rate)
+        : null;
+  const localLine =
+    localAmount != null && localCurrency
+      ? `➕Total : <b>${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}</b>\n`
+      : "";
+
   const caption =
-    `📥 <b>Nuevo Comprobante</b>\n` +
-    `✳️ ${userTag}\n` +
-    `🆔 <code>${telegram_id}</code>\n` +
-    `🏦 Recarga: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
-    `*️⃣ Saldo: <b>${Number(user.balance).toFixed(2)} USD</b>\n` +
-    `${flag ? `${flag} ` : ""}${country}`;
+    `🫟 <b>Nuevo comprobante recibido</b>\n` +
+    `👤 User: ${userTag}\n` +
+    `🆔 : <code>${telegram_id}</code>\n\n` +
+    `🏛️ Top Up: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
+    localLine +
+    `📜País: ${country}`;
   void pid;
+
 
   const adminChatId = getAdminChatId();
   if (!adminChatId) {
