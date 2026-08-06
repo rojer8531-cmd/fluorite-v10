@@ -182,13 +182,14 @@ function adminReceiptKeyboard(order_id: string, telegram_id: number) {
   return {
     inline_keyboard: [
       [
-        { text: "✅ Aceptar", callback_data: `adm:approve:${order_id}` },
-        { text: "⭕️ Rechazar", callback_data: `adm:reject:${order_id}` },
+        { text: "✅ Accept", callback_data: `adm:approve:${order_id}` },
+        { text: "❎ Decline", callback_data: `adm:reject:${order_id}` },
       ],
-      [{ text: "✴️ Bloquear permanentemente", callback_data: `adm:block:${telegram_id}` }],
+      [{ text: "Permanently Block User", callback_data: `adm:block:${telegram_id}` }],
     ],
   };
 }
+
 
 function newestTelegramPhotoFileId(result?: { photo?: Array<{ file_id: string }> }) {
   return result?.photo?.[result.photo.length - 1]?.file_id ?? null;
