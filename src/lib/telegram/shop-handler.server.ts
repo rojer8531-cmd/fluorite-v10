@@ -1746,7 +1746,9 @@ async function handleMessage(msg: TgMessage) {
         }
       }
       if (botUser.is_authenticated) {
-        await showMainMenu(telegram_id, chat_id);
+        // El menú ya se envió arriba (starter): no reenviarlo para evitar duplicados.
+        await setState(telegram_id, "menu", {});
+        await setActiveMessage(telegram_id, chat_id, 0);
       } else {
         await askName(telegram_id, chat_id);
       }
