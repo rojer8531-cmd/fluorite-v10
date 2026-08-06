@@ -435,14 +435,8 @@ async function showProducts(telegram_id: number, chat_id: number) {
   await screen(
     telegram_id,
     chat_id,
-    `🧩 <b>Selecciona una categoría</b>`,
-    [
-      ...categoryButtons(grouped),
-      [
-        { text: "🔙 Go Back", callback_data: "menu:main" },
-        { text: "🏠 Home", callback_data: "menu:main" },
-      ],
-    ],
+    `📋 <b>Choose a category:</b>`,
+    [...categoryButtons(grouped), NAV_ROW("menu:main")],
   );
 }
 
@@ -454,7 +448,7 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
     telegram_id,
       chat_id,
       `No hay productos disponibles en ${category}.`,
-      [[{ text: "Volver", callback_data: "menu:products" }]],
+      [NAV_ROW("menu:products")],
     );
     return;
   }
@@ -462,17 +456,16 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
   const rows = section.products.map((p) => [
     { text: p.name, callback_data: `prod:${p.id}` },
   ]);
-  rows.push([
-    { text: "🔙 Go Back", callback_data: "menu:products" },
-    { text: "🏠 Home", callback_data: "menu:main" },
-  ]);
+  rows.push(NAV_ROW("menu:products"));
+  const list = section.products.map((p) => `~ ${escapeHtml(p.name)}`).join("\n");
   await screen(
     telegram_id,
     chat_id,
-    `🫟 <b>Choose Your ${categoryLabel(section.category)} Product</b>`,
+    `📋 <b>Choose a product in category ${escapeHtml(categoryTitle(section.category))}:</b>\n\n${list}`,
     rows,
   );
 }
+
 
 async function showDurations(telegram_id: number, chat_id: number, product_id: string) {
   const [{ data: u }, catalog, overrides] = await Promise.all([
