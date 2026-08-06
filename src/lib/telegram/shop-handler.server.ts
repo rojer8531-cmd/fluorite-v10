@@ -536,7 +536,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     // Sin stock: botón visible pero deshabilitado (callback no-op para cumplir con la API de Telegram).
     const callback_data = p.available_stock > 0 ? `dur:${p.id}` : "noop";
     return [{
-      text: `${p.duration_label}  ·  ${fmtPrice(Number(p.price_usd))}`,
+      text: `${p.duration_label}.   ${fmtPrice(Number(p.price_usd))} USD`,
       callback_data,
     }];
   });
@@ -544,42 +544,36 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   if (lowBalance) {
     rows.push([{ text: "💰 Recargar", callback_data: "menu:recharge" }]);
   }
-  rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
+  rows.push(NAV_ROW(`cat:${product.category}`));
 
-  const maxLabelLen = Math.max(...prices.map((p) => p.duration_label.length));
-  const priceStrings = prices.map((p) => fmtPrice(Number(p.price_usd)));
-  const maxPriceLen = Math.max(...priceStrings.map((s) => s.length));
-  const priceLines = prices
-    .map((p, i) => {
-      const label = escapeHtml(p.duration_label);
-      const price = priceStrings[i];
-      const stock = p.available_stock > 0 ? `📦${p.available_stock}` : `📦sin Stock`;
-      return `⏳ ${label.padEnd(maxLabelLen + 4)} ${price.padEnd(maxPriceLen + 3)} ${stock}`;
-    })
+  const stockLines = prices
+    .map((p) => `~ ${escapeHtml(p.duration_label)}     ${p.available_stock > 0 ? `📦 ${p.available_stock}` : "📦 Sin Stock"}`)
     .join("\n");
 
-
   const productTitle = escapeHtml(product.name);
-  const header = lowBalance
-    ? `🛍️ Panel ${productTitle}\n\n💸 <b>Saldo insuficiente</b>\n💰 Saldo: $${balance.toFixed(2)}\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\n<pre>${priceLines}</pre>\n\nSeleccioná una duración.`
-    : `🛍️ Panel ${productTitle}\n\n💰 Saldo: $${balance.toFixed(2)}\n\n<pre>${priceLines}</pre>\n\nSeleccioná una duración.`;
+  const short = categoryShort(product.category);
+  const header =
+    `<b>${productTitle} Product - Free Fire ${escapeHtml(short)} Category</b>\n\n` +
+    `🏛️ <b>Saldo:</b> • ${balance.toFixed(2)} 💲USD\n\n` +
+    `${stockLines}\n\n` +
+    `Selecciona una duración ${productTitle}:`;
 
   await screen(telegram_id, chat_id, header, rows);
 }
 
 async function showQty(telegram_id: number, chat_id: number, price_id: string) {
+  const ctx = (await getState(telegram_id))?.context as Record<string, string | number> | undefined;
   await patchContext(telegram_id, { price_id });
+  const backTo = ctx?.product_id ? `prod:${ctx.product_id}` : "menu:products";
   await screen(
     telegram_id,
     chat_id,
-    `🔢 <b>Cantidad de keys</b>\n\n¿Cuántas necesitás?`,
+    `🛍️ <b>Selecciona la cantidad</b>`,
     [
-      [
-        { text: "1", callback_data: "qty:1" },
-        { text: "2", callback_data: "qty:2" },
-        { text: "5", callback_data: "qty:5" },
-      ],
-      [{ text: "Volver", callback_data: "menu:products" }],
+      [{ text: "➕ 1: Key", callback_data: "qty:1" }],
+      [{ text: "➕ 5: Keys", callback_data: "qty:5" }],
+      [{ text: "➕ 10: Keys", callback_data: "qty:10" }],
+      NAV_ROW(backTo),
     ],
   );
 }
@@ -588,7 +582,7 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
   await patchContext(telegram_id, { qty });
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
   const [{ data: price }, { data: u }] = await Promise.all([
-    sb.from("product_prices").select("*").eq("id", ctx.price_id as string).single(),
+    sb.from("product_prices").select("*, products(name, category)").eq("id", ctx.price_id as string).single(),
     sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
   ]);
   if (!price) return;
@@ -604,23 +598,32 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
       `💸 <b>Tu saldo es insuficiente.</b>\n\nRecarga saldo para poder realizar la compra.`,
       [
         [{ text: "💰 Recargar Saldo", callback_data: "menu:recharge" }],
-        BACK_BUTTON,
+        NAV_ROW(`dur:${ctx.price_id}`),
       ],
     );
     return;
   }
 
-  // Con saldo suficiente: pago directo con saldo (sin mostrar el stock).
+  const prod = (price as { products?: { name?: string; category?: string } }).products;
+  const productName = escapeHtml(prod?.name ?? "Producto");
+  const short = escapeHtml(categoryShort(prod?.category ?? ""));
+  const duration = escapeHtml(price.duration_label);
+
   await screen(
     telegram_id,
     chat_id,
-    `💳 <b>Confirmar compra</b>\n\nTotal  <b>$${total_usd.toFixed(2)} USD</b>\nSaldo  $${balance.toFixed(2)}`,
+    `🧾 <b>Confirm ${productName} ${short} Purchase • ${duration} Duration</b>\n\n` +
+      `📦 <b>Producto:</b> ${productName} ${short}\n` +
+      `⏳ <b>Duración:</b> ${duration}\n` +
+      `🔑 <b>Cantidad:</b> ${qty} ${qty === 1 ? "Key" : "Keys"}\n\n` +
+      `💵 <b>Total:</b> ${total_usd.toFixed(2)} 💲USD`,
     [
-      [{ text: `✅ Pagar con saldo  ·  $${total_usd.toFixed(2)}`, callback_data: "pay:balance" }],
-      [{ text: "Volver", callback_data: "menu:products" }],
+      [{ text: `✅ Confirmar ${prod?.name ?? "compra"} • ${price.duration_label}`, callback_data: "pay:balance" }],
+      NAV_ROW(`dur:${ctx.price_id}`),
     ],
   );
 }
+
 
 async function showPaymentInstructions(
   telegram_id: number,
