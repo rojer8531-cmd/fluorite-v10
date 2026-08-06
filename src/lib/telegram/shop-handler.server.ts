@@ -548,16 +548,28 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   }
   rows.push(NAV_ROW(`cat:${product.category}`));
 
-  const stockLines = prices
-    .map((p) => `~ ${escapeHtml(p.duration_label)}     ${p.available_stock > 0 ? `📦 ${p.available_stock}` : "📦 Sin Stock"}`)
-    .join("\n");
+  function buildStockBlock(items: typeof prices) {
+    const prefix = "~ ";
+    const labels = items.map((p) => `${prefix}${p.duration_label}`);
+    const maxLabelLen = Math.max(...labels.map((l) => l.length), 1);
+    const separatorCol = maxLabelLen + 6;
+    const lines = items.map((p) => {
+      const label = `${prefix}${p.duration_label}`;
+      const pad = " ".repeat(Math.max(0, separatorCol - label.length));
+      const stock = p.available_stock > 0 ? `${p.available_stock}` : "Sin Stock";
+      return `${label}${pad}• 📦 ${stock}`;
+    });
+    return `<pre>${escapeHtml(lines.join("\n"))}</pre>`;
+  }
+
+  const stockBlock = buildStockBlock(prices);
 
   const productTitle = escapeHtml(product.name);
   const short = categoryShort(product.category);
   const header =
     `<b>${productTitle} Product - Free Fire ${escapeHtml(short)} Category</b>\n\n` +
     `🏛️ <b>Saldo:</b> • ${balance.toFixed(2)} 💲USD\n\n` +
-    `${stockLines}\n\n` +
+    `${stockBlock}\n\n` +
     `Selecciona una duración ${productTitle}:`;
 
   await screen(telegram_id, chat_id, header, rows);
