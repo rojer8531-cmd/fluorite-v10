@@ -371,14 +371,14 @@ async function showSupport(telegram_id: number, chat_id: number) {
 
 /** Etiqueta visible de cada categoría (el callback conserva el nombre real). */
 function categoryLabel(category: string): string {
-  if (/auxili/i.test(category)) return "Auxilios FFH4X";
+  if (/auxili/i.test(category)) return "Auxilios";
   return category;
 }
 
 function categoryButtons(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>["grouped"]) {
   return grouped.map((section) => [
     {
-      text: `⏺️ ${categoryLabel(section.category)}`,
+      text: `🫟 ${categoryLabel(section.category)}`,
       callback_data: `cat:${section.category}`,
     },
   ]);
@@ -444,12 +444,12 @@ async function showProducts(telegram_id: number, chat_id: number) {
   await screen(
     telegram_id,
     chat_id,
-    `✳️ <b>Selecciona una categoría</b>`,
+    `🧩 <b>Selecciona una categoría</b>`,
     [
       ...categoryButtons(grouped),
       [
-        { text: "🔚 Atrás", callback_data: "menu:main" },
-        { text: "🏠 Inicio", callback_data: "menu:main" },
+        { text: "🔙 Go Back", callback_data: "menu:main" },
+        { text: "🏠 Home", callback_data: "menu:main" },
       ],
     ],
   );
@@ -471,11 +471,14 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
   const rows = section.products.map((p) => [
     { text: p.name, callback_data: `prod:${p.id}` },
   ]);
-  rows.push([{ text: "Volver", callback_data: "menu:products" }]);
+  rows.push([
+    { text: "🔙 Go Back", callback_data: "menu:products" },
+    { text: "🏠 Home", callback_data: "menu:main" },
+  ]);
   await screen(
     telegram_id,
     chat_id,
-    `<b>${category}</b>\n\nElegí un producto:`,
+    `🫟 <b>Choose Your ${categoryLabel(section.category)} Product</b>`,
     rows,
   );
 }
@@ -1657,7 +1660,7 @@ async function handleMessage(msg: TgMessage) {
     const starter = await sendMessage(
       "shop",
       chat_id,
-      `⚡ <b>Bot activo</b>\n\nCargando tu menú...`,
+      `🏠 <b>Main Menu</b>\n\nSelect an Option`,
       { reply_markup: bottomKeyboard() },
     );
 
