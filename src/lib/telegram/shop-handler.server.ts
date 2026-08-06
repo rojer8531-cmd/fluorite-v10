@@ -201,36 +201,39 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
-  products: "🛍️ Productos",
-  recharge: "💰 Recargar saldo",
-  official_channel: "💬 Canal Oficial",
-  profile: "👤 Mi perfil",
-  more: "❇️ Todo",
-  // Opciones extras (solo accesibles vía "Todo" como inline buttons)
+  products: "🫟 Products",
+  recharge: "🏛️ Top Up Balance",
+  profile: "📜 My Profile",
+  support: "➕ Support",
+  // Opciones legacy (ya no se muestran en la barra inferior, se conservan por compatibilidad)
   status: "📦 Estado",
   keys: "🔑 Mis Keys",
-  
   share: "Compartir Bot",
-  support: "💬 Soporte",
   download_panel: "📥 Descargar Panel",
 };
 
 const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
+  "🫟 Products": "products",
+  "Products": "products",
+  "🏛️ Top Up Balance": "recharge",
+  "Top Up Balance": "recharge",
+  "📜 My Profile": "profile",
+  "My Profile": "profile",
+  "➕ Support": "support",
+  "Support": "support",
+  // Legacy aliases (por si un usuario tiene un mensaje antiguo con estos textos)
   "🛍️ Productos": "products",
   "🛒 Productos": "products",
   "Productos": "products",
   "💰 Recargar": "recharge",
   "💰 Recargar saldo": "recharge",
   "💰 Recargar Saldo": "recharge",
-  "💬 Canal Oficial": "official_channel",
-  "Canal Oficial": "official_channel",
   "👤 Cuenta": "profile",
   "👤 Perfil": "profile",
   "👤 Mi perfil": "profile",
   "👤 Mi Perfil": "profile",
-  "❇️ Todo": "more",
-  "📋 Todo": "more",
-  "📋 Más": "more",
+  "💬 Soporte": "support",
+  "Soporte": "support",
 };
 
 const DOWNLOAD_PANEL_URL = "https://resendstore.vercel.app/";
@@ -248,8 +251,7 @@ function bottomKeyboard() {
   return {
     keyboard: [
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.recharge }],
-      [{ text: BOTTOM_MENU.official_channel }, { text: BOTTOM_MENU.profile }],
-      [{ text: BOTTOM_MENU.more }],
+      [{ text: BOTTOM_MENU.profile }, { text: BOTTOM_MENU.support }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -986,14 +988,11 @@ async function routeBottomMenu(
   const map: Record<keyof typeof BOTTOM_MENU, (tid: number, cid: number) => Promise<unknown>> = {
     products: showProducts,
     recharge: startRecharge,
-    official_channel: showOfficialChannel,
     profile: showProfile,
-    more: showMoreOptions,
+    support: showSupport,
     status: showOrderStatus,
     keys: showMyKeys,
-    
     share: showShareBot,
-    support: showSupport,
     download_panel: showDownloadPanel,
   };
   const key = BOTTOM_MENU_ALIASES[text] ?? (Object.entries(BOTTOM_MENU).find(([, label]) => label === text)?.[0] as keyof typeof BOTTOM_MENU | undefined);
