@@ -735,12 +735,12 @@ async function pmMenuFlow(chat_id: number, uid: number, message_id?: number, hea
   await pmRender(
     chat_id,
     uid,
-    `${head}❇️ <b>Administrar métodos de pago</b>`,
+    `${head}🏛️ <b>Available Features</b>`,
     [
-      [{ text: "➕ Agregar método", callback_data: "pmf:add" }],
-      [{ text: "➖ Eliminar método", callback_data: "pmf:dellist" }],
-      [{ text: "📦 Todos los disponibles", callback_data: "pmf:all" }],
-      [PM_HOME_BTN],
+      [{ text: "➕ Add Method", callback_data: "pmf:add" }],
+      [{ text: "➖ Delete Method", callback_data: "pmf:dellist" }],
+      [{ text: "➕ View Methods", callback_data: "pmf:all" }],
+      [{ text: "🔙 Back", callback_data: "akp:inicio" }, { text: "🏠 Home", callback_data: "akp:inicio" }],
     ],
     message_id,
   );
@@ -750,8 +750,8 @@ async function pmAskCountry(chat_id: number, uid: number, message_id?: number) {
   await pmRender(
     chat_id,
     uid,
-    `❇️ <b>Envía el nombre del país.</b>\n\nEjemplo:\n<code>Nicaragua</code>`,
-    [[{ text: "🔚 Atrás", callback_data: "pmf:menu" }, PM_HOME_BTN]],
+    `🏛️ <b>Send the country name</b>\n\n<code>Argentina</code>`,
+    [[{ text: "🔙 Back", callback_data: "pmf:menu" }, { text: "🏠 Home", callback_data: "akp:inicio" }]],
     message_id,
     { step: "country" },
   );
@@ -761,8 +761,8 @@ async function pmAskBody(chat_id: number, uid: number, country: string, cc: stri
   await pmRender(
     chat_id,
     uid,
-    `❇️ <b>Envía los datos del nuevo método.</b>\n\n🌎 ${flagFromCC(cc)} ${escapeHtml(country)}`,
-    [[{ text: "🔚 Atrás", callback_data: "pmf:add" }, PM_HOME_BTN]],
+    `➕ <b>Send the payment method information</b>\n\n${flagFromCC(cc)} ${escapeHtml(country)}`,
+    [[{ text: "🔙 Back", callback_data: "pmf:add" }, { text: "🏠 Home", callback_data: "akp:inicio" }]],
     message_id,
     { step: "body", country, cc },
   );
@@ -776,24 +776,21 @@ async function pmPreview(
   currency: string,
   rate: number,
 ) {
-  const rateLine =
-    rate && rate !== 1
-      ? `\n\n💱 Tasa detectada: <b>1 USD = ${rate.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${escapeHtml(currency)}</b>`
-      : `\n\n💱 Tasa detectada: <b>1 USD = 1 ${escapeHtml(currency)}</b>`;
   await pmRender(
     chat_id,
     uid,
-    `❇️ <b>Todo listo.</b>\n\n⭕️ <b>Nuevo método</b>\n\n${escapeHtml(body)}${rateLine}`,
+    `• <b>Todo listo</b>\n\n${escapeHtml(body)}`,
     [
       [
-        { text: "🔘 Guardar", callback_data: "pmf:save" },
-        { text: "🔚 Atrás", callback_data: "pmf:menu" },
+        { text: "Accept", callback_data: "pmf:save" },
+        { text: "Reject", callback_data: "pmf:add" },
       ],
     ],
     flow.message_id,
     { country: flow.country, cc: flow.cc, body, currency, rate },
   );
 }
+
 
 async function pmSaveFlow(chat_id: number, uid: number, flow: PmFlow) {
   if (!flow.cc || !flow.country || !flow.body) {
