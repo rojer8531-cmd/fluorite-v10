@@ -821,8 +821,8 @@ async function pmSaveFlow(chat_id: number, uid: number, flow: PmFlow) {
   await pmRender(
     chat_id,
     uid,
-    `✅ <b>${escapeHtml(flow.country)} guardado correctamente.</b>`,
-    [[{ text: "🔚 Atrás", callback_data: "pmf:menu" }, PM_HOME_BTN]],
+    `🏛️ <b>${escapeHtml(flow.country)} Method Added</b> ✅`,
+    [[{ text: "🔙 Back", callback_data: "pmf:menu" }, { text: "🏠 Home", callback_data: "akp:inicio" }]],
     flow.message_id,
   );
 }
@@ -846,7 +846,7 @@ async function pmCountriesList(): Promise<Array<{ code: string; name: string }>>
 async function pmDelListFlow(chat_id: number, uid: number, message_id?: number) {
   const countries = await pmCountriesList();
   if (countries.length === 0) {
-    await pmMenuFlow(chat_id, uid, message_id, `⭕️ <b>No hay métodos registrados.</b>`);
+    await pmMenuFlow(chat_id, uid, message_id, `⭕️ <b>No methods registered.</b>`);
     return;
   }
   const kb: AkKeyboard = [];
@@ -855,8 +855,8 @@ async function pmDelListFlow(chat_id: number, uid: number, message_id?: number) 
     if (countries[i + 1]) row.push({ text: countries[i + 1].name, callback_data: `pmf:delc:${countries[i + 1].code}` });
     kb.push(row);
   }
-  kb.push([{ text: "🔚 Atrás", callback_data: "pmf:menu" }, PM_HOME_BTN]);
-  await pmRender(chat_id, uid, `❇️ <b>Métodos disponibles</b>`, kb, message_id);
+  kb.push([{ text: "🔙 Back", callback_data: "pmf:menu" }, { text: "🏠 Home", callback_data: "akp:inicio" }]);
+  await pmRender(chat_id, uid, `🏛️ <b>Available Methods</b>`, kb, message_id);
 }
 
 async function pmDelConfirmFlow(chat_id: number, uid: number, cc: string, message_id?: number) {
@@ -874,13 +874,13 @@ async function pmDelConfirmFlow(chat_id: number, uid: number, cc: string, messag
   await pmRender(
     chat_id,
     uid,
-    `❇️ <b>Método de pago</b>\n\n${flagFromCC(cc)} ${escapeHtml(m.country_name)}`,
+    `${flagFromCC(cc)} <b>${escapeHtml(m.country_name)}</b>`,
     [
       [
-        { text: "🗑️ Eliminar", callback_data: `pmf:delgo:${cc}` },
-        { text: "🔏 Cancelar", callback_data: "pmf:dellist" },
+        { text: "➖ Remove", callback_data: `pmf:delgo:${cc}` },
+        { text: "Save", callback_data: "pmf:dellist" },
       ],
-      [{ text: "🔚 Atrás", callback_data: "pmf:dellist" }, PM_HOME_BTN],
+      [{ text: "🔙 Back", callback_data: "pmf:dellist" }, { text: "🏠 Home", callback_data: "akp:inicio" }],
     ],
     message_id,
   );
@@ -908,8 +908,8 @@ async function pmDelGoFlow(chat_id: number, uid: number, cc: string, message_id?
   await pmRender(
     chat_id,
     uid,
-    `❇️ <b>${escapeHtml(name)} eliminado correctamente.</b>`,
-    [[{ text: "🔚 Atrás", callback_data: "pmf:dellist" }, PM_HOME_BTN]],
+    `${flagFromCC(cc)} <b>${escapeHtml(name)}</b>\n\n🔴 <b>Deleted Successfully</b>`,
+    [[{ text: "🔙 Back", callback_data: "pmf:dellist" }, { text: "🏠 Home", callback_data: "akp:inicio" }]],
     message_id,
   );
 }
@@ -917,16 +917,17 @@ async function pmDelGoFlow(chat_id: number, uid: number, cc: string, message_id?
 async function pmAllFlow(chat_id: number, uid: number, message_id?: number) {
   const countries = await pmCountriesList();
   const list = countries.length
-    ? countries.map((c) => `${flagFromCC(c.code)} ${escapeHtml(c.name)}`).join("\n")
-    : "Sin métodos registrados.";
+    ? countries.map((c) => `• ${flagFromCC(c.code)} ${escapeHtml(c.name)}`).join("\n")
+    : "No methods registered.";
   await pmRender(
     chat_id,
     uid,
-    `❇️ <b>Métodos disponibles</b>\n\n${list}`,
-    [[{ text: "🔚 Atrás", callback_data: "pmf:menu" }, PM_HOME_BTN]],
+    `🏛️ <b>All Available Countries</b>\n\n${list}`,
+    [[{ text: "🔙 Back", callback_data: "pmf:menu" }, { text: "🏠 Home", callback_data: "akp:inicio" }]],
     message_id,
   );
 }
+
 
 /** Texto enviado durante el flujo de Métodos. */
 async function pmSubmitText(msg: TgMessage, flow: PmFlow, rawText: string) {
