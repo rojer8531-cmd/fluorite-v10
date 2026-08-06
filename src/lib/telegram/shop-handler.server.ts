@@ -402,38 +402,28 @@ async function showProfile(telegram_id: number, chat_id: number) {
   const info = RANK_INFO[rank];
   const total = Number(u.total_recharged);
   const balance = Number(u.balance);
-  const progress = nextRankProgress(total);
-  const fmtDate = (d: string | null | undefined) =>
-    d ? new Date(d).toLocaleDateString("es", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
 
   const benefitBlock =
     rank === "elite"
-      ? `\n🎁 <b>Beneficio Elite</b>\nProductos de $30.00 → <b>$25.00 USD</b>\n`
+      ? `\n🎁 <b>Beneficio Elite</b>\nProductos de $30.00 → <b>$25.00 USD</b>`
       : info.discountPct > 0
-        ? `\n🎁 <b>Beneficio ${info.label}</b>\nDescuento automático del <b>${info.discountPct}%</b> en todas las compras\n`
-        : `\n🎁 <b>Beneficio</b>\nSin descuento activo (rango inicial)\n`;
-
-  const progressBlock = progress
-    ? `\n🚀 <b>Próximo Rango:</b> ${RANK_INFO[progress.next].badge} ${RANK_INFO[progress.next].label}\n💵 <b>Monto Restante:</b> $${progress.missing.toFixed(2)} USD`
-    : `\n🏅 <i>Has alcanzado el rango máximo</i>`;
+        ? `\n🎁 <b>Beneficio ${info.label}</b>\nDescuento automático del ${info.discountPct}% en todas las compras`
+        : `\n🎁 <b>Beneficio</b>\nSin descuento activo (rango inicial)`;
 
   const text =
     `👤 <b>Mi Perfil</b>\n` +
     `━━━━━━━━━━━━━━━\n` +
-    `🪪 <b>Nombre:</b> ${u.display_name ?? "—"}\n` +
-    `💬 <b>Usuario:</b> @${u.username ?? "—"}\n` +
+    `🪪 <b>Nombre:</b> ${escapeHtml(u.display_name ?? "—")}\n` +
+    `💬 <b>Usuario:</b> @${escapeHtml(u.username ?? "—")}\n` +
     `🆔 <b>ID:</b> <code>${u.telegram_id}</code>\n\n` +
-    `💼 <b>Saldo Actual:</b> $${balance.toFixed(2)} USD\n` +
-    `🛍 <b>Total Comprado:</b> $${total.toFixed(2)} USD\n` +
-    `📅 <b>Fecha de Registro:</b> ${fmtDate(u.registered_at)}\n` +
+    `💼 <b>Saldo Actual:</b> 💲 ${balance.toFixed(2)} USD\n` +
+    `🛍 <b>Total Comprado:</b> 💲${total.toFixed(2)} USD\n` +
     `━━━━━━━━━━━━━━━\n` +
-    `${info.badge} <b>Rango Actual:</b> ${info.label}\n` +
-    `📆 <b>Activo Desde:</b> ${fmtDate(u.rank_assigned_at)}\n` +
-    benefitBlock +
-    progressBlock;
+    benefitBlock;
 
-  await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
+  await screen(telegram_id, chat_id, text, [HOME_ROW]);
 }
+
 
 async function showProducts(telegram_id: number, chat_id: number) {
   const { grouped } = await getVisibleCatalog();
