@@ -668,7 +668,9 @@ function parsePmRate(raw: string): { currency: string; rate: number } {
   return { currency: currency || "USD", rate };
 }
 
-const PM_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
+const PM_HOME_BTN = { text: "🏠 Home", callback_data: "akp:inicio" };
+void PM_HOME_BTN;
+
 
 async function getPmFlow(uid: number): Promise<PmFlow | null> {
   const st = await getState(uid);
