@@ -2879,7 +2879,7 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== Wizard Agregar Keys: captura de keys (edita el mismo mensaje) =====
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
-    const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO), ADMIN_BACK_LABEL, `👥 ${ADMIN_TODO.usuarios}`];
+    const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO), ...Object.values(ADMIN_LEGACY), ADMIN_BACK_LABEL];
     if (!labels.includes(text)) {
       const pmFlow = await getPmFlow(msg.from.id);
       if (pmFlow?.step) {
@@ -3385,23 +3385,28 @@ async function handleMessage(msg: TgMessage) {
       await patchContext(msg.from.id, { bar_shown: false });
       await restoreMainBar(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_LEGACY.stock:
     case ADMIN_TODO.stock:
       await showBackBar(msg.chat.id, msg.from.id);
       await adminStockView(msg.chat.id);
       return;
-    case `👥 ${ADMIN_TODO.usuarios}`:
+    case ADMIN_LEGACY.usuarios:
+    case ADMIN_LEGACY.usuariosAlt:
     case ADMIN_TODO.usuarios:
       await showBackBar(msg.chat.id, msg.from.id);
       await usStartFresh(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_LEGACY.addkeys:
     case ADMIN_BOTTOM.addkeys:
       await showBackBar(msg.chat.id, msg.from.id);
       await akStartFresh(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_LEGACY.precios:
     case ADMIN_BOTTOM.precios:
       await showBackBar(msg.chat.id, msg.from.id);
       await prStartFresh(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_LEGACY.productos:
     case ADMIN_BOTTOM.productos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pdStartFresh(msg.chat.id, msg.from.id);
@@ -3410,6 +3415,7 @@ async function handleMessage(msg: TgMessage) {
       await showBackBar(msg.chat.id, msg.from.id);
       await adminPromptMinRecharge(msg.chat.id);
       return;
+    case ADMIN_LEGACY.metodos:
     case ADMIN_BOTTOM.metodos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pmStartFresh(msg.chat.id, msg.from.id);
@@ -3418,6 +3424,7 @@ async function handleMessage(msg: TgMessage) {
     case ADMIN_TODO.borrar:
       await cleanAdminChat(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_LEGACY.todo:
     case ADMIN_BOTTOM.todo:
       await showBackBar(msg.chat.id, msg.from.id);
       await showTodoMenu(msg.chat.id);
