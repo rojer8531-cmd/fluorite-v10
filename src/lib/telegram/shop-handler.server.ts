@@ -202,7 +202,7 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
-  products: "🫟 Products",
+  products: "🛍 Buy keys",
   recharge: "🏛️ Top Up Balance",
   profile: "📜 My Profile",
   support: "➕ Support",
@@ -214,6 +214,8 @@ const BOTTOM_MENU = {
 };
 
 const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
+  "🛍 Buy keys": "products",
+  "Buy keys": "products",
   "🫟 Products": "products",
   "Products": "products",
   "🏛️ Top Up Balance": "recharge",
@@ -282,6 +284,14 @@ async function showMoreOptions(_telegram_id: number, chat_id: number) {
 }
 
 const BACK_BUTTON = [{ text: "↩️ Volver", callback_data: "menu:main" }];
+const HOME_ROW = [{ text: "🏘️ Home", callback_data: "menu:main" }];
+function NAV_ROW(backTo: string) {
+  return [
+    { text: "🔙 Go Back", callback_data: backTo },
+    { text: "🏘️ Home", callback_data: "menu:main" },
+  ];
+}
+
 
 // Cache del username del bot para los links de referidos
 let _shopBotUsername: string | null = null;
@@ -312,7 +322,7 @@ async function showMainMenu(telegram_id: number, chat_id: number) {
   await sendMessage(
     "shop",
     chat_id,
-    `🏠 <b>Inicio</b>`,
+    `🏠 <b>Main Menu</b>\n\nSelect an option.`,
     { reply_markup: bottomKeyboard() },
   );
 }
@@ -326,7 +336,7 @@ async function deliverBottomKeyboard(chat_id: number, text: string) {
 async function notifyUser(chat_id: number, text: string) {
   await sendMessage("shop", chat_id, text, {
     reply_markup: {
-      inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]],
+      inline_keyboard: [[{ text: "🏘️ Home", callback_data: "menu:main" }]],
     },
   });
 }
@@ -373,17 +383,35 @@ async function showSupport(telegram_id: number, chat_id: number) {
 /** Etiqueta visible de cada categoría (el callback conserva el nombre real). */
 function categoryLabel(category: string): string {
   if (/auxili/i.test(category)) return "Auxilios";
+  if (/ios/i.test(category)) return "Free Fire: iOS";
+  if (/android/i.test(category)) return "Free Fire: Android";
   return category;
+}
+
+/** Título usado dentro del texto: "Free Fire (iOS)". */
+function categoryTitle(category: string): string {
+  if (/auxili/i.test(category)) return "Auxilios";
+  if (/ios/i.test(category)) return "Free Fire (iOS)";
+  if (/android/i.test(category)) return "Free Fire (Android)";
+  return category;
+}
+
+/** Sufijo corto usado en los títulos de producto: "iOS" / "Android". */
+function categoryShort(category: string): string {
+  if (/ios/i.test(category)) return "iOS";
+  if (/android/i.test(category)) return "Android";
+  return categoryLabel(category);
 }
 
 function categoryButtons(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>["grouped"]) {
   return grouped.map((section) => [
     {
-      text: `🫟 ${categoryLabel(section.category)}`,
+      text: categoryLabel(section.category),
       callback_data: `cat:${section.category}`,
     },
   ]);
 }
+
 
 
 
@@ -402,38 +430,28 @@ async function showProfile(telegram_id: number, chat_id: number) {
   const info = RANK_INFO[rank];
   const total = Number(u.total_recharged);
   const balance = Number(u.balance);
-  const progress = nextRankProgress(total);
-  const fmtDate = (d: string | null | undefined) =>
-    d ? new Date(d).toLocaleDateString("es", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
 
   const benefitBlock =
     rank === "elite"
-      ? `\n🎁 <b>Beneficio Elite</b>\nProductos de $30.00 → <b>$25.00 USD</b>\n`
+      ? `\n🎁 <b>Beneficio Elite</b>\nProductos de $30.00 → <b>$25.00 USD</b>`
       : info.discountPct > 0
-        ? `\n🎁 <b>Beneficio ${info.label}</b>\nDescuento automático del <b>${info.discountPct}%</b> en todas las compras\n`
-        : `\n🎁 <b>Beneficio</b>\nSin descuento activo (rango inicial)\n`;
-
-  const progressBlock = progress
-    ? `\n🚀 <b>Próximo Rango:</b> ${RANK_INFO[progress.next].badge} ${RANK_INFO[progress.next].label}\n💵 <b>Monto Restante:</b> $${progress.missing.toFixed(2)} USD`
-    : `\n🏅 <i>Has alcanzado el rango máximo</i>`;
+        ? `\n🎁 <b>Beneficio ${info.label}</b>\nDescuento automático del ${info.discountPct}% en todas las compras`
+        : `\n🎁 <b>Beneficio</b>\nSin descuento activo (rango inicial)`;
 
   const text =
     `👤 <b>Mi Perfil</b>\n` +
     `━━━━━━━━━━━━━━━\n` +
-    `🪪 <b>Nombre:</b> ${u.display_name ?? "—"}\n` +
-    `💬 <b>Usuario:</b> @${u.username ?? "—"}\n` +
+    `🪪 <b>Nombre:</b> ${escapeHtml(u.display_name ?? "—")}\n` +
+    `💬 <b>Usuario:</b> @${escapeHtml(u.username ?? "—")}\n` +
     `🆔 <b>ID:</b> <code>${u.telegram_id}</code>\n\n` +
-    `💼 <b>Saldo Actual:</b> $${balance.toFixed(2)} USD\n` +
-    `🛍 <b>Total Comprado:</b> $${total.toFixed(2)} USD\n` +
-    `📅 <b>Fecha de Registro:</b> ${fmtDate(u.registered_at)}\n` +
+    `💼 <b>Saldo Actual:</b> 💲 ${balance.toFixed(2)} USD\n` +
+    `🛍 <b>Total Comprado:</b> 💲${total.toFixed(2)} USD\n` +
     `━━━━━━━━━━━━━━━\n` +
-    `${info.badge} <b>Rango Actual:</b> ${info.label}\n` +
-    `📆 <b>Activo Desde:</b> ${fmtDate(u.rank_assigned_at)}\n` +
-    benefitBlock +
-    progressBlock;
+    benefitBlock;
 
-  await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
+  await screen(telegram_id, chat_id, text, [HOME_ROW]);
 }
+
 
 async function showProducts(telegram_id: number, chat_id: number) {
   const { grouped } = await getVisibleCatalog();
@@ -445,14 +463,8 @@ async function showProducts(telegram_id: number, chat_id: number) {
   await screen(
     telegram_id,
     chat_id,
-    `🧩 <b>Selecciona una categoría</b>`,
-    [
-      ...categoryButtons(grouped),
-      [
-        { text: "🔙 Go Back", callback_data: "menu:main" },
-        { text: "🏠 Home", callback_data: "menu:main" },
-      ],
-    ],
+    `📋 <b>Choose a category:</b>`,
+    [...categoryButtons(grouped), NAV_ROW("menu:main")],
   );
 }
 
@@ -464,7 +476,7 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
     telegram_id,
       chat_id,
       `No hay productos disponibles en ${category}.`,
-      [[{ text: "Volver", callback_data: "menu:products" }]],
+      [NAV_ROW("menu:products")],
     );
     return;
   }
@@ -472,17 +484,16 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
   const rows = section.products.map((p) => [
     { text: p.name, callback_data: `prod:${p.id}` },
   ]);
-  rows.push([
-    { text: "🔙 Go Back", callback_data: "menu:products" },
-    { text: "🏠 Home", callback_data: "menu:main" },
-  ]);
+  rows.push(NAV_ROW("menu:products"));
+  const list = section.products.map((p) => `~ ${escapeHtml(p.name)}`).join("\n");
   await screen(
     telegram_id,
     chat_id,
-    `🫟 <b>Choose Your ${categoryLabel(section.category)} Product</b>`,
+    `📋 <b>Choose a product in category ${escapeHtml(categoryTitle(section.category))}:</b>\n\n${list}`,
     rows,
   );
 }
+
 
 async function showDurations(telegram_id: number, chat_id: number, product_id: string) {
   const [{ data: u }, catalog, overrides] = await Promise.all([
@@ -527,7 +538,7 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
     // Sin stock: botón visible pero deshabilitado (callback no-op para cumplir con la API de Telegram).
     const callback_data = p.available_stock > 0 ? `dur:${p.id}` : "noop";
     return [{
-      text: `${p.duration_label}  ·  ${fmtPrice(Number(p.price_usd))}`,
+      text: `${p.duration_label}.   ${fmtPrice(Number(p.price_usd))} USD`,
       callback_data,
     }];
   });
@@ -535,42 +546,36 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   if (lowBalance) {
     rows.push([{ text: "💰 Recargar", callback_data: "menu:recharge" }]);
   }
-  rows.push([{ text: "Volver", callback_data: `cat:${product.category}` }]);
+  rows.push(NAV_ROW(`cat:${product.category}`));
 
-  const maxLabelLen = Math.max(...prices.map((p) => p.duration_label.length));
-  const priceStrings = prices.map((p) => fmtPrice(Number(p.price_usd)));
-  const maxPriceLen = Math.max(...priceStrings.map((s) => s.length));
-  const priceLines = prices
-    .map((p, i) => {
-      const label = escapeHtml(p.duration_label);
-      const price = priceStrings[i];
-      const stock = p.available_stock > 0 ? `📦${p.available_stock}` : `📦sin Stock`;
-      return `⏳ ${label.padEnd(maxLabelLen + 4)} ${price.padEnd(maxPriceLen + 3)} ${stock}`;
-    })
+  const stockLines = prices
+    .map((p) => `~ ${escapeHtml(p.duration_label)}     ${p.available_stock > 0 ? `📦 ${p.available_stock}` : "📦 Sin Stock"}`)
     .join("\n");
 
-
   const productTitle = escapeHtml(product.name);
-  const header = lowBalance
-    ? `🛍️ Panel ${productTitle}\n\n💸 <b>Saldo insuficiente</b>\n💰 Saldo: $${balance.toFixed(2)}\nMínimo requerido: <b>$${minPrice.toFixed(2)} USD</b>\n\n<pre>${priceLines}</pre>\n\nSeleccioná una duración.`
-    : `🛍️ Panel ${productTitle}\n\n💰 Saldo: $${balance.toFixed(2)}\n\n<pre>${priceLines}</pre>\n\nSeleccioná una duración.`;
+  const short = categoryShort(product.category);
+  const header =
+    `<b>${productTitle} Product - Free Fire ${escapeHtml(short)} Category</b>\n\n` +
+    `🏛️ <b>Saldo:</b> • ${balance.toFixed(2)} 💲USD\n\n` +
+    `${stockLines}\n\n` +
+    `Selecciona una duración ${productTitle}:`;
 
   await screen(telegram_id, chat_id, header, rows);
 }
 
 async function showQty(telegram_id: number, chat_id: number, price_id: string) {
+  const ctx = (await getState(telegram_id))?.context as Record<string, string | number> | undefined;
   await patchContext(telegram_id, { price_id });
+  const backTo = ctx?.product_id ? `prod:${ctx.product_id}` : "menu:products";
   await screen(
     telegram_id,
     chat_id,
-    `🔢 <b>Cantidad de keys</b>\n\n¿Cuántas necesitás?`,
+    `🛍️ <b>Selecciona la cantidad</b>`,
     [
-      [
-        { text: "1", callback_data: "qty:1" },
-        { text: "2", callback_data: "qty:2" },
-        { text: "5", callback_data: "qty:5" },
-      ],
-      [{ text: "Volver", callback_data: "menu:products" }],
+      [{ text: "➕ 1: Key", callback_data: "qty:1" }],
+      [{ text: "➕ 5: Keys", callback_data: "qty:5" }],
+      [{ text: "➕ 10: Keys", callback_data: "qty:10" }],
+      NAV_ROW(backTo),
     ],
   );
 }
@@ -579,7 +584,7 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
   await patchContext(telegram_id, { qty });
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
   const [{ data: price }, { data: u }] = await Promise.all([
-    sb.from("product_prices").select("*").eq("id", ctx.price_id as string).single(),
+    sb.from("product_prices").select("*, products(name, category)").eq("id", ctx.price_id as string).single(),
     sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
   ]);
   if (!price) return;
@@ -595,23 +600,32 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
       `💸 <b>Tu saldo es insuficiente.</b>\n\nRecarga saldo para poder realizar la compra.`,
       [
         [{ text: "💰 Recargar Saldo", callback_data: "menu:recharge" }],
-        BACK_BUTTON,
+        NAV_ROW(`dur:${ctx.price_id}`),
       ],
     );
     return;
   }
 
-  // Con saldo suficiente: pago directo con saldo (sin mostrar el stock).
+  const prod = (price as { products?: { name?: string; category?: string } }).products;
+  const productName = escapeHtml(prod?.name ?? "Producto");
+  const short = escapeHtml(categoryShort(prod?.category ?? ""));
+  const duration = escapeHtml(price.duration_label);
+
   await screen(
     telegram_id,
     chat_id,
-    `💳 <b>Confirmar compra</b>\n\nTotal  <b>$${total_usd.toFixed(2)} USD</b>\nSaldo  $${balance.toFixed(2)}`,
+    `🧾 <b>Confirm ${productName} ${short} Purchase • ${duration} Duration</b>\n\n` +
+      `📦 <b>Producto:</b> ${productName} ${short}\n` +
+      `⏳ <b>Duración:</b> ${duration}\n` +
+      `🔑 <b>Cantidad:</b> ${qty} ${qty === 1 ? "Key" : "Keys"}\n\n` +
+      `💵 <b>Total:</b> ${total_usd.toFixed(2)} 💲USD`,
     [
-      [{ text: `✅ Pagar con saldo  ·  $${total_usd.toFixed(2)}`, callback_data: "pay:balance" }],
-      [{ text: "Volver", callback_data: "menu:products" }],
+      [{ text: `✅ Confirmar ${prod?.name ?? "compra"} • ${price.duration_label}`, callback_data: "pay:balance" }],
+      NAV_ROW(`dur:${ctx.price_id}`),
     ],
   );
 }
+
 
 async function showPaymentInstructions(
   telegram_id: number,
@@ -908,7 +922,7 @@ async function showRechargeMethods(
 
   await screen(telegram_id, chat_id, lines.join("\n"), [
     [{ text: "✅ Ya Pagué", callback_data: `rcpay:${order.id}` }],
-    [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+    [{ text: "🏘️ Home", callback_data: "menu:main" }],
   ]);
 }
 
@@ -949,7 +963,7 @@ async function showDownloadPanel(telegram_id: number, chat_id: number) {
         reply_markup: {
           inline_keyboard: [
             [{ text: "📥 Abrir Panel", url: DOWNLOAD_PANEL_URL }],
-            [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+            [{ text: "🏘️ Home", callback_data: "menu:main" }],
           ],
         },
         disable_web_page_preview: false,
@@ -971,7 +985,7 @@ async function showOfficialChannel(telegram_id: number, chat_id: number) {
         reply_markup: {
           inline_keyboard: [
             [{ text: "📢 Unirme al Canal", url: OFFICIAL_CHANNEL_URL }],
-            [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+            [{ text: "🏘️ Home", callback_data: "menu:main" }],
           ],
         },
         disable_web_page_preview: false,
@@ -1019,13 +1033,9 @@ async function routeBottomMenu(
 //    Aceptar → cobra saldo, crea orden pendiente y avisa al bot Almacén.
 async function payWithBalance(telegram_id: number, chat_id: number) {
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
-  const qty = Number(ctx.qty ?? 1);
+  const qty = Math.max(1, Number(ctx.qty ?? 1));
   if (!ctx.price_id) {
     await screen(telegram_id, chat_id, `Esa compra expiró. Elegí el producto nuevamente.`, [BACK_BUTTON]);
-    return;
-  }
-  if (qty !== 1) {
-    await screen(telegram_id, chat_id, `Por estabilidad, comprá las keys de una en una.`, [BACK_BUTTON]);
     return;
   }
 
@@ -1048,20 +1058,11 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     return;
   }
 
-  await deliverAutomaticKey(telegram_id, chat_id, ctx.price_id as string);
+  await deliverAutomaticKey(telegram_id, chat_id, ctx.price_id as string, qty);
 }
 
-async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_id: string) {
-  const { data: result, error } = await sb.rpc("purchase_key_atomic", {
-    _telegram_id: telegram_id,
-    _price_id: price_id,
-  });
-  if (error) {
-    console.error("[payWithBalance] atomic purchase", error);
-    await screen(telegram_id, chat_id, `No se pudo completar la compra. Tocá de nuevo en unos segundos.`, [BACK_BUTTON]);
-    return;
-  }
-  const purchase = result as {
+async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_id: string, qty = 1) {
+  type Purchase = {
     ok?: boolean;
     reason?: string;
     order_id?: string;
@@ -1072,41 +1073,69 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
     duration_label?: string;
   } | null;
 
-  if (!purchase?.ok) {
-    if (purchase?.reason === "out_of_stock") {
-      // Cambió el stock entre el precheck y la RPC: reintentar en modo manual.
-      await confirmManualPurchase(telegram_id, chat_id, price_id);
+  const keys: string[] = [];
+  let last: Purchase = null;
+  let totalPaid = 0;
+
+  for (let i = 0; i < qty; i++) {
+    const { data: result, error } = await sb.rpc("purchase_key_atomic", {
+      _telegram_id: telegram_id,
+      _price_id: price_id,
+    });
+    if (error) {
+      console.error("[payWithBalance] atomic purchase", error);
+      if (keys.length === 0) {
+        await screen(telegram_id, chat_id, `No se pudo completar la compra. Tocá de nuevo en unos segundos.`, [BACK_BUTTON]);
+        return;
+      }
+      break;
+    }
+    const purchase = result as Purchase;
+    if (!purchase?.ok) {
+      if (keys.length > 0) break; // entregamos lo que sí se pudo comprar
+      if (purchase?.reason === "out_of_stock") {
+        await confirmManualPurchase(telegram_id, chat_id, price_id);
+        return;
+      }
+      const text = purchase?.reason === "insufficient_balance"
+        ? `💸 Tu saldo es insuficiente. Recarga saldo para poder realizar la compra.`
+        : `Producto no disponible. Elegí otro producto.`;
+      await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
       return;
     }
-    const text = purchase?.reason === "insufficient_balance"
-      ? `💸 Tu saldo es insuficiente. Recarga saldo para poder realizar la compra.`
-      : `Producto no disponible. Elegí otro producto.`;
-    await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
-    return;
+    keys.push(String(purchase.key_value ?? ""));
+    totalPaid += Number(purchase.unit_usd ?? 0);
+    last = purchase;
   }
 
   invalidateCatalogCache();
 
-  const productName = String(purchase.product_name ?? "Producto");
-  const duration = String(purchase.duration_label ?? "");
-  const total = Number(purchase.unit_usd ?? 0);
-  const balanceLeft = Number(purchase.new_balance ?? 0);
-  const orderId = String(purchase.order_id ?? "").replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
-  const keyVal = String(purchase.key_value ?? "");
+  const productName = String(last?.product_name ?? "Producto");
+  const duration = String(last?.duration_label ?? "");
+  const balanceLeft = Number(last?.new_balance ?? 0);
+  const orderId = String(last?.order_id ?? "").replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
+
+  const { data: prodRow } = await sb
+    .from("product_prices")
+    .select("products(category)")
+    .eq("id", price_id)
+    .maybeSingle();
+  const short = categoryShort((prodRow as { products?: { category?: string } } | null)?.products?.category ?? "");
 
   const text =
-    `✅ <b>Compra Realizada, ¡Disfruta!</b>\n\n` +
+    `✅ <b>Purchase Confirmed • ${escapeHtml(productName)} ${escapeHtml(short)}</b>\n\n` +
     `📦 <b>Producto:</b> ${escapeHtml(productName)}\n` +
     `⏳ <b>Duración:</b> ${escapeHtml(duration)}\n` +
-    `💵 <b>Total:</b> ${total.toFixed(2)} USD\n\n` +
-    `🔑 <b>Tu Key</b>\n<code>${escapeHtml(keyVal)}</code>\n\n` +
-    `🧾 <b>Orden:</b> ${escapeHtml(orderId)}\n` +
-    `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
-    `¡Gracias por tu compra!`;
+    `💵 <b>Total Pagado:</b> ${totalPaid.toFixed(2)} USD\n\n` +
+    `🔑 <b>Key${keys.length > 1 ? "s" : ""}:</b>\n` +
+    keys.map((k) => `<code>${escapeHtml(k)}</code>`).join("\n") +
+    `\n\n🧾 <b>Orden:</b> #${escapeHtml(orderId)}\n` +
+    `💼 <b>Saldo Restante:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
+    `Gracias por tu compra.`;
 
-
-  await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
+  await screen(telegram_id, chat_id, text, [NAV_ROW("menu:products")], { final: true });
 }
+
 
 async function confirmManualPurchase(telegram_id: number, chat_id: number, price_id: string) {
   await patchContext(telegram_id, { price_id });
@@ -1183,7 +1212,7 @@ async function acceptManualKey(telegram_id: number, chat_id: number) {
     `🧾 <b>Orden:</b> ${escapeHtml(shortId)}\n` +
     `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
     `¡Gracias por tu compra!`;
-  await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
+  await screen(telegram_id, chat_id, text, [[{ text: "🏘️ Home", callback_data: "menu:main" }]], { final: true });
 }
 
 // ===== Comprobante (foto) =====
@@ -1287,7 +1316,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     telegram_id,
     chat_id,
     `⏳ <b>Comprobante en revisión</b>\n\nTu comprobante está siendo verificado.\n\n⚠️ No lo envíes nuevamente. Los comprobantes duplicados pueden ser rechazados.\n\n🔴 Tiempo estimado: <b>4 o 5 HORAS</b>\n🔴 En alta demanda: <b>HASTA 24 HORAS</b>\n\nNo seas estúpido. Recuerda que tenemos demasiados comprobantes en revisión, así que solo espera y no pierdas tu pago por estar exigiendo.\n\nGracias por tu paciencia.`,
-    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    [[{ text: "🏘️ Home", callback_data: "menu:main" }]],
     { final: true },
   );
 
@@ -1573,7 +1602,7 @@ async function handleReceiptDocument(msg: TgMessage) {
       `Pending: <code>${pid}</code>\n\n` +
       `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
       `Se Paciente Y Espera.`,
-    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    [[{ text: "🏘️ Home", callback_data: "menu:main" }]],
     { final: true },
   );
 }
@@ -1900,29 +1929,10 @@ async function handleCallback(cb: TgCallback) {
   if (data.startsWith("cat:")) return showCategory(telegram_id, chat_id, data.slice(4));
   if (data.startsWith("prod:")) return showDurations(telegram_id, chat_id, data.slice(5));
   if (data.startsWith("dur:")) {
-    const price_id = data.slice(4);
-    await patchContext(telegram_id, { price_id, qty: 1 });
-    const [{ data: price }, { data: u }] = await Promise.all([
-      sb.from("product_prices").select("*").eq("id", price_id).single(),
-      sb.from("bot_users").select("balance").eq("telegram_id", telegram_id).single(),
-    ]);
-    if (!price) return;
-    const unit_usd = await getUserPriceForId(telegram_id, price_id, Number(price.price_usd));
-    const balance = Number(u?.balance ?? 0);
-    if (balance < unit_usd) {
-      return screen(
-        telegram_id,
-        chat_id,
-        `💸 <b>Tu saldo es insuficiente.</b>\n\nRecarga saldo para poder realizar la compra.`,
-        [
-          [{ text: "💰 Recargar Saldo", callback_data: "menu:recharge" }],
-          BACK_BUTTON,
-        ],
-      );
-    }
-    return payWithBalance(telegram_id, chat_id);
+    return showQty(telegram_id, chat_id, data.slice(4));
   }
   if (data.startsWith("qty:")) return showCountries(telegram_id, chat_id, Number(data.slice(4)) || 1);
+
   if (data === "pay:balance") return payWithBalance(telegram_id, chat_id);
   if (data === "manukey:accept") return acceptManualKey(telegram_id, chat_id);
   if (data.startsWith("pm:")) return showPaymentInstructions(telegram_id, chat_id, data.slice(3));
@@ -2068,7 +2078,7 @@ export async function notifyUserApproved(opts: {
       `➕ Saldo Agregado: <b>${opts.amount_usd.toFixed(2)} USD</b>\n` +
       `💵 Saldo Disponible: <b>${opts.new_balance.toFixed(2)} USD</b>\n\n` +
       `Ya puedes utilizar tu saldo para realizar compras dentro del bot.`,
-    { reply_markup: { inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]] } },
+    { reply_markup: { inline_keyboard: [[{ text: "🏘️ Home", callback_data: "menu:main" }]] } },
   );
 }
 
@@ -2086,7 +2096,7 @@ export async function notifyUserRejected(opts: {
       (pid ? `🆔 Pending: <code>${pid}</code>\n` : "") +
       `📝 Motivo: ${opts.note ?? "Sin especificar"}\n\n` +
       `Tu comprobante fue rechazado. Puedes enviar uno nuevo.`,
-    { reply_markup: { inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]] } },
+    { reply_markup: { inline_keyboard: [[{ text: "🏘️ Home", callback_data: "menu:main" }]] } },
   );
 }
 
@@ -2106,7 +2116,7 @@ export async function notifyUserKey(opts: {
     `${header}<code>${opts.key_value}</code>`,
     {
       reply_markup: {
-        inline_keyboard: [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+        inline_keyboard: [[{ text: "🏘️ Home", callback_data: "menu:main" }]],
       },
     },
   );
