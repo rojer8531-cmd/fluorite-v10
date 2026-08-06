@@ -202,7 +202,7 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
-  products: "🫟 Products",
+  products: "🛍 Buy keys",
   recharge: "🏛️ Top Up Balance",
   profile: "📜 My Profile",
   support: "➕ Support",
@@ -214,6 +214,8 @@ const BOTTOM_MENU = {
 };
 
 const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
+  "🛍 Buy keys": "products",
+  "Buy keys": "products",
   "🫟 Products": "products",
   "Products": "products",
   "🏛️ Top Up Balance": "recharge",
@@ -320,7 +322,7 @@ async function showMainMenu(telegram_id: number, chat_id: number) {
   await sendMessage(
     "shop",
     chat_id,
-    `🏠 <b>Inicio</b>`,
+    `🏠 <b>Main Menu</b>\n\nSelect an option.`,
     { reply_markup: bottomKeyboard() },
   );
 }
