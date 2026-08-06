@@ -3538,6 +3538,14 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "pmf:add") { if (chat_id) await pmAskCountry(chat_id, cb.from.id, cb.message?.message_id); return; }
+  if (data === "pmf:redo") {
+    if (chat_id) {
+      const f = await getPmFlow(cb.from.id);
+      if (f?.country && f.cc) await pmAskBody(chat_id, cb.from.id, f.country, f.cc, cb.message?.message_id ?? f.message_id);
+      else await pmAskCountry(chat_id, cb.from.id, cb.message?.message_id);
+    }
+    return;
+  }
   if (data === "pmf:dellist") { if (chat_id) await pmDelListFlow(chat_id, cb.from.id, cb.message?.message_id); return; }
   if (data === "pmf:all") { if (chat_id) await pmAllFlow(chat_id, cb.from.id, cb.message?.message_id); return; }
   if (data.startsWith("pmf:delc:")) { if (chat_id) await pmDelConfirmFlow(chat_id, cb.from.id, data.slice("pmf:delc:".length), cb.message?.message_id); return; }
