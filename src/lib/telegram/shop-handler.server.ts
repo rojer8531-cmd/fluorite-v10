@@ -1031,13 +1031,9 @@ async function routeBottomMenu(
 //    Aceptar → cobra saldo, crea orden pendiente y avisa al bot Almacén.
 async function payWithBalance(telegram_id: number, chat_id: number) {
   const ctx = (await getState(telegram_id))?.context as Record<string, string | number>;
-  const qty = Number(ctx.qty ?? 1);
+  const qty = Math.max(1, Number(ctx.qty ?? 1));
   if (!ctx.price_id) {
     await screen(telegram_id, chat_id, `Esa compra expiró. Elegí el producto nuevamente.`, [BACK_BUTTON]);
-    return;
-  }
-  if (qty !== 1) {
-    await screen(telegram_id, chat_id, `Por estabilidad, comprá las keys de una en una.`, [BACK_BUTTON]);
     return;
   }
 
@@ -1060,20 +1056,11 @@ async function payWithBalance(telegram_id: number, chat_id: number) {
     return;
   }
 
-  await deliverAutomaticKey(telegram_id, chat_id, ctx.price_id as string);
+  await deliverAutomaticKey(telegram_id, chat_id, ctx.price_id as string, qty);
 }
 
-async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_id: string) {
-  const { data: result, error } = await sb.rpc("purchase_key_atomic", {
-    _telegram_id: telegram_id,
-    _price_id: price_id,
-  });
-  if (error) {
-    console.error("[payWithBalance] atomic purchase", error);
-    await screen(telegram_id, chat_id, `No se pudo completar la compra. Tocá de nuevo en unos segundos.`, [BACK_BUTTON]);
-    return;
-  }
-  const purchase = result as {
+async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_id: string, qty = 1) {
+  type Purchase = {
     ok?: boolean;
     reason?: string;
     order_id?: string;
@@ -1084,41 +1071,69 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
     duration_label?: string;
   } | null;
 
-  if (!purchase?.ok) {
-    if (purchase?.reason === "out_of_stock") {
-      // Cambió el stock entre el precheck y la RPC: reintentar en modo manual.
-      await confirmManualPurchase(telegram_id, chat_id, price_id);
+  const keys: string[] = [];
+  let last: Purchase = null;
+  let totalPaid = 0;
+
+  for (let i = 0; i < qty; i++) {
+    const { data: result, error } = await sb.rpc("purchase_key_atomic", {
+      _telegram_id: telegram_id,
+      _price_id: price_id,
+    });
+    if (error) {
+      console.error("[payWithBalance] atomic purchase", error);
+      if (keys.length === 0) {
+        await screen(telegram_id, chat_id, `No se pudo completar la compra. Tocá de nuevo en unos segundos.`, [BACK_BUTTON]);
+        return;
+      }
+      break;
+    }
+    const purchase = result as Purchase;
+    if (!purchase?.ok) {
+      if (keys.length > 0) break; // entregamos lo que sí se pudo comprar
+      if (purchase?.reason === "out_of_stock") {
+        await confirmManualPurchase(telegram_id, chat_id, price_id);
+        return;
+      }
+      const text = purchase?.reason === "insufficient_balance"
+        ? `💸 Tu saldo es insuficiente. Recarga saldo para poder realizar la compra.`
+        : `Producto no disponible. Elegí otro producto.`;
+      await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
       return;
     }
-    const text = purchase?.reason === "insufficient_balance"
-      ? `💸 Tu saldo es insuficiente. Recarga saldo para poder realizar la compra.`
-      : `Producto no disponible. Elegí otro producto.`;
-    await screen(telegram_id, chat_id, text, [BACK_BUTTON]);
-    return;
+    keys.push(String(purchase.key_value ?? ""));
+    totalPaid += Number(purchase.unit_usd ?? 0);
+    last = purchase;
   }
 
   invalidateCatalogCache();
 
-  const productName = String(purchase.product_name ?? "Producto");
-  const duration = String(purchase.duration_label ?? "");
-  const total = Number(purchase.unit_usd ?? 0);
-  const balanceLeft = Number(purchase.new_balance ?? 0);
-  const orderId = String(purchase.order_id ?? "").replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
-  const keyVal = String(purchase.key_value ?? "");
+  const productName = String(last?.product_name ?? "Producto");
+  const duration = String(last?.duration_label ?? "");
+  const balanceLeft = Number(last?.new_balance ?? 0);
+  const orderId = String(last?.order_id ?? "").replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
+
+  const { data: prodRow } = await sb
+    .from("product_prices")
+    .select("products(category)")
+    .eq("id", price_id)
+    .maybeSingle();
+  const short = categoryShort((prodRow as { products?: { category?: string } } | null)?.products?.category ?? "");
 
   const text =
-    `✅ <b>Compra Realizada, ¡Disfruta!</b>\n\n` +
+    `✅ <b>Purchase Confirmed • ${escapeHtml(productName)} ${escapeHtml(short)}</b>\n\n` +
     `📦 <b>Producto:</b> ${escapeHtml(productName)}\n` +
     `⏳ <b>Duración:</b> ${escapeHtml(duration)}\n` +
-    `💵 <b>Total:</b> ${total.toFixed(2)} USD\n\n` +
-    `🔑 <b>Tu Key</b>\n<code>${escapeHtml(keyVal)}</code>\n\n` +
-    `🧾 <b>Orden:</b> ${escapeHtml(orderId)}\n` +
-    `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
-    `¡Gracias por tu compra!`;
+    `💵 <b>Total Pagado:</b> ${totalPaid.toFixed(2)} USD\n\n` +
+    `🔑 <b>Key${keys.length > 1 ? "s" : ""}:</b>\n` +
+    keys.map((k) => `<code>${escapeHtml(k)}</code>`).join("\n") +
+    `\n\n🧾 <b>Orden:</b> #${escapeHtml(orderId)}\n` +
+    `💼 <b>Saldo Restante:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
+    `Gracias por tu compra.`;
 
-
-  await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
+  await screen(telegram_id, chat_id, text, [NAV_ROW("menu:products")], { final: true });
 }
+
 
 async function confirmManualPurchase(telegram_id: number, chat_id: number, price_id: string) {
   await patchContext(telegram_id, { price_id });
