@@ -988,14 +988,11 @@ async function routeBottomMenu(
   const map: Record<keyof typeof BOTTOM_MENU, (tid: number, cid: number) => Promise<unknown>> = {
     products: showProducts,
     recharge: startRecharge,
-    official_channel: showOfficialChannel,
     profile: showProfile,
-    more: showMoreOptions,
+    support: showSupport,
     status: showOrderStatus,
     keys: showMyKeys,
-    
     share: showShareBot,
-    support: showSupport,
     download_panel: showDownloadPanel,
   };
   const key = BOTTOM_MENU_ALIASES[text] ?? (Object.entries(BOTTOM_MENU).find(([, label]) => label === text)?.[0] as keyof typeof BOTTOM_MENU | undefined);
