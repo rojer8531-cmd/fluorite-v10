@@ -282,6 +282,14 @@ async function showMoreOptions(_telegram_id: number, chat_id: number) {
 }
 
 const BACK_BUTTON = [{ text: "↩️ Volver", callback_data: "menu:main" }];
+const HOME_ROW = [{ text: "🏘️ Home", callback_data: "menu:main" }];
+function NAV_ROW(backTo: string) {
+  return [
+    { text: "🔙 Go Back", callback_data: backTo },
+    { text: "🏘️ Home", callback_data: "menu:main" },
+  ];
+}
+
 
 // Cache del username del bot para los links de referidos
 let _shopBotUsername: string | null = null;
