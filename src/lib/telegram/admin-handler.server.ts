@@ -167,41 +167,52 @@ async function finalizeReceiptCaption(opts: {
 
   const { data: order } = await sb
     .from("orders")
-    .select("id, telegram_id, total_usd, created_at, admin_message_id, payment_methods(country_name, country_code, method_name), bot_users(balance, username, display_name)")
+    .select("id, telegram_id, total_usd, total_local, currency, created_at, admin_message_id, payment_methods(country_name, country_code, method_name, usd_rate, currency), bot_users(balance, username, display_name)")
     .eq("id", order_id)
     .maybeSingle();
   if (!order) return;
   const o = order as {
     telegram_id: number;
     total_usd: number;
+    total_local: number | null;
+    currency: string | null;
     created_at: string;
     admin_message_id: number | null;
-    payment_methods: { country_name: string; country_code?: string | null; method_name: string } | null;
+    payment_methods: { country_name: string; country_code?: string | null; method_name: string; usd_rate?: number | string | null; currency?: string | null } | null;
     bot_users: { balance: number; username: string | null; display_name: string | null } | null;
   };
-  const bal = extraBalanceUsd != null ? extraBalanceUsd : Number(o.bot_users?.balance ?? 0);
+  void extraBalanceUsd;
   const userTag = o.bot_users?.username ? `@${o.bot_users.username}` : (o.bot_users?.display_name ?? "—");
   const country = o.payment_methods?.country_name ?? "—";
-  const cc = (o.payment_methods?.country_code ?? "").toUpperCase();
-  const flag =
-    cc.length === 2
-      ? String.fromCodePoint(0x1f1e6 + cc.charCodeAt(0) - 65, 0x1f1e6 + cc.charCodeAt(1) - 65)
+
+  const localCurrency = o.currency ?? o.payment_methods?.currency ?? null;
+  const localAmount =
+    o.total_local != null
+      ? Number(o.total_local)
+      : o.payment_methods?.usd_rate != null
+        ? Number(o.total_usd) * Number(o.payment_methods.usd_rate)
+        : null;
+  const localLine =
+    localAmount != null && localCurrency
+      ? `➕Total : <b>${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}</b>\n`
       : "";
 
-  const header =
+  const banner =
     status === "APROBADO"
-      ? "✅ <b>Comprobante Aceptado</b>"
+      ? "✅ <b>Payment Receipt Approved</b>"
       : status === "RECHAZADO"
-        ? "❌ <b>Comprobante Rechazado</b>"
-        : "🚫 <b>Bloqueado &amp; Pendejo 🤣</b>";
+        ? "❎ <b>Payment Receipt Rejected</b>"
+        : "🚫 <b>bloqueado &amp; pendejo</b>";
 
   const newCaption =
-    `${header}\n` +
-    `✳️ ${escapeHtml(userTag)}\n` +
-    `🆔 <code>${o.telegram_id}</code>\n` +
-    `🏦 Recarga: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
-    `*️⃣ Saldo: <b>${bal.toFixed(2)} USD</b>\n` +
-    `${flag ? `${flag} ` : ""}${escapeHtml(country)}`;
+    `${banner}\n\n` +
+    `👤 User: ${escapeHtml(userTag)}\n` +
+    `🆔 : <code>${o.telegram_id}</code>\n\n` +
+    `🏛️ Top Up: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
+    localLine +
+    `📜País: ${escapeHtml(country)}\n\n` +
+    `${banner}`;
+
 
   const target_mid = o.admin_message_id ?? message_id;
   if (!chat_id || !target_mid) return;
