@@ -336,7 +336,7 @@ async function deliverBottomKeyboard(chat_id: number, text: string) {
 async function notifyUser(chat_id: number, text: string) {
   await sendMessage("shop", chat_id, text, {
     reply_markup: {
-      inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]],
+      inline_keyboard: [[{ text: "🏘️ Home", callback_data: "menu:main" }]],
     },
   });
 }
@@ -922,7 +922,7 @@ async function showRechargeMethods(
 
   await screen(telegram_id, chat_id, lines.join("\n"), [
     [{ text: "✅ Ya Pagué", callback_data: `rcpay:${order.id}` }],
-    [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+    [{ text: "🏘️ Home", callback_data: "menu:main" }],
   ]);
 }
 
@@ -963,7 +963,7 @@ async function showDownloadPanel(telegram_id: number, chat_id: number) {
         reply_markup: {
           inline_keyboard: [
             [{ text: "📥 Abrir Panel", url: DOWNLOAD_PANEL_URL }],
-            [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+            [{ text: "🏘️ Home", callback_data: "menu:main" }],
           ],
         },
         disable_web_page_preview: false,
@@ -985,7 +985,7 @@ async function showOfficialChannel(telegram_id: number, chat_id: number) {
         reply_markup: {
           inline_keyboard: [
             [{ text: "📢 Unirme al Canal", url: OFFICIAL_CHANNEL_URL }],
-            [{ text: "🏠 Menú Principal", callback_data: "menu:main" }],
+            [{ text: "🏘️ Home", callback_data: "menu:main" }],
           ],
         },
         disable_web_page_preview: false,
@@ -1212,7 +1212,7 @@ async function acceptManualKey(telegram_id: number, chat_id: number) {
     `🧾 <b>Orden:</b> ${escapeHtml(shortId)}\n` +
     `💼 <b>Saldo Disponible:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
     `¡Gracias por tu compra!`;
-  await screen(telegram_id, chat_id, text, [[{ text: "🏠 Menú", callback_data: "menu:main" }]], { final: true });
+  await screen(telegram_id, chat_id, text, [[{ text: "🏘️ Home", callback_data: "menu:main" }]], { final: true });
 }
 
 // ===== Comprobante (foto) =====
@@ -1316,7 +1316,7 @@ async function handleReceiptPhoto(msg: TgMessage) {
     telegram_id,
     chat_id,
     `⏳ <b>Comprobante en revisión</b>\n\nTu comprobante está siendo verificado.\n\n⚠️ No lo envíes nuevamente. Los comprobantes duplicados pueden ser rechazados.\n\n🔴 Tiempo estimado: <b>4 o 5 HORAS</b>\n🔴 En alta demanda: <b>HASTA 24 HORAS</b>\n\nNo seas estúpido. Recuerda que tenemos demasiados comprobantes en revisión, así que solo espera y no pierdas tu pago por estar exigiendo.\n\nGracias por tu paciencia.`,
-    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    [[{ text: "🏘️ Home", callback_data: "menu:main" }]],
     { final: true },
   );
 
@@ -1602,7 +1602,7 @@ async function handleReceiptDocument(msg: TgMessage) {
       `Pending: <code>${pid}</code>\n\n` +
       `Si Subes El Comprobante Varias Veces Tu Recarga Será Rechazada Sin Lugar A Reclamo.\n\n` +
       `Se Paciente Y Espera.`,
-    [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+    [[{ text: "🏘️ Home", callback_data: "menu:main" }]],
     { final: true },
   );
 }
@@ -2078,7 +2078,7 @@ export async function notifyUserApproved(opts: {
       `➕ Saldo Agregado: <b>${opts.amount_usd.toFixed(2)} USD</b>\n` +
       `💵 Saldo Disponible: <b>${opts.new_balance.toFixed(2)} USD</b>\n\n` +
       `Ya puedes utilizar tu saldo para realizar compras dentro del bot.`,
-    { reply_markup: { inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]] } },
+    { reply_markup: { inline_keyboard: [[{ text: "🏘️ Home", callback_data: "menu:main" }]] } },
   );
 }
 
@@ -2096,7 +2096,7 @@ export async function notifyUserRejected(opts: {
       (pid ? `🆔 Pending: <code>${pid}</code>\n` : "") +
       `📝 Motivo: ${opts.note ?? "Sin especificar"}\n\n` +
       `Tu comprobante fue rechazado. Puedes enviar uno nuevo.`,
-    { reply_markup: { inline_keyboard: [[{ text: "🏠 Menú Principal", callback_data: "menu:main" }]] } },
+    { reply_markup: { inline_keyboard: [[{ text: "🏘️ Home", callback_data: "menu:main" }]] } },
   );
 }
 
@@ -2116,7 +2116,7 @@ export async function notifyUserKey(opts: {
     `${header}<code>${opts.key_value}</code>`,
     {
       reply_markup: {
-        inline_keyboard: [[{ text: "🏠 Menú", callback_data: "menu:main" }]],
+        inline_keyboard: [[{ text: "🏘️ Home", callback_data: "menu:main" }]],
       },
     },
   );
