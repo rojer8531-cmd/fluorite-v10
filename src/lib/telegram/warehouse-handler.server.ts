@@ -2883,34 +2883,34 @@ async function handleMessage(msg: TgMessage) {
     if (!labels.includes(text)) {
       const pmFlow = await getPmFlow(msg.from.id);
       if (pmFlow?.step) {
+        await dropAdminInput();
         await pmSubmitText(msg, pmFlow, text);
-        void dropAdminInput();
         return;
       }
       const usFlow = await getUsFlow(msg.from.id);
       if (usFlow?.step) {
+        await dropAdminInput();
         await usSubmitText(msg, usFlow, text);
-        void dropAdminInput();
         return;
       }
 
       const pdFlow = await getPdFlow(msg.from.id);
 
       if (pdFlow?.step) {
+        await dropAdminInput();
         await pdSubmitText(msg, pdFlow, text);
-        void dropAdminInput();
         return;
       }
       const prFlow = await getPrFlow(msg.from.id);
       if (prFlow?.price_id) {
+        await dropAdminInput();
         await prSubmitPrice(msg, prFlow, text);
-        void dropAdminInput();
         return;
       }
       const akFlow = await getAkFlow(msg.from.id);
       if (akFlow?.price_id) {
+        await dropAdminInput();
         await akSubmitKeys(msg, akFlow, text);
-        void dropAdminInput();
         return;
       }
     }
@@ -2918,7 +2918,7 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== respuestas (reply) =====
   if (msg.reply_to_message) {
-    void dropAdminInput();
+    await dropAdminInput();
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
 
 
