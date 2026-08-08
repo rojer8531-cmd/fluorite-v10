@@ -2879,12 +2879,12 @@ async function handleMessage(msg: TgMessage) {
   // dirigidos a usuarios no queden visibles en el chat del almacén.
   const dropAdminInput = async () => {
     const first = await deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(
-      () => ({ ok: false }),
+      () => ({ ok: false, description: "deleteMessage failed" }),
     );
     if (first.ok) return;
     await new Promise<void>((resolve) => setTimeout(resolve, 200));
     const retry = await deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(
-      () => ({ ok: false }),
+      () => ({ ok: false, description: "deleteMessage retry failed" }),
     );
     if (!retry.ok) {
       console.error(
