@@ -2874,8 +2874,25 @@ async function handleMessage(msg: TgMessage) {
   }
 
   // Borra el mensaje temporal que envía el admin (dato solicitado por el bot).
-  const dropAdminInput = () =>
-    deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(() => {});
+  // Telegram puede devolver un fallo transitorio justo al recibir el update;
+  // comprobamos `ok` y reintentamos para que keys, nombres, precios y mensajes
+  // dirigidos a usuarios no queden visibles en el chat del almacén.
+  const dropAdminInput = async () => {
+    const first = await deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(
+      () => ({ ok: false, description: "deleteMessage failed" }),
+    );
+    if (first.ok) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 200));
+    const retry = await deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(
+      () => ({ ok: false, description: "deleteMessage retry failed" }),
+    );
+    if (!retry.ok) {
+      console.error(
+        `[warehouse/delete-input] No se pudo borrar ${msg.message_id}:`,
+        retry.description ?? first.description,
+      );
+    }
+  };
 
   // ===== Wizard Agregar Keys: captura de keys (edita el mismo mensaje) =====
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
