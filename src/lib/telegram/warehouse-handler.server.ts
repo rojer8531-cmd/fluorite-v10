@@ -30,6 +30,7 @@ import {
   notifyUserKey,
   recordAnnouncementDelivery,
 } from "./shop-handler.server";
+import { keepTelegramPromiseAlive } from "./webhook-runner.server";
 
 interface Update {
   update_id: number;
@@ -66,6 +67,38 @@ interface TgCallback {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const recentWarehouseUpdates = new Map<number, number>();
+const recentWarehouseCallbacks = new Map<string, number>();
+const UPDATE_DEDUP_MS = 60_000;
+const CALLBACK_DEBOUNCE_MS = 1_200;
+
+function isDuplicateWarehouseUpdate(update: Update): boolean {
+  const now = Date.now();
+  const seenAt = recentWarehouseUpdates.get(update.update_id);
+  if (seenAt && now - seenAt < UPDATE_DEDUP_MS) return true;
+  recentWarehouseUpdates.set(update.update_id, now);
+  if (recentWarehouseUpdates.size > 500) {
+    for (const [id, timestamp] of recentWarehouseUpdates) {
+      if (now - timestamp >= UPDATE_DEDUP_MS) recentWarehouseUpdates.delete(id);
+    }
+  }
+  return false;
+}
+
+function isRapidDuplicateCallback(callback?: TgCallback): boolean {
+  if (!callback?.data) return false;
+  const now = Date.now();
+  const key = `${callback.from.id}:${callback.data}`;
+  const previous = recentWarehouseCallbacks.get(key);
+  recentWarehouseCallbacks.set(key, now);
+  if (recentWarehouseCallbacks.size > 200) {
+    for (const [storedKey, timestamp] of recentWarehouseCallbacks) {
+      if (now - timestamp >= CALLBACK_DEBOUNCE_MS) recentWarehouseCallbacks.delete(storedKey);
+    }
+  }
+  return Boolean(previous && now - previous < CALLBACK_DEBOUNCE_MS);
+}
 
 // Admin actualmente activo (para tracking de mensajes a limpiar)
 let _currentAdminId: number | null = null;
@@ -233,6 +266,7 @@ async function resolvePriceId(rawId: string) {
 const ADMIN_IDLE_PURGE_MS = 90_000;
 
 export async function handleWarehouseUpdate(update: Update): Promise<void> {
+  if (isDuplicateWarehouseUpdate(update) || isRapidDuplicateCallback(update.callback_query)) return;
   const admin_id =
     (update.message?.from && isAdmin(update.message.from.id) && update.message.from.id) ||
     (update.callback_query?.from && isAdmin(update.callback_query.from.id) && update.callback_query.from.id) ||
@@ -2831,7 +2865,63 @@ async function handleBroadcast(msg: TgMessage) {
 
 
 // ===== Mensajes =====
+function shouldDeleteAdminInput(msg: TgMessage): boolean {
+  if (!msg.from || !isAdmin(msg.from.id)) return false;
+  const text = (msg.text ?? "").trim();
+  if (text.startsWith("/")) return false;
+  const navigationLabels = [
+    ...Object.values(ADMIN_BOTTOM),
+    ...Object.values(ADMIN_TODO),
+    ...Object.values(ADMIN_LEGACY),
+    ADMIN_BACK_LABEL,
+  ];
+  if (navigationLabels.includes(text)) return false;
+  return Boolean(
+    msg.reply_to_message ||
+      text ||
+      msg.caption ||
+      msg.photo?.length ||
+      msg.document ||
+      msg.video ||
+      msg.audio ||
+      msg.voice,
+  );
+}
+
+async function deleteAdminInput(msg: TgMessage) {
+  const first = await deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(
+    () => ({ ok: false, description: "deleteMessage failed" }),
+  );
+  if (first.ok) return;
+
+  const retryPromise = (async () => {
+    for (const delay of [250, 750]) {
+      await sleep(delay);
+      const retry = await deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(
+        () => ({ ok: false, description: "deleteMessage retry failed" }),
+      );
+      if (retry.ok) return;
+      if (delay === 750) {
+        console.error(
+          `[warehouse/delete-input] No se pudo borrar ${msg.message_id}:`,
+          retry.description ?? first.description,
+        );
+      }
+    }
+  })();
+  keepTelegramPromiseAlive(retryPromise);
+}
+
 async function handleMessage(msg: TgMessage) {
+  const deleteAfterProcessing = shouldDeleteAdminInput(msg);
+  try {
+    await processWarehouseMessage(msg);
+  } finally {
+    if (deleteAfterProcessing) await deleteAdminInput(msg);
+  }
+}
+
+async function processWarehouseMessage(msg: TgMessage) {
   if (!msg.from) return;
   if (!isAdmin(msg.from.id)) {
     await sendMessage("warehouse", msg.chat.id, `No autorizado.`);
@@ -2873,40 +2963,17 @@ async function handleMessage(msg: TgMessage) {
     }
   }
 
-  // Borra el mensaje temporal que envía el admin (dato solicitado por el bot).
-  // Telegram puede devolver un fallo transitorio justo al recibir el update;
-  // comprobamos `ok` y reintentamos para que keys, nombres, precios y mensajes
-  // dirigidos a usuarios no queden visibles en el chat del almacén.
-  const dropAdminInput = async () => {
-    const first = await deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(
-      () => ({ ok: false, description: "deleteMessage failed" }),
-    );
-    if (first.ok) return;
-    await new Promise<void>((resolve) => setTimeout(resolve, 200));
-    const retry = await deleteMessage("warehouse", msg.chat.id, msg.message_id).catch(
-      () => ({ ok: false, description: "deleteMessage retry failed" }),
-    );
-    if (!retry.ok) {
-      console.error(
-        `[warehouse/delete-input] No se pudo borrar ${msg.message_id}:`,
-        retry.description ?? first.description,
-      );
-    }
-  };
-
   // ===== Wizard Agregar Keys: captura de keys (edita el mismo mensaje) =====
   if (!msg.reply_to_message && text.length > 0 && !text.startsWith("/")) {
     const labels = [...Object.values(ADMIN_BOTTOM), ...Object.values(ADMIN_TODO), ...Object.values(ADMIN_LEGACY), ADMIN_BACK_LABEL];
     if (!labels.includes(text)) {
       const pmFlow = await getPmFlow(msg.from.id);
       if (pmFlow?.step) {
-        await dropAdminInput();
         await pmSubmitText(msg, pmFlow, text);
         return;
       }
       const usFlow = await getUsFlow(msg.from.id);
       if (usFlow?.step) {
-        await dropAdminInput();
         await usSubmitText(msg, usFlow, text);
         return;
       }
@@ -2914,19 +2981,16 @@ async function handleMessage(msg: TgMessage) {
       const pdFlow = await getPdFlow(msg.from.id);
 
       if (pdFlow?.step) {
-        await dropAdminInput();
         await pdSubmitText(msg, pdFlow, text);
         return;
       }
       const prFlow = await getPrFlow(msg.from.id);
       if (prFlow?.price_id) {
-        await dropAdminInput();
         await prSubmitPrice(msg, prFlow, text);
         return;
       }
       const akFlow = await getAkFlow(msg.from.id);
       if (akFlow?.price_id) {
-        await dropAdminInput();
         await akSubmitKeys(msg, akFlow, text);
         return;
       }
@@ -2935,7 +2999,6 @@ async function handleMessage(msg: TgMessage) {
 
   // ===== respuestas (reply) =====
   if (msg.reply_to_message) {
-    await dropAdminInput();
     const replySource = `${msg.reply_to_message.text ?? ""}\n${msg.reply_to_message.caption ?? ""}`;
 
 
