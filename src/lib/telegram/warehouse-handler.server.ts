@@ -1773,15 +1773,9 @@ async function pdRender(
 }
 
 async function pdCategories(chat_id: number, uid: number, message_id?: number) {
-  const kb: AkKeyboard = [
-    [
-      { text: "🏷️ iOS", callback_data: "pdcat:0" },
-      { text: "🏷️ Android", callback_data: "pdcat:1" },
-    ],
-    [{ text: "🏷️ Auxiliar de Famosos", callback_data: "pdcat:2" }],
-    [PD_HOME_BTN],
-  ];
-  await pdRender(chat_id, uid, `🛍️ <b>Categorías</b>`, kb, message_id, {});
+  const kb: AkKeyboard = categoryRows("pdcat");
+  kb.push(navRow("akp:inicio"));
+  await pdRender(chat_id, uid, `📋 <b>Choose a category</b>`, kb, message_id, {});
 }
 
 async function pdStartFresh(chat_id: number, uid: number) {
