@@ -1606,13 +1606,13 @@ async function adminListaPrecios(
 async function prStartFresh(chat_id: number, uid: number) {
   const prev = await getPrFlow(uid);
   const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
-  await adminListaPrecios(chat_id, uid, anchor);
+  await prCategories(chat_id, uid, anchor);
 }
 
 async function adminPriceDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: prices } = await sb
     .from("product_prices")
-    .select("id, duration_label, price_usd, products(name)")
+    .select("id, duration_label, price_usd, products(name, category)")
     .eq("product_id", product_id)
     .eq("active", true)
     .order("sort_order");
@@ -1621,16 +1621,18 @@ async function adminPriceDurations(chat_id: number, uid: number, product_id: str
       chat_id,
       uid,
       `💲 <b>Editar Precios</b>\n\n📦 Ese producto no tiene duraciones cargadas.`,
-      [[{ text: "🔚 Atrás", callback_data: "akp:prlist" }, PR_HOME_BTN]],
+      [navRow("akp:prlist")],
       message_id,
     );
     return;
   }
-  const name = (prices[0] as { products: { name: string } }).products.name;
+  const prod = (prices[0] as { products: { name: string; category: string } }).products;
+  const name = prod.name;
+  const catIdx = PD_CATEGORIES.indexOf(prod.category as PdCategory);
   const kb: AkKeyboard = prices.map((p) => [
     { text: `${p.duration_label}`, callback_data: `pred:${p.id}` },
   ]);
-  kb.push([{ text: "🔚 Atrás", callback_data: "akp:prlist" }, PR_HOME_BTN]);
+  kb.push(navRow(catIdx >= 0 ? `prcat:${catIdx}` : "akp:prlist"));
   await prRender(
     chat_id,
     uid,
