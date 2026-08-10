@@ -1577,20 +1577,29 @@ async function prRender(
   return anchor;
 }
 
-async function adminListaPrecios(chat_id: number, uid: number, message_id?: number) {
-  const { data: products } = await sb
-    .from("products")
-    .select("id, name, category")
-    .eq("active", true)
-    .order("sort_order");
+async function prCategories(chat_id: number, uid: number, message_id?: number) {
+  const kb: AkKeyboard = categoryRows("prcat");
+  kb.push(navRow("akp:inicio"));
+  await prRender(chat_id, uid, `💸 <b>Choose a category</b>`, kb, message_id);
+}
+
+async function adminListaPrecios(
+  chat_id: number,
+  uid: number,
+  message_id?: number,
+  category?: string,
+) {
+  let q = sb.from("products").select("id, name, category").eq("active", true);
+  if (category) q = q.eq("category", category as never);
+  const { data: products } = await q.order("sort_order");
   if (!products || products.length === 0) {
-    await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 No hay productos cargados.`, [[PR_HOME_BTN]], message_id);
+    await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 No hay productos en esta categoría.`, [navRow("akp:prlist")], message_id);
     return;
   }
   const kb: AkKeyboard = products.map((p) => [
     { text: `${p.name}`, callback_data: `prprod:${p.id}` },
   ]);
-  kb.push([PR_HOME_BTN]);
+  kb.push(navRow("akp:prlist"));
   await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 Elegí el producto:`, kb, message_id);
 }
 
