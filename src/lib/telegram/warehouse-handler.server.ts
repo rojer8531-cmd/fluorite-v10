@@ -3887,7 +3887,12 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:prlist") {
-    if (chat_id) await adminListaPrecios(chat_id, cb.from.id, cb.message?.message_id);
+    if (chat_id) await prCategories(chat_id, cb.from.id, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("prcat:")) {
+    const cat = PD_CATEGORIES[Number(data.slice(6))];
+    if (chat_id && cat) await adminListaPrecios(chat_id, cb.from.id, cb.message?.message_id, cat);
     return;
   }
   if (data.startsWith("prprod:")) {
