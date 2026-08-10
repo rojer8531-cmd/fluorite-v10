@@ -26,7 +26,7 @@ import {
   sb,
 } from "./db.server";
 import { silentDelete } from "./ui.server";
-import { applyRankDiscount, nextRankProgress, rankLabel, rankBadge, RANK_INFO, normalizeRank } from "./ranks.server";
+import { applyRankDiscount, normalizeRank } from "./ranks.server";
 import { keepTelegramPromiseAlive } from "./webhook-runner.server";
 
 const forceNewScreenFor = new Set<number>();
@@ -53,7 +53,7 @@ async function screen(
   telegram_id: number,
   chat_id: number,
   text: string,
-  keyboard?: Array<Array<{ text: string; callback_data?: string; copy_text?: { text: string }; switch_inline_query?: string }>>,
+  keyboard?: Array<Array<{ text: string; callback_data?: string; url?: string; copy_text?: { text: string }; switch_inline_query?: string }>>,
   opts?: { final?: boolean },
 ) {
   const reply_markup = keyboard ? { inline_keyboard: keyboard } : undefined;
@@ -426,30 +426,24 @@ async function showProfile(telegram_id: number, chat_id: number) {
     .eq("telegram_id", telegram_id)
     .single();
   if (!u) return;
-  const rank = normalizeRank(u.rank);
-  const info = RANK_INFO[rank];
   const total = Number(u.total_recharged);
   const balance = Number(u.balance);
 
-  const benefitBlock =
-    rank === "elite"
-      ? `\n🎁 <b>Beneficio Elite</b>\nProductos de $30.00 → <b>$25.00 USD</b>`
-      : info.discountPct > 0
-        ? `\n🎁 <b>Beneficio ${info.label}</b>\nDescuento automático del ${info.discountPct}% en todas las compras`
-        : `\n🎁 <b>Beneficio</b>\nSin descuento activo (rango inicial)`;
-
   const text =
-    `👤 <b>Mi Perfil</b>\n` +
+    `🏛️ <b>Mi Perfil</b>\n` +
     `━━━━━━━━━━━━━━━\n` +
     `🪪 <b>Nombre:</b> ${escapeHtml(u.display_name ?? "—")}\n` +
     `💬 <b>Usuario:</b> @${escapeHtml(u.username ?? "—")}\n` +
     `🆔 <b>ID:</b> <code>${u.telegram_id}</code>\n\n` +
-    `💼 <b>Saldo Actual:</b> 💲 ${balance.toFixed(2)} USD\n` +
-    `🛍 <b>Total Comprado:</b> 💲${total.toFixed(2)} USD\n` +
-    `━━━━━━━━━━━━━━━\n` +
-    benefitBlock;
+    `💼 <b>Saldo Actual:</b> ${balance.toFixed(2)} USD\n` +
+    `🛍 <b>Total Comprado:</b> ${total.toFixed(2)} USD\n` +
+    `━━━━━━━━━━━━━━━\n\n` +
+    `Access & Download Panel`;
 
-  await screen(telegram_id, chat_id, text, [HOME_ROW]);
+  await screen(telegram_id, chat_id, text, [
+    [{ text: "📥 Download Panel", url: DOWNLOAD_PANEL_URL }],
+    [{ text: "🏘️ Home", callback_data: "menu:main" }],
+  ]);
 }
 
 
