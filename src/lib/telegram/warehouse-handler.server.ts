@@ -3652,7 +3652,12 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:add") {
-    if (chat_id) await adminListProducts(chat_id, cb.from.id, cb.message?.message_id);
+    if (chat_id) await akCategories(chat_id, cb.from.id, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("akcat:")) {
+    const cat = PD_CATEGORIES[Number(data.slice(6))];
+    if (chat_id && cat) await adminListProducts(chat_id, cb.from.id, cb.message?.message_id, cat);
     return;
   }
   if (data === "akp:finduser") {
