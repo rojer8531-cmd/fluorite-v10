@@ -194,24 +194,32 @@ async function finalizeReceiptCaption(opts: {
         : null;
   const localLine =
     localAmount != null && localCurrency
-      ? `➕Total : <b>${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}</b>\n`
+      ? `➕ Total : <b>${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}</b>\n`
       : "";
 
-  const banner =
+  void userTag;
+
+  const header =
     status === "APROBADO"
-      ? "✅ <b>Payment Receipt Approved</b>"
+      ? "✉️ <b>{ comprobante válido }</b>"
       : status === "RECHAZADO"
-        ? "❎ <b>Payment Receipt Rejected</b>"
-        : "🚫 <b>bloqueado &amp; pendejo</b>";
+        ? "✉️ <b>{ comprobante Rechazado }</b>"
+        : "✉️ <b>{ Permanently Block User }</b>";
+
+  const footer =
+    status === "APROBADO"
+      ? `✅ Accepted — + <b>${Number(o.total_usd).toFixed(2)} USD</b>`
+      : status === "RECHAZADO"
+        ? `❎ Decline — <b>0 USD Fail</b>`
+        : `🚫: <code>${o.telegram_id}</code> — <b>Block</b>`;
 
   const newCaption =
-    `${banner}\n\n` +
-    `👤 User: ${escapeHtml(userTag)}\n` +
-    `🆔 : <code>${o.telegram_id}</code>\n\n` +
+    `${header}\n` +
+    `💬 : <code>${o.telegram_id}</code>\n` +
     `🏛️ Top Up: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
     localLine +
-    `📜País: ${escapeHtml(country)}\n\n` +
-    `${banner}`;
+    `📜 País: ${escapeHtml(country)}\n` +
+    `${footer}`;
 
 
   const target_mid = o.admin_message_id ?? message_id;
