@@ -3473,36 +3473,43 @@ async function processWarehouseMessage(msg: TgMessage) {
       await restoreMainBar(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.stock:
+    case ADMIN_LEGACY.stock2:
     case ADMIN_TODO.stock:
       await showBackBar(msg.chat.id, msg.from.id);
       await adminStockView(msg.chat.id);
       return;
     case ADMIN_LEGACY.usuarios:
     case ADMIN_LEGACY.usuariosAlt:
+    case ADMIN_LEGACY.usuarios2:
     case ADMIN_TODO.usuarios:
       await showBackBar(msg.chat.id, msg.from.id);
       await usStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.addkeys:
+    case ADMIN_LEGACY.addkeys2:
     case ADMIN_BOTTOM.addkeys:
       await showBackBar(msg.chat.id, msg.from.id);
       await akStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.precios:
+    case ADMIN_LEGACY.precios2:
     case ADMIN_BOTTOM.precios:
       await showBackBar(msg.chat.id, msg.from.id);
       await prStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.productos:
+    case ADMIN_LEGACY.productos2:
     case ADMIN_BOTTOM.productos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pdStartFresh(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_LEGACY.minrecharge:
     case ADMIN_TODO.minrecharge:
       await showBackBar(msg.chat.id, msg.from.id);
       await adminPromptMinRecharge(msg.chat.id);
       return;
     case ADMIN_LEGACY.metodos:
+    case ADMIN_LEGACY.metodos2:
     case ADMIN_BOTTOM.metodos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pmStartFresh(msg.chat.id, msg.from.id);
