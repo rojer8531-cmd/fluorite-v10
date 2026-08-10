@@ -1326,7 +1326,7 @@ async function adminStockCategory(
   const prices = pricesRes.data ?? [];
   const stock = await getStockByPriceId();
 
-  const kb: AkKeyboard = [[{ text: "🔚 Atrás", callback_data: "akp:stock" }, ST_HOME_BTN]];
+  const kb: AkKeyboard = [navRow("akp:stock")];
 
   if (products.length === 0) {
     await stRender(chat_id, `❇️ <b>Stock disponible</b>\n\nNo hay productos en esta categoría.`, kb, message_id);
@@ -1794,7 +1794,7 @@ async function pdList(chat_id: number, uid: number, category: PdCategory, messag
     { text: `${p.active ? "🔜" : "⏸️"} ${p.name}`, callback_data: `pdp:${p.id}` },
   ]);
   kb.push([{ text: "➕ Agregar producto", callback_data: "pdadd" }]);
-  kb.push([{ text: "🔚 Atrás", callback_data: "pdcats" }, PD_HOME_BTN]);
+  kb.push(navRow("pdcats"));
   await pdRender(
     chat_id,
     uid,
