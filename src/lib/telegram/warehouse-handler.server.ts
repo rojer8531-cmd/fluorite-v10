@@ -164,31 +164,38 @@ function isAdmin(telegram_id: number) {
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
   inicio: "🏠 Inicio",
-  addkeys: "➕ Add Passwords",
-  productos: "📦 Products",
-  precios: "💰 Product Pricing",
-  metodos: "🏛️ Payment Method",
+  addkeys: "➕ Passwords",
+  productos: "📝 Products",
+  precios: "🛍️ Precios",
+  metodos: "🏛️ Métodos",
   todo: "📥 Everything Here",
 };
 
 // Opciones agrupadas dentro del menú "Todo"
 const ADMIN_TODO = {
-  stock: "🫟 Stock",
-  minrecharge: "Recarga Mínima",
-  usuarios: "📜 Users",
+  stock: "📨 Stock",
+  minrecharge: "🔄 Recarga mínima",
+  usuarios: "💬 Users",
   borrar: "Borrar",
 };
 
 // Etiquetas antiguas: siguen respondiendo para no romper teclados cacheados.
 const ADMIN_LEGACY = {
   addkeys: "➕ Agregar Keys",
+  addkeys2: "➕ Add Passwords",
   productos: "📦 Productos",
+  productos2: "📦 Products",
   precios: "💰 Precios",
+  precios2: "💰 Product Pricing",
   metodos: "💳 Métodos",
+  metodos2: "🏛️ Payment Method",
   todo: "❇️ Todo",
   stock: "Stock",
+  stock2: "🫟 Stock",
   usuarios: "Usuarios",
   usuariosAlt: "👥 Usuarios",
+  usuarios2: "📜 Users",
+  minrecharge: "Recarga Mínima",
 };
 
 function adminBottomKeyboard() {
@@ -196,8 +203,8 @@ function adminBottomKeyboard() {
     keyboard: [
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.productos }],
       [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_TODO.usuarios }],
-      [{ text: ADMIN_TODO.stock }, { text: ADMIN_BOTTOM.todo }],
-      [{ text: ADMIN_BOTTOM.precios }],
+      [{ text: ADMIN_TODO.stock }, { text: ADMIN_BOTTOM.precios }],
+      [{ text: ADMIN_TODO.minrecharge }],
     ],
     resize_keyboard: true,
     is_persistent: true,
