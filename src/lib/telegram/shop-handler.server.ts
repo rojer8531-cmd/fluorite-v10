@@ -53,7 +53,7 @@ async function screen(
   telegram_id: number,
   chat_id: number,
   text: string,
-  keyboard?: Array<Array<{ text: string; callback_data?: string; copy_text?: { text: string }; switch_inline_query?: string }>>,
+  keyboard?: Array<Array<{ text: string; callback_data?: string; url?: string; copy_text?: { text: string }; switch_inline_query?: string }>>,
   opts?: { final?: boolean },
 ) {
   const reply_markup = keyboard ? { inline_keyboard: keyboard } : undefined;
