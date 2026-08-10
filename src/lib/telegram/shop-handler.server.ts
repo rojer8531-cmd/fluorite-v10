@@ -26,7 +26,7 @@ import {
   sb,
 } from "./db.server";
 import { silentDelete } from "./ui.server";
-import { applyRankDiscount, nextRankProgress, rankLabel, rankBadge, RANK_INFO, normalizeRank } from "./ranks.server";
+import { applyRankDiscount, normalizeRank } from "./ranks.server";
 import { keepTelegramPromiseAlive } from "./webhook-runner.server";
 
 const forceNewScreenFor = new Set<number>();
