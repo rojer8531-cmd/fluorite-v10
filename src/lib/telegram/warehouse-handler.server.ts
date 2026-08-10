@@ -1096,36 +1096,67 @@ async function akRender(
   return anchor;
 }
 
-const AK_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
+const AK_HOME_BTN = { text: "🏘️ Home", callback_data: "akp:inicio" };
 
-/** Abre el wizard desde la barra inferior: borra el ancla previa y crea una nueva. */
+/** Fila de navegación estándar: volver al paso anterior + inicio. */
+function navRow(backCb: string): Array<{ text: string; callback_data: string }> {
+  return [
+    { text: "🔙 Go Back", callback_data: backCb },
+    { text: "🏘️ Home", callback_data: "akp:inicio" },
+  ];
+}
+
+const CATEGORY_LABELS = ["Free Fire: iOS", "Free Fire: Android", "Free Fire: Auxiliar"];
+
+function categoryRows(prefix: string): AkKeyboard {
+  return CATEGORY_LABELS.map((label, i) => [
+    { text: label, callback_data: `${prefix}:${i}` },
+  ]);
+}
+
+/** Abre el wizard desde la barra inferior: edita el ancla previa si existe. */
 async function akStartFresh(chat_id: number, uid: number) {
   const prev = await getAkFlow(uid);
   const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
-  await adminListProducts(chat_id, uid, anchor);
+  await akCategories(chat_id, uid, anchor);
 }
 
-async function adminListProducts(chat_id: number, uid: number, message_id?: number) {
-  const { data: products } = await sb
-    .from("products")
-    .select("id, name, category")
-    .eq("active", true)
-    .order("sort_order");
+async function akCategories(chat_id: number, uid: number, message_id?: number) {
+  const kb: AkKeyboard = categoryRows("akcat");
+  kb.push(navRow("akp:inicio"));
+  await akRender(chat_id, uid, `📦 <b>Choose a category Passwords</b>`, kb, message_id);
+}
+
+async function adminListProducts(
+  chat_id: number,
+  uid: number,
+  message_id?: number,
+  category?: string,
+) {
+  let q = sb.from("products").select("id, name, category").eq("active", true);
+  if (category) q = q.eq("category", category as never);
+  const { data: products } = await q.order("sort_order");
   if (!products || products.length === 0) {
-    await akRender(chat_id, uid, `<b>Agregar Keys</b>\n\nNo hay productos cargados.`, [[AK_HOME_BTN]], message_id);
+    await akRender(
+      chat_id,
+      uid,
+      `📦 <b>Passwords</b>\n\nNo hay productos en esta categoría.`,
+      [navRow("akp:add")],
+      message_id,
+    );
     return;
   }
   const kb: AkKeyboard = products.map((p) => [
-    { text: `${p.name}  ·  ${p.category}`, callback_data: `akprod:${p.id}` },
+    { text: `${p.name}`, callback_data: `akprod:${p.id}` },
   ]);
-  kb.push([AK_HOME_BTN]);
-  await akRender(chat_id, uid, `<b>Agregar Keys</b>\n\nElegí el producto:`, kb, message_id);
+  kb.push(navRow("akp:add"));
+  await akRender(chat_id, uid, `📦 <b>Passwords</b>\n\nElegí el producto:`, kb, message_id);
 }
 
 async function adminListDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: prices } = await sb
     .from("product_prices")
-    .select("id, duration_label, products(name)")
+    .select("id, duration_label, products(name, category)")
     .eq("product_id", product_id)
     .eq("active", true)
     .order("sort_order");
@@ -1134,17 +1165,20 @@ async function adminListDurations(chat_id: number, uid: number, product_id: stri
       chat_id,
       uid,
       `Ese producto no tiene duraciones cargadas.`,
-      [[{ text: "🔙 Atrás", callback_data: "akp:add" }, AK_HOME_BTN]],
+      [navRow("akp:add")],
       message_id,
       { product_id },
     );
     return;
   }
-  const name = (prices[0] as { products: { name: string } }).products.name;
+  const prod = (prices[0] as { products: { name: string; category: string } }).products;
+  const name = prod.name;
+  const catIdx = PD_CATEGORIES.indexOf(prod.category as PdCategory);
+  const backCb = catIdx >= 0 ? `akcat:${catIdx}` : "akp:add";
   const kb: AkKeyboard = prices.map((p) => [
     { text: `${p.duration_label}`, callback_data: `akdur:${p.id}` },
   ]);
-  kb.push([{ text: "🔙 Atrás", callback_data: "akp:add" }, AK_HOME_BTN]);
+  kb.push(navRow(backCb));
   await akRender(
     chat_id,
     uid,
