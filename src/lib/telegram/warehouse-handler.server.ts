@@ -1299,15 +1299,9 @@ async function stRender(
 }
 
 async function adminStockView(chat_id: number, message_id?: number) {
-  const kb: AkKeyboard = [
-    [
-      { text: "🎟️ iOS", callback_data: "stcat:0" },
-      { text: "🎟️ Android", callback_data: "stcat:1" },
-    ],
-    [{ text: "🎟️ Auxilio de Famosos", callback_data: "stcat:2" }],
-    [ST_HOME_BTN],
-  ];
-  await stRender(chat_id, `🛍️ <b>Categorías</b>`, kb, message_id);
+  const kb: AkKeyboard = categoryRows("stcat");
+  kb.push(navRow("akp:inicio"));
+  await stRender(chat_id, `🔄 <b>Choose a category Stock</b>`, kb, message_id);
 }
 
 async function adminStockCategory(
