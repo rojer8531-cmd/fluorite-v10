@@ -164,31 +164,38 @@ function isAdmin(telegram_id: number) {
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
   inicio: "🏠 Inicio",
-  addkeys: "➕ Add Passwords",
-  productos: "📦 Products",
-  precios: "💰 Product Pricing",
-  metodos: "🏛️ Payment Method",
+  addkeys: "➕ Passwords",
+  productos: "📝 Products",
+  precios: "🛍️ Precios",
+  metodos: "🏛️ Métodos",
   todo: "📥 Everything Here",
 };
 
 // Opciones agrupadas dentro del menú "Todo"
 const ADMIN_TODO = {
-  stock: "🫟 Stock",
-  minrecharge: "Recarga Mínima",
-  usuarios: "📜 Users",
+  stock: "📨 Stock",
+  minrecharge: "🔄 Recarga mínima",
+  usuarios: "💬 Users",
   borrar: "Borrar",
 };
 
 // Etiquetas antiguas: siguen respondiendo para no romper teclados cacheados.
 const ADMIN_LEGACY = {
   addkeys: "➕ Agregar Keys",
+  addkeys2: "➕ Add Passwords",
   productos: "📦 Productos",
+  productos2: "📦 Products",
   precios: "💰 Precios",
+  precios2: "💰 Product Pricing",
   metodos: "💳 Métodos",
+  metodos2: "🏛️ Payment Method",
   todo: "❇️ Todo",
   stock: "Stock",
+  stock2: "🫟 Stock",
   usuarios: "Usuarios",
   usuariosAlt: "👥 Usuarios",
+  usuarios2: "📜 Users",
+  minrecharge: "Recarga Mínima",
 };
 
 function adminBottomKeyboard() {
@@ -196,8 +203,8 @@ function adminBottomKeyboard() {
     keyboard: [
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.productos }],
       [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_TODO.usuarios }],
-      [{ text: ADMIN_TODO.stock }, { text: ADMIN_BOTTOM.todo }],
-      [{ text: ADMIN_BOTTOM.precios }],
+      [{ text: ADMIN_TODO.stock }, { text: ADMIN_BOTTOM.precios }],
+      [{ text: ADMIN_TODO.minrecharge }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -1089,36 +1096,67 @@ async function akRender(
   return anchor;
 }
 
-const AK_HOME_BTN = { text: "🏠 Inicio", callback_data: "akp:inicio" };
+const AK_HOME_BTN = { text: "🏘️ Home", callback_data: "akp:inicio" };
 
-/** Abre el wizard desde la barra inferior: borra el ancla previa y crea una nueva. */
+/** Fila de navegación estándar: volver al paso anterior + inicio. */
+function navRow(backCb: string): Array<{ text: string; callback_data: string }> {
+  return [
+    { text: "🔙 Go Back", callback_data: backCb },
+    { text: "🏘️ Home", callback_data: "akp:inicio" },
+  ];
+}
+
+const CATEGORY_LABELS = ["Free Fire: iOS", "Free Fire: Android", "Free Fire: Auxiliar"];
+
+function categoryRows(prefix: string): AkKeyboard {
+  return CATEGORY_LABELS.map((label, i) => [
+    { text: label, callback_data: `${prefix}:${i}` },
+  ]);
+}
+
+/** Abre el wizard desde la barra inferior: edita el ancla previa si existe. */
 async function akStartFresh(chat_id: number, uid: number) {
   const prev = await getAkFlow(uid);
   const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
-  await adminListProducts(chat_id, uid, anchor);
+  await akCategories(chat_id, uid, anchor);
 }
 
-async function adminListProducts(chat_id: number, uid: number, message_id?: number) {
-  const { data: products } = await sb
-    .from("products")
-    .select("id, name, category")
-    .eq("active", true)
-    .order("sort_order");
+async function akCategories(chat_id: number, uid: number, message_id?: number) {
+  const kb: AkKeyboard = categoryRows("akcat");
+  kb.push(navRow("akp:inicio"));
+  await akRender(chat_id, uid, `📦 <b>Choose a category Passwords</b>`, kb, message_id);
+}
+
+async function adminListProducts(
+  chat_id: number,
+  uid: number,
+  message_id?: number,
+  category?: string,
+) {
+  let q = sb.from("products").select("id, name, category").eq("active", true);
+  if (category) q = q.eq("category", category as never);
+  const { data: products } = await q.order("sort_order");
   if (!products || products.length === 0) {
-    await akRender(chat_id, uid, `<b>Agregar Keys</b>\n\nNo hay productos cargados.`, [[AK_HOME_BTN]], message_id);
+    await akRender(
+      chat_id,
+      uid,
+      `📦 <b>Passwords</b>\n\nNo hay productos en esta categoría.`,
+      [navRow("akp:add")],
+      message_id,
+    );
     return;
   }
   const kb: AkKeyboard = products.map((p) => [
-    { text: `${p.name}  ·  ${p.category}`, callback_data: `akprod:${p.id}` },
+    { text: `${p.name}`, callback_data: `akprod:${p.id}` },
   ]);
-  kb.push([AK_HOME_BTN]);
-  await akRender(chat_id, uid, `<b>Agregar Keys</b>\n\nElegí el producto:`, kb, message_id);
+  kb.push(navRow("akp:add"));
+  await akRender(chat_id, uid, `📦 <b>Passwords</b>\n\nElegí el producto:`, kb, message_id);
 }
 
 async function adminListDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: prices } = await sb
     .from("product_prices")
-    .select("id, duration_label, products(name)")
+    .select("id, duration_label, products(name, category)")
     .eq("product_id", product_id)
     .eq("active", true)
     .order("sort_order");
@@ -1127,17 +1165,20 @@ async function adminListDurations(chat_id: number, uid: number, product_id: stri
       chat_id,
       uid,
       `Ese producto no tiene duraciones cargadas.`,
-      [[{ text: "🔙 Atrás", callback_data: "akp:add" }, AK_HOME_BTN]],
+      [navRow("akp:add")],
       message_id,
       { product_id },
     );
     return;
   }
-  const name = (prices[0] as { products: { name: string } }).products.name;
+  const prod = (prices[0] as { products: { name: string; category: string } }).products;
+  const name = prod.name;
+  const catIdx = PD_CATEGORIES.indexOf(prod.category as PdCategory);
+  const backCb = catIdx >= 0 ? `akcat:${catIdx}` : "akp:add";
   const kb: AkKeyboard = prices.map((p) => [
     { text: `${p.duration_label}`, callback_data: `akdur:${p.id}` },
   ]);
-  kb.push([{ text: "🔙 Atrás", callback_data: "akp:add" }, AK_HOME_BTN]);
+  kb.push(navRow(backCb));
   await akRender(
     chat_id,
     uid,
@@ -1258,15 +1299,9 @@ async function stRender(
 }
 
 async function adminStockView(chat_id: number, message_id?: number) {
-  const kb: AkKeyboard = [
-    [
-      { text: "🎟️ iOS", callback_data: "stcat:0" },
-      { text: "🎟️ Android", callback_data: "stcat:1" },
-    ],
-    [{ text: "🎟️ Auxilio de Famosos", callback_data: "stcat:2" }],
-    [ST_HOME_BTN],
-  ];
-  await stRender(chat_id, `🛍️ <b>Categorías</b>`, kb, message_id);
+  const kb: AkKeyboard = categoryRows("stcat");
+  kb.push(navRow("akp:inicio"));
+  await stRender(chat_id, `🔄 <b>Choose a category Stock</b>`, kb, message_id);
 }
 
 async function adminStockCategory(
@@ -1291,7 +1326,7 @@ async function adminStockCategory(
   const prices = pricesRes.data ?? [];
   const stock = await getStockByPriceId();
 
-  const kb: AkKeyboard = [[{ text: "🔚 Atrás", callback_data: "akp:stock" }, ST_HOME_BTN]];
+  const kb: AkKeyboard = [navRow("akp:stock")];
 
   if (products.length === 0) {
     await stRender(chat_id, `❇️ <b>Stock disponible</b>\n\nNo hay productos en esta categoría.`, kb, message_id);
@@ -1542,33 +1577,42 @@ async function prRender(
   return anchor;
 }
 
-async function adminListaPrecios(chat_id: number, uid: number, message_id?: number) {
-  const { data: products } = await sb
-    .from("products")
-    .select("id, name, category")
-    .eq("active", true)
-    .order("sort_order");
+async function prCategories(chat_id: number, uid: number, message_id?: number) {
+  const kb: AkKeyboard = categoryRows("prcat");
+  kb.push(navRow("akp:inicio"));
+  await prRender(chat_id, uid, `💸 <b>Choose a category</b>`, kb, message_id);
+}
+
+async function adminListaPrecios(
+  chat_id: number,
+  uid: number,
+  message_id?: number,
+  category?: string,
+) {
+  let q = sb.from("products").select("id, name, category").eq("active", true);
+  if (category) q = q.eq("category", category as never);
+  const { data: products } = await q.order("sort_order");
   if (!products || products.length === 0) {
-    await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 No hay productos cargados.`, [[PR_HOME_BTN]], message_id);
+    await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 No hay productos en esta categoría.`, [navRow("akp:prlist")], message_id);
     return;
   }
   const kb: AkKeyboard = products.map((p) => [
     { text: `${p.name}`, callback_data: `prprod:${p.id}` },
   ]);
-  kb.push([PR_HOME_BTN]);
+  kb.push(navRow("akp:prlist"));
   await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 Elegí el producto:`, kb, message_id);
 }
 
 async function prStartFresh(chat_id: number, uid: number) {
   const prev = await getPrFlow(uid);
   const anchor = prev && prev.chat_id === chat_id ? prev.message_id : undefined;
-  await adminListaPrecios(chat_id, uid, anchor);
+  await prCategories(chat_id, uid, anchor);
 }
 
 async function adminPriceDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: prices } = await sb
     .from("product_prices")
-    .select("id, duration_label, price_usd, products(name)")
+    .select("id, duration_label, price_usd, products(name, category)")
     .eq("product_id", product_id)
     .eq("active", true)
     .order("sort_order");
@@ -1577,16 +1621,18 @@ async function adminPriceDurations(chat_id: number, uid: number, product_id: str
       chat_id,
       uid,
       `💲 <b>Editar Precios</b>\n\n📦 Ese producto no tiene duraciones cargadas.`,
-      [[{ text: "🔚 Atrás", callback_data: "akp:prlist" }, PR_HOME_BTN]],
+      [navRow("akp:prlist")],
       message_id,
     );
     return;
   }
-  const name = (prices[0] as { products: { name: string } }).products.name;
+  const prod = (prices[0] as { products: { name: string; category: string } }).products;
+  const name = prod.name;
+  const catIdx = PD_CATEGORIES.indexOf(prod.category as PdCategory);
   const kb: AkKeyboard = prices.map((p) => [
     { text: `${p.duration_label}`, callback_data: `pred:${p.id}` },
   ]);
-  kb.push([{ text: "🔚 Atrás", callback_data: "akp:prlist" }, PR_HOME_BTN]);
+  kb.push(navRow(catIdx >= 0 ? `prcat:${catIdx}` : "akp:prlist"));
   await prRender(
     chat_id,
     uid,
@@ -1727,15 +1773,9 @@ async function pdRender(
 }
 
 async function pdCategories(chat_id: number, uid: number, message_id?: number) {
-  const kb: AkKeyboard = [
-    [
-      { text: "🏷️ iOS", callback_data: "pdcat:0" },
-      { text: "🏷️ Android", callback_data: "pdcat:1" },
-    ],
-    [{ text: "🏷️ Auxiliar de Famosos", callback_data: "pdcat:2" }],
-    [PD_HOME_BTN],
-  ];
-  await pdRender(chat_id, uid, `🛍️ <b>Categorías</b>`, kb, message_id, {});
+  const kb: AkKeyboard = categoryRows("pdcat");
+  kb.push(navRow("akp:inicio"));
+  await pdRender(chat_id, uid, `📋 <b>Choose a category</b>`, kb, message_id, {});
 }
 
 async function pdStartFresh(chat_id: number, uid: number) {
@@ -1754,7 +1794,7 @@ async function pdList(chat_id: number, uid: number, category: PdCategory, messag
     { text: `${p.active ? "🔜" : "⏸️"} ${p.name}`, callback_data: `pdp:${p.id}` },
   ]);
   kb.push([{ text: "➕ Agregar producto", callback_data: "pdadd" }]);
-  kb.push([{ text: "🔚 Atrás", callback_data: "pdcats" }, PD_HOME_BTN]);
+  kb.push(navRow("pdcats"));
   await pdRender(
     chat_id,
     uid,
@@ -3466,36 +3506,43 @@ async function processWarehouseMessage(msg: TgMessage) {
       await restoreMainBar(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.stock:
+    case ADMIN_LEGACY.stock2:
     case ADMIN_TODO.stock:
       await showBackBar(msg.chat.id, msg.from.id);
       await adminStockView(msg.chat.id);
       return;
     case ADMIN_LEGACY.usuarios:
     case ADMIN_LEGACY.usuariosAlt:
+    case ADMIN_LEGACY.usuarios2:
     case ADMIN_TODO.usuarios:
       await showBackBar(msg.chat.id, msg.from.id);
       await usStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.addkeys:
+    case ADMIN_LEGACY.addkeys2:
     case ADMIN_BOTTOM.addkeys:
       await showBackBar(msg.chat.id, msg.from.id);
       await akStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.precios:
+    case ADMIN_LEGACY.precios2:
     case ADMIN_BOTTOM.precios:
       await showBackBar(msg.chat.id, msg.from.id);
       await prStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.productos:
+    case ADMIN_LEGACY.productos2:
     case ADMIN_BOTTOM.productos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pdStartFresh(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_LEGACY.minrecharge:
     case ADMIN_TODO.minrecharge:
       await showBackBar(msg.chat.id, msg.from.id);
       await adminPromptMinRecharge(msg.chat.id);
       return;
     case ADMIN_LEGACY.metodos:
+    case ADMIN_LEGACY.metodos2:
     case ADMIN_BOTTOM.metodos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pmStartFresh(msg.chat.id, msg.from.id);
@@ -3605,7 +3652,12 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:add") {
-    if (chat_id) await adminListProducts(chat_id, cb.from.id, cb.message?.message_id);
+    if (chat_id) await akCategories(chat_id, cb.from.id, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("akcat:")) {
+    const cat = PD_CATEGORIES[Number(data.slice(6))];
+    if (chat_id && cat) await adminListProducts(chat_id, cb.from.id, cb.message?.message_id, cat);
     return;
   }
   if (data === "akp:finduser") {
@@ -3840,7 +3892,12 @@ async function handleCallback(cb: TgCallback) {
     return;
   }
   if (data === "akp:prlist") {
-    if (chat_id) await adminListaPrecios(chat_id, cb.from.id, cb.message?.message_id);
+    if (chat_id) await prCategories(chat_id, cb.from.id, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("prcat:")) {
+    const cat = PD_CATEGORIES[Number(data.slice(6))];
+    if (chat_id && cat) await adminListaPrecios(chat_id, cb.from.id, cb.message?.message_id, cat);
     return;
   }
   if (data.startsWith("prprod:")) {
