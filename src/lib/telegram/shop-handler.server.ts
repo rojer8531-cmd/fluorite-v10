@@ -1392,6 +1392,7 @@ async function processReceiptPhotoReview(opts: {
   const country = escapeHtml(o.payment_methods?.country_name ?? "—");
   void countryFlag;
   void isRecharge;
+  void userTag;
 
   const localCurrency = o.currency ?? o.payment_methods?.currency ?? null;
   const localAmount =
@@ -1402,16 +1403,15 @@ async function processReceiptPhotoReview(opts: {
         : null;
   const localLine =
     localAmount != null && localCurrency
-      ? `➕Total : <b>${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}</b>\n`
+      ? `➕ Total : <b>${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}</b>\n`
       : "";
 
   const caption =
-    `🫟 <b>Nuevo comprobante recibido</b>\n` +
-    `👤 User: ${userTag}\n` +
-    `🆔 : <code>${telegram_id}</code>\n\n` +
+    `📨 <b>nuevo comprobante recibido</b>\n` +
+    `💬 : <code>${telegram_id}</code>\n` +
     `🏛️ Top Up: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
     localLine +
-    `📜País: ${country}`;
+    `📜 País: ${country}`;
   void pid;
 
 
@@ -1421,11 +1421,14 @@ async function processReceiptPhotoReview(opts: {
     return;
   }
 
-  const sent = await sendPhotoMultipart(
+  // Se envía como documento para preservar la calidad original del comprobante
+  // y mostrar miniatura + nombre de archivo + tamaño en el chat del admin.
+  const filename = receiptFilename(fileInfo.result.file_path, "comprobante.jpg");
+  const sent = await sendDocumentMultipart(
     "admin",
     adminChatId,
     bytes,
-    receiptFilename(fileInfo.result.file_path, "comprobante.jpg"),
+    filename,
     caption,
     {
       reply_markup: adminReceiptKeyboard(order_id, telegram_id),
@@ -1433,36 +1436,35 @@ async function processReceiptPhotoReview(opts: {
   );
 
   if (sent.ok && sent.result) {
-    const adminFileId = newestTelegramPhotoFileId(sent.result);
     await Promise.all([
       sb.from("receipts").update({
         admin_message_id: sent.result.message_id,
-        ...(adminFileId ? { admin_file_id: adminFileId } : {}),
+        ...(sent.result.document?.file_id ? { admin_file_id: sent.result.document.file_id } : {}),
       }).eq("id", receipt_id),
       sb.from("orders").update({ admin_message_id: sent.result.message_id }).eq("id", order_id),
     ]);
   } else {
-    console.error("[receipt admin upload] sendPhotoMultipart failed", sent.description);
-    // Fallback seguro: si Telegram no acepta la foto como imagen, enviamos
-    // los mismos bytes como documento. Nunca reutilizamos el file_id del shop bot.
-    const fallback = await sendDocumentMultipart(
+    console.error("[receipt admin upload] sendDocumentMultipart failed", sent.description);
+    // Fallback: si Telegram rechaza el documento, enviamos como foto.
+    const fallback = await sendPhotoMultipart(
       "admin",
       adminChatId,
       bytes,
-      receiptFilename(fileInfo.result.file_path, "comprobante.jpg"),
+      filename,
       caption,
       { reply_markup: adminReceiptKeyboard(order_id, telegram_id) },
     );
     if (fallback.ok && fallback.result) {
+      const adminFileId = newestTelegramPhotoFileId(fallback.result);
       await Promise.all([
         sb.from("receipts").update({
           admin_message_id: fallback.result.message_id,
-          ...(fallback.result.document?.file_id ? { admin_file_id: fallback.result.document.file_id } : {}),
+          ...(adminFileId ? { admin_file_id: adminFileId } : {}),
         }).eq("id", receipt_id),
         sb.from("orders").update({ admin_message_id: fallback.result.message_id }).eq("id", order_id),
       ]);
     } else {
-      console.error("[receipt admin upload] sendDocumentMultipart failed", fallback.description);
+      console.error("[receipt admin upload] sendPhotoMultipart failed", fallback.description);
     }
   }
 }
