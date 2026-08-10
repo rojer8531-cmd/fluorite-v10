@@ -426,8 +426,6 @@ async function showProfile(telegram_id: number, chat_id: number) {
     .eq("telegram_id", telegram_id)
     .single();
   if (!u) return;
-  const rank = normalizeRank(u.rank);
-  const info = RANK_INFO[rank];
   const total = Number(u.total_recharged);
   const balance = Number(u.balance);
 
