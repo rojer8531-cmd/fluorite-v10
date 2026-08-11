@@ -723,36 +723,56 @@ async function showPaymentInstructions(
 }
 
 // ===== Recarga: país → monto → método → instrucciones =====
+// Orden de visualización preferido para el menú de recarga (2 por fila).
+const RECHARGE_COUNTRY_ORDER: string[] = [
+  "AR", "MX", "BO", "PE", "BR", "UY", "CO", "VE", "GL",
+];
+
+function rechargeCountryFlag(code: string): string {
+  return code.toUpperCase() === "GL" ? "🌐" : countryFlag(code);
+}
+
 async function startRecharge(telegram_id: number, chat_id: number) {
   await setState(telegram_id, "recharge_country", {});
   const { data: methods } = await sb
     .from("payment_methods")
     .select("country_code, country_name")
-    .eq("active", true)
-    .order("country_name");
+    .eq("active", true);
   const seen = new Set<string>();
-  const countries: Array<{ country_code: string; country_name: string }> = [];
+  const byCode: Record<string, string> = {};
   for (const m of methods ?? []) {
-    if (!seen.has(m.country_code)) {
-      seen.add(m.country_code);
-      countries.push(m);
+    const cc = (m as { country_code: string; country_name: string }).country_code;
+    if (!seen.has(cc)) {
+      seen.add(cc);
+      byCode[cc] = (m as { country_name: string }).country_name;
     }
   }
-  if (countries.length === 0) {
+  if (seen.size === 0) {
     await screen(telegram_id, chat_id, `No hay métodos de pago disponibles.`, [BACK_BUTTON]);
     return;
   }
+  // Ordenar por preferencia; países no listados se agregan al final (alfabético).
+  const ordered = [
+    ...RECHARGE_COUNTRY_ORDER.filter((c) => seen.has(c)),
+    ...Object.keys(byCode)
+      .filter((c) => !RECHARGE_COUNTRY_ORDER.includes(c))
+      .sort((a, b) => byCode[a].localeCompare(byCode[b])),
+  ];
   const kb: Array<Array<{ text: string; callback_data: string }>> = [];
-  for (let i = 0; i < countries.length; i += 2) {
-    const row = [{ text: countries[i].country_name, callback_data: `rcc:${countries[i].country_code}` }];
-    if (countries[i + 1]) row.push({ text: countries[i + 1].country_name, callback_data: `rcc:${countries[i + 1].country_code}` });
+  for (let i = 0; i < ordered.length; i += 2) {
+    const row = [
+      { text: `${rechargeCountryFlag(ordered[i])} ${byCode[ordered[i]]}`, callback_data: `rcc:${ordered[i]}` },
+    ];
+    if (ordered[i + 1]) {
+      row.push({ text: `${rechargeCountryFlag(ordered[i + 1])} ${byCode[ordered[i + 1]]}`, callback_data: `rcc:${ordered[i + 1]}` });
+    }
     kb.push(row);
   }
-  kb.push(BACK_BUTTON);
+  kb.push(NAV_ROW("menu:main"));
   await screen(
     telegram_id,
     chat_id,
-    `💰 <b>Recargar Saldo</b>\n\nElegí tu país:`,
+    `🏛️ Select your country and top up your balance`,
     kb,
   );
 }
