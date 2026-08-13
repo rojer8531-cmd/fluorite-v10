@@ -86,9 +86,22 @@ function isDuplicateWarehouseUpdate(update: Update): boolean {
   return false;
 }
 
+const seenCallbackIds = new Map<string, number>();
+
 function isRapidDuplicateCallback(callback?: TgCallback): boolean {
-  if (!callback?.data) return false;
+  if (!callback) return false;
   const now = Date.now();
+  // Control estricto por callback_query.id: nunca procesar dos veces el mismo tap.
+  if (callback.id) {
+    if (seenCallbackIds.has(callback.id)) return true;
+    seenCallbackIds.set(callback.id, now);
+    if (seenCallbackIds.size > 500) {
+      for (const [id, ts] of seenCallbackIds) {
+        if (now - ts >= UPDATE_DEDUP_MS) seenCallbackIds.delete(id);
+      }
+    }
+  }
+  if (!callback.data) return false;
   const key = `${callback.from.id}:${callback.data}`;
   const previous = recentWarehouseCallbacks.get(key);
   recentWarehouseCallbacks.set(key, now);
@@ -99,6 +112,7 @@ function isRapidDuplicateCallback(callback?: TgCallback): boolean {
   }
   return Boolean(previous && now - previous < CALLBACK_DEBOUNCE_MS);
 }
+
 
 // Admin actualmente activo (para tracking de mensajes a limpiar)
 let _currentAdminId: number | null = null;
