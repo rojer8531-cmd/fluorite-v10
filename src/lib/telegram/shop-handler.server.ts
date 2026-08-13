@@ -430,20 +430,21 @@ async function showProfile(telegram_id: number, chat_id: number) {
   const balance = Number(u.balance);
 
   const text =
-    `🏛️ <b>Mi Perfil</b>\n` +
+    `🏛️ <b>All My Profile Information and Data</b>\n` +
     `━━━━━━━━━━━━━━━\n` +
     `🪪 <b>Nombre:</b> ${escapeHtml(u.display_name ?? "—")}\n` +
     `💬 <b>Usuario:</b> @${escapeHtml(u.username ?? "—")}\n` +
     `🆔 <b>ID:</b> <code>${u.telegram_id}</code>\n\n` +
-    `💼 <b>Saldo Actual:</b> ${balance.toFixed(2)} USD\n` +
-    `🛍 <b>Total Comprado:</b> ${total.toFixed(2)} USD\n` +
+    `📨 <b>Saldo Actual:</b>       ~${balance.toFixed(2)} USD\n` +
+    `🛍 <b>Total Comprado:</b> ~${total.toFixed(2)} USD\n` +
     `━━━━━━━━━━━━━━━\n\n` +
-    `Access & Download Panel`;
+    `Download Reseller Panel`;
 
   await screen(telegram_id, chat_id, text, [
-    [{ text: "📥 Download Panel", url: DOWNLOAD_PANEL_URL }],
+    [{ text: "📥 Download Reseller Panel", url: DOWNLOAD_PANEL_URL }],
     [{ text: "🏘️ Home", callback_data: "menu:main" }],
   ]);
+
 }
 
 
