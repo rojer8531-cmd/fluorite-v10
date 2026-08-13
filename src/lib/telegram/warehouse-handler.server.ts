@@ -1388,6 +1388,99 @@ async function adminStockCategory(
 
 
 
+// ===== ChooseX: menú de opciones + estadísticas de ventas =====
+type CxPeriod = "week" | "month" | "year";
+
+const CX_PERIODS: Record<CxPeriod, { days: number; header: string; label: string }> = {
+  week: { days: 7, header: "🗓️ <b>Sales registered this week</b>", label: "semanal" },
+  month: { days: 30, header: "🗓️ <b>Sales registered this month</b>", label: "mensual" },
+  year: { days: 365, header: "🗓️ <b>Sales registered this year</b>", label: "anual" },
+};
+
+async function cxMenu(chat_id: number, message_id?: number) {
+  const kb: AkKeyboard = [
+    [{ text: "~ precios", callback_data: "cx:prices" }],
+    [{ text: "~ Stock", callback_data: "cx:stock" }],
+    [{ text: "~ Recarga mínima", callback_data: "cx:minrec" }],
+    [{ text: "~ ventasX", callback_data: "cx:sales" }],
+    navRow("akp:inicio"),
+  ];
+  await stRender(chat_id, `📋 <b>Choose a opciónes</b>`, kb, message_id);
+}
+
+async function cxSalesMenu(chat_id: number, message_id?: number) {
+  const kb: AkKeyboard = [
+    [{ text: "~ Annual sales", callback_data: "cxp:year" }],
+    [{ text: "~ Monthly sales", callback_data: "cxp:month" }],
+    [{ text: "~ Ventas semanales", callback_data: "cxp:week" }],
+    navRow("cx:menu"),
+  ];
+  await stRender(chat_id, `📉 <b>Available for sale all year round</b>`, kb, message_id);
+}
+
+async function cxPeriodProducts(chat_id: number, period: CxPeriod, message_id?: number) {
+  const { data: products } = await sb
+    .from("products")
+    .select("id, name")
+    .eq("active", true)
+    .order("sort_order");
+  const kb: AkKeyboard = (products ?? []).map((p) => [
+    { text: `~ ${p.name}`, callback_data: `cxs:${period}:${p.id}` },
+  ]);
+  kb.push(navRow("cx:sales"));
+  const head = CX_PERIODS[period].header;
+  const body = products && products.length > 0 ? "" : "\n\nNo hay productos cargados.";
+  await stRender(chat_id, `${head}${body}`, kb, message_id);
+}
+
+async function cxProductSales(
+  chat_id: number,
+  period: CxPeriod,
+  product_id: string,
+  message_id?: number,
+) {
+  const since = new Date(Date.now() - CX_PERIODS[period].days * 86_400_000).toISOString();
+  const [prodRes, pricesRes, ordersRes] = await Promise.all([
+    sb.from("products").select("name").eq("id", product_id).maybeSingle(),
+    sb
+      .from("product_prices")
+      .select("id, duration_label, sort_order")
+      .eq("product_id", product_id)
+      .order("sort_order"),
+    sb
+      .from("orders")
+      .select("price_id, keys_qty, total_usd, status, created_at")
+      .eq("product_id", product_id)
+      .gte("created_at", since),
+  ]);
+
+  const name = (prodRes.data as { name?: string } | null)?.name ?? "Producto";
+  const prices = pricesRes.data ?? [];
+  const orders = (ordersRes.data ?? []).filter((o) =>
+    ["delivered", "approved", "pending_approval"].includes(String(o.status)),
+  );
+
+  const qtyByPrice = new Map<string, number>();
+  let total = 0;
+  for (const o of orders) {
+    total += Number(o.total_usd ?? 0);
+    if (o.price_id) {
+      qtyByPrice.set(o.price_id, (qtyByPrice.get(o.price_id) ?? 0) + Number(o.keys_qty ?? 0));
+    }
+  }
+
+  const lines = prices.map(
+    (p) => `~ ${escapeHtml(p.duration_label)}   🛍️ ${qtyByPrice.get(p.id) ?? 0} keys`,
+  );
+  if (lines.length === 0) lines.push("Sin duraciones cargadas.");
+
+  const text =
+    `📥 <b>ventas de ${escapeHtml(name)} ${CX_PERIODS[period].label}</b>\n\n` +
+    `${lines.join("\n")}\n\n🔂 Total ~ $${total.toFixed(2)} USD`;
+
+  await stRender(chat_id, text, [navRow(`cxp:${period}`)], message_id);
+}
+
 function adminId() {
   return Number(getWarehouseChatId() ?? 0);
 }
