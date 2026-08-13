@@ -86,9 +86,22 @@ function isDuplicateWarehouseUpdate(update: Update): boolean {
   return false;
 }
 
+const seenCallbackIds = new Map<string, number>();
+
 function isRapidDuplicateCallback(callback?: TgCallback): boolean {
-  if (!callback?.data) return false;
+  if (!callback) return false;
   const now = Date.now();
+  // Control estricto por callback_query.id: nunca procesar dos veces el mismo tap.
+  if (callback.id) {
+    if (seenCallbackIds.has(callback.id)) return true;
+    seenCallbackIds.set(callback.id, now);
+    if (seenCallbackIds.size > 500) {
+      for (const [id, ts] of seenCallbackIds) {
+        if (now - ts >= UPDATE_DEDUP_MS) seenCallbackIds.delete(id);
+      }
+    }
+  }
+  if (!callback.data) return false;
   const key = `${callback.from.id}:${callback.data}`;
   const previous = recentWarehouseCallbacks.get(key);
   recentWarehouseCallbacks.set(key, now);
@@ -99,6 +112,7 @@ function isRapidDuplicateCallback(callback?: TgCallback): boolean {
   }
   return Boolean(previous && now - previous < CALLBACK_DEBOUNCE_MS);
 }
+
 
 // Admin actualmente activo (para tracking de mensajes a limpiar)
 let _currentAdminId: number | null = null;
@@ -115,8 +129,10 @@ async function editMessageText(
   text: string,
   extra: Record<string, unknown> = {},
 ) {
+  if (isBlankText(text)) return { ok: false, description: "blank text" };
   return _rawEditMessageText(bot, chat_id, message_id, text, bot === "warehouse" ? stripInicio(extra) : extra);
 }
+
 
 async function editMessageReplyMarkup(
   bot: "shop" | "warehouse",
@@ -131,13 +147,36 @@ async function editMessageReplyMarkup(
   return _rawEditMessageReplyMarkup(bot, chat_id, message_id, rm as never);
 }
 
+/** Chats donde la barra inferior debe adjuntarse al próximo mensaje real. */
+const pendingBottomBar = new Set<number>();
+
+function isBlankText(text: string) {
+  return !text || !text.replace(/[\s\u2060-\u2064\u200b-\u200f\uFEFF]/g, "").trim();
+}
+
 async function sendMessage(
   bot: "shop" | "warehouse",
   chat_id: number | string,
   text: string,
   extra: Record<string, unknown> = {},
 ) {
-  if (bot === "warehouse") extra = stripInicio(extra);
+  // Protección global: nunca enviar mensajes vacíos o invisibles.
+  if (isBlankText(text))
+    return { ok: false, description: "blank text" } as {
+      ok: boolean;
+      description?: string;
+      result?: { message_id: number; chat: { id: number } };
+    };
+
+  if (bot === "warehouse") {
+    extra = stripInicio(extra);
+    const numericChat = Number(chat_id);
+    if (pendingBottomBar.has(numericChat)) {
+      const rm = extra.reply_markup as { keyboard?: unknown } | undefined;
+      if (!rm?.keyboard) extra = { ...extra, reply_markup: adminBottomKeyboard() };
+      pendingBottomBar.delete(numericChat);
+    }
+  }
   const r = await _rawSendMessage(bot, chat_id, text, extra);
   if (bot === "warehouse" && r.ok && r.result) {
     sb.from("admin_trash")
@@ -146,6 +185,7 @@ async function sendMessage(
   }
   return r;
 }
+
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -375,11 +415,10 @@ async function ensureAdminBar(chat_id: number, admin_id: number) {
   const st = await getState(admin_id);
   const ctx = (st?.context ?? {}) as Record<string, unknown>;
   if (ctx.bar_shown) return;
-  // Adjuntar la barra inferior sin borrar ningún mensaje
-  await sendMessage("warehouse", chat_id, "\u2063", {
-    reply_markup: adminBottomKeyboard(),
-  });
+  // No enviar mensajes invisibles: la barra se adjunta al próximo mensaje real.
+  pendingBottomBar.add(Number(chat_id));
   await patchContext(admin_id, { bar_shown: true });
+
 }
 
 // Limpieza de mensajes del admin (todo menos los comprobantes pendientes)
