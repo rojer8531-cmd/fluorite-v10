@@ -145,7 +145,13 @@ async function sendMessage(
   extra: Record<string, unknown> = {},
 ) {
   // Protección global: nunca enviar mensajes vacíos o invisibles.
-  if (isBlankText(text)) return { ok: false, description: "blank text" } as const;
+  if (isBlankText(text))
+    return { ok: false, description: "blank text" } as {
+      ok: boolean;
+      description?: string;
+      result?: { message_id: number; chat: { id: number } };
+    };
+
   if (bot === "warehouse") {
     extra = stripInicio(extra);
     const numericChat = Number(chat_id);
@@ -393,11 +399,10 @@ async function ensureAdminBar(chat_id: number, admin_id: number) {
   const st = await getState(admin_id);
   const ctx = (st?.context ?? {}) as Record<string, unknown>;
   if (ctx.bar_shown) return;
-  // Adjuntar la barra inferior sin borrar ningún mensaje
-  await sendMessage("warehouse", chat_id, "\u2063", {
-    reply_markup: adminBottomKeyboard(),
-  });
+  // No enviar mensajes invisibles: la barra se adjunta al próximo mensaje real.
+  pendingBottomBar.add(Number(chat_id));
   await patchContext(admin_id, { bar_shown: true });
+
 }
 
 // Limpieza de mensajes del admin (todo menos los comprobantes pendientes)
