@@ -129,8 +129,10 @@ async function editMessageText(
   text: string,
   extra: Record<string, unknown> = {},
 ) {
+  if (isBlankText(text)) return { ok: false, description: "blank text" };
   return _rawEditMessageText(bot, chat_id, message_id, text, bot === "warehouse" ? stripInicio(extra) : extra);
 }
+
 
 async function editMessageReplyMarkup(
   bot: "shop" | "warehouse",
