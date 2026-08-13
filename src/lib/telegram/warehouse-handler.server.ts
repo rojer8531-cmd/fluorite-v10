@@ -131,13 +131,30 @@ async function editMessageReplyMarkup(
   return _rawEditMessageReplyMarkup(bot, chat_id, message_id, rm as never);
 }
 
+/** Chats donde la barra inferior debe adjuntarse al próximo mensaje real. */
+const pendingBottomBar = new Set<number>();
+
+function isBlankText(text: string) {
+  return !text || !text.replace(/[\s\u2060-\u2064\u200b-\u200f\uFEFF]/g, "").trim();
+}
+
 async function sendMessage(
   bot: "shop" | "warehouse",
   chat_id: number | string,
   text: string,
   extra: Record<string, unknown> = {},
 ) {
-  if (bot === "warehouse") extra = stripInicio(extra);
+  // Protección global: nunca enviar mensajes vacíos o invisibles.
+  if (isBlankText(text)) return { ok: false, description: "blank text" } as const;
+  if (bot === "warehouse") {
+    extra = stripInicio(extra);
+    const numericChat = Number(chat_id);
+    if (pendingBottomBar.has(numericChat)) {
+      const rm = extra.reply_markup as { keyboard?: unknown } | undefined;
+      if (!rm?.keyboard) extra = { ...extra, reply_markup: adminBottomKeyboard() };
+      pendingBottomBar.delete(numericChat);
+    }
+  }
   const r = await _rawSendMessage(bot, chat_id, text, extra);
   if (bot === "warehouse" && r.ok && r.result) {
     sb.from("admin_trash")
@@ -146,6 +163,7 @@ async function sendMessage(
   }
   return r;
 }
+
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
