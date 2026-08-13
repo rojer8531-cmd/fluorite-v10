@@ -204,10 +204,11 @@ function isAdmin(telegram_id: number) {
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
   inicio: "🏠 Inicio",
-  addkeys: "➕ Passwords",
+  addkeys: "🔐 Passwords",
   productos: "📝 Products",
   precios: "🛍️ Precios",
   metodos: "🏛️ Métodos",
+  choosex: "📥 ChooseX",
   todo: "📥 Everything Here",
 };
 
@@ -223,6 +224,7 @@ const ADMIN_TODO = {
 const ADMIN_LEGACY = {
   addkeys: "➕ Agregar Keys",
   addkeys2: "➕ Add Passwords",
+  addkeys3: "➕ Passwords",
   productos: "📦 Productos",
   productos2: "📦 Products",
   precios: "💰 Precios",
@@ -243,14 +245,14 @@ function adminBottomKeyboard() {
     keyboard: [
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.productos }],
       [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_TODO.usuarios }],
-      [{ text: ADMIN_TODO.stock }, { text: ADMIN_BOTTOM.precios }],
-      [{ text: ADMIN_TODO.minrecharge }],
+      [{ text: ADMIN_BOTTOM.choosex }],
     ],
     resize_keyboard: true,
     is_persistent: true,
     one_time_keyboard: false,
   };
 }
+
 
 // ===== Barra inferior permanente =====
 const ADMIN_BACK_LABEL = "⬅️ Atrás";
