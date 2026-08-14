@@ -3812,6 +3812,38 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id && cat) await adminStockCategory(chat_id, cat, cb.message?.message_id);
     return;
   }
+  if (data === "cx:menu") {
+    if (chat_id) await cxMenu(chat_id, cb.message?.message_id);
+    return;
+  }
+  if (data === "cx:prices") {
+    if (chat_id) await prCategories(chat_id, cb.from.id, cb.message?.message_id);
+    return;
+  }
+  if (data === "cx:stock") {
+    if (chat_id) await adminStockView(chat_id, cb.message?.message_id);
+    return;
+  }
+  if (data === "cx:minrec") {
+    if (chat_id) await adminPromptMinRecharge(chat_id);
+    return;
+  }
+  if (data === "cx:sales") {
+    if (chat_id) await cxSalesMenu(chat_id, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("cxp:")) {
+    const period = data.slice(4) as CxPeriod;
+    if (chat_id && CX_PERIODS[period]) await cxPeriodProducts(chat_id, period, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("cxs:")) {
+    const [, period, productId] = data.split(":");
+    if (chat_id && productId && CX_PERIODS[period as CxPeriod]) {
+      await cxProductSales(chat_id, period as CxPeriod, productId, cb.message?.message_id);
+    }
+    return;
+  }
   if (data === "akp:pend") {
     if (chat_id) await sendMessage("warehouse", chat_id, `Los comprobantes pendientes se gestionan desde el bot admin principal.`);
     return;
