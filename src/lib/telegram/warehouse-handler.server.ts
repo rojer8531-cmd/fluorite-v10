@@ -3681,6 +3681,10 @@ async function processWarehouseMessage(msg: TgMessage) {
       await showBackBar(msg.chat.id, msg.from.id);
       await pmStartFresh(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_BOTTOM.choosex:
+      await showBackBar(msg.chat.id, msg.from.id);
+      await cxMenu(msg.chat.id);
+      return;
 
     case ADMIN_TODO.borrar:
       await cleanAdminChat(msg.chat.id, msg.from.id);
@@ -3806,6 +3810,38 @@ async function handleCallback(cb: TgCallback) {
     const idx = Number(data.split(":")[1]);
     const cat = PD_CATEGORIES[idx];
     if (chat_id && cat) await adminStockCategory(chat_id, cat, cb.message?.message_id);
+    return;
+  }
+  if (data === "cx:menu") {
+    if (chat_id) await cxMenu(chat_id, cb.message?.message_id);
+    return;
+  }
+  if (data === "cx:prices") {
+    if (chat_id) await prCategories(chat_id, cb.from.id, cb.message?.message_id);
+    return;
+  }
+  if (data === "cx:stock") {
+    if (chat_id) await adminStockView(chat_id, cb.message?.message_id);
+    return;
+  }
+  if (data === "cx:minrec") {
+    if (chat_id) await adminPromptMinRecharge(chat_id);
+    return;
+  }
+  if (data === "cx:sales") {
+    if (chat_id) await cxSalesMenu(chat_id, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("cxp:")) {
+    const period = data.slice(4) as CxPeriod;
+    if (chat_id && CX_PERIODS[period]) await cxPeriodProducts(chat_id, period, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("cxs:")) {
+    const [, period, productId] = data.split(":");
+    if (chat_id && productId && CX_PERIODS[period as CxPeriod]) {
+      await cxProductSales(chat_id, period as CxPeriod, productId, cb.message?.message_id);
+    }
     return;
   }
   if (data === "akp:pend") {
