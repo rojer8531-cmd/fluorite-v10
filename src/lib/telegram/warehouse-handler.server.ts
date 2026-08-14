@@ -3681,6 +3681,10 @@ async function processWarehouseMessage(msg: TgMessage) {
       await showBackBar(msg.chat.id, msg.from.id);
       await pmStartFresh(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_BOTTOM.choosex:
+      await showBackBar(msg.chat.id, msg.from.id);
+      await cxMenu(msg.chat.id);
+      return;
 
     case ADMIN_TODO.borrar:
       await cleanAdminChat(msg.chat.id, msg.from.id);
