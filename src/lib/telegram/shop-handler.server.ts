@@ -206,6 +206,7 @@ const BOTTOM_MENU = {
   recharge: "🏛️ Top Up Balance",
   profile: "📜 My Profile",
   support: "➕ Support",
+  language: "🌐 Language",
   // Opciones legacy (ya no se muestran en la barra inferior, se conservan por compatibilidad)
   status: "📦 Estado",
   keys: "🔑 Mis Keys",
@@ -224,6 +225,8 @@ const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
   "My Profile": "profile",
   "➕ Support": "support",
   "Support": "support",
+  "🌐 Language": "language",
+  "Language": "language",
   // Legacy aliases (por si un usuario tiene un mensaje antiguo con estos textos)
   "🛍️ Productos": "products",
   "🛒 Productos": "products",
@@ -255,6 +258,7 @@ function bottomKeyboard() {
     keyboard: [
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.recharge }],
       [{ text: BOTTOM_MENU.profile }, { text: BOTTOM_MENU.support }],
+      [{ text: BOTTOM_MENU.language }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -1023,6 +1027,30 @@ async function showOfficialChannel(telegram_id: number, chat_id: number) {
   }
 }
 
+async function showLanguageMenu(telegram_id: number, chat_id: number) {
+  const { getLang, langMenuTitle, LANG_LABEL } = await import("./i18n.server");
+  const lang = await getLang(telegram_id);
+  await screen(telegram_id, chat_id, langMenuTitle(lang), [
+    [
+      { text: `~ ${LANG_LABEL.en}`, callback_data: "lang:set:en" },
+      { text: `~ ${LANG_LABEL.pt}`, callback_data: "lang:set:pt" },
+    ],
+    [
+      { text: `~ ${LANG_LABEL.es}`, callback_data: "lang:set:es" },
+      { text: `~ ${LANG_LABEL.hi}`, callback_data: "lang:set:hi" },
+    ],
+    HOME_ROW,
+  ]);
+}
+
+async function applyLanguage(telegram_id: number, chat_id: number, code: string) {
+  const { setLang, langAppliedText, LANGS } = await import("./i18n.server");
+  const lang = (LANGS as string[]).includes(code) ? (code as "es" | "en" | "pt" | "hi") : "es";
+  await setLang(telegram_id, chat_id, lang);
+  await screen(telegram_id, chat_id, langAppliedText(lang), [HOME_ROW]);
+  await sendMessage("shop", chat_id, "🏠 <b>Main Menu</b>", { reply_markup: bottomKeyboard() });
+}
+
 // Enrutado del menú inferior fijo. Devuelve true si manejó el texto.
 async function routeBottomMenu(
   text: string,
@@ -1039,6 +1067,7 @@ async function routeBottomMenu(
     keys: showMyKeys,
     share: showShareBot,
     download_panel: showDownloadPanel,
+    language: showLanguageMenu,
   };
   const key = BOTTOM_MENU_ALIASES[text] ?? (Object.entries(BOTTOM_MENU).find(([, label]) => label === text)?.[0] as keyof typeof BOTTOM_MENU | undefined);
   const action = key ? map[key] : undefined;
@@ -1724,7 +1753,9 @@ async function handleMessage(msg: TgMessage) {
   if (!msg.from) return;
   const telegram_id = msg.from.id;
   const chat_id = msg.chat.id;
-  const text = (msg.text ?? "").trim();
+  const rawText = (msg.text ?? "").trim();
+  const { untranslate } = await import("./i18n.server");
+  const text = untranslate(rawText);
 
   if (text === "/start" || text.startsWith("/start ")) {
     const rawParam = text.startsWith("/start ") ? text.slice(7).trim() : "";
@@ -1937,6 +1968,8 @@ async function handleCallback(cb: TgCallback) {
   await getOrCreateUser({ telegram_id, chat_id, username: cb.from.username });
 
   if (data === "menu:main") return showMainMenu(telegram_id, chat_id);
+  if (data === "lang:menu") return showLanguageMenu(telegram_id, chat_id);
+  if (data.startsWith("lang:set:")) return applyLanguage(telegram_id, chat_id, data.slice(9));
   if (data === "noop") return;
   if (data.startsWith("nob:")) {
     await notifyUser(chat_id, `💸 <b>Saldo insuficiente</b>\n\nNecesitás más saldo para comprar esta key. Usá <b>Recargar</b> para agregar saldo.`);
