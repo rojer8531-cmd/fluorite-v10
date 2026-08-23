@@ -191,12 +191,32 @@ export async function getMe(bot: BotKind) {
 }
 
 
+async function localizeShop(
+  bot: BotKind,
+  chat_id: number | string,
+  text: string,
+  extra: Record<string, unknown>,
+): Promise<{ text: string; extra: Record<string, unknown> }> {
+  if (bot !== "shop") return { text, extra };
+  try {
+    const { getLangByChat, translate, translateMarkup } = await import("./i18n.server");
+    const lang = await getLangByChat(Number(chat_id));
+    if (lang === "es") return { text, extra };
+    const out = { ...extra };
+    if (out.reply_markup) out.reply_markup = translateMarkup(out.reply_markup, lang);
+    return { text: translate(text, lang), extra: out };
+  } catch {
+    return { text, extra };
+  }
+}
+
 export async function sendMessage(
   bot: BotKind,
   chat_id: number | string,
   text: string,
   extra: Record<string, unknown> = {},
 ) {
+  ({ text, extra } = await localizeShop(bot, chat_id, text, extra));
   const safeText = limitTelegramText(text, MAX_MESSAGE_TEXT);
   const res = await tg<{ message_id: number; chat: { id: number } }>(bot, "sendMessage", {
     chat_id,
@@ -225,6 +245,7 @@ export async function editMessageText(
   text: string,
   extra: Record<string, unknown> = {},
 ) {
+  ({ text, extra } = await localizeShop(bot, chat_id, text, extra));
   const safeText = limitTelegramText(text, MAX_MESSAGE_TEXT);
   const res = await tg(bot, "editMessageText", {
     chat_id,

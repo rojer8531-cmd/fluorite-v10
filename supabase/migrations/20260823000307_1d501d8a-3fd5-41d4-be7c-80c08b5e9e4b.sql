@@ -1,0 +1,1 @@
+ALTER TABLE public.bot_users ADD COLUMN IF NOT EXISTS lang text NOT NULL DEFAULT 'es';
