@@ -186,6 +186,7 @@ export type Database = {
           display_name: string | null
           id: string
           is_authenticated: boolean
+          lang: string
           last_seen_at: string
           password_hash: string | null
           rank: Database["public"]["Enums"]["user_rank"]
@@ -205,6 +206,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_authenticated?: boolean
+          lang?: string
           last_seen_at?: string
           password_hash?: string | null
           rank?: Database["public"]["Enums"]["user_rank"]
@@ -224,6 +226,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_authenticated?: boolean
+          lang?: string
           last_seen_at?: string
           password_hash?: string | null
           rank?: Database["public"]["Enums"]["user_rank"]
