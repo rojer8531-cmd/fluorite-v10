@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { primeLang } from "./i18n.server";
 
 const sb = supabaseAdmin;
 
@@ -64,6 +65,7 @@ export async function getOrCreateUser(opts: {
     .eq("telegram_id", opts.telegram_id)
     .maybeSingle();
   if (existing) {
+    primeLang(opts.telegram_id, opts.chat_id, (existing as { lang?: string }).lang);
     const value = { ...(existing as BotUser), chat_id: opts.chat_id };
     userCache.set(opts.telegram_id, { value, expiresAt: now + USER_CACHE_TTL_MS });
     const lastWrite = lastSeenWrites.get(opts.telegram_id) ?? 0;
@@ -163,12 +165,17 @@ export async function setState(
     last_action_at: new Date().toISOString(),
   };
   stateCache.set(telegram_id, { value, expiresAt: Date.now() + STATE_CACHE_TTL_MS });
-  await sb.from("user_state").upsert({
-    telegram_id,
-    state,
-    context: context as never,
-    last_action_at: value.last_action_at,
-  });
+  // Escritura en segundo plano: la caché en memoria ya es la fuente inmediata,
+  // así el usuario no espera el round-trip a la base de datos.
+  void sb
+    .from("user_state")
+    .upsert({
+      telegram_id,
+      state,
+      context: context as never,
+      last_action_at: value.last_action_at,
+    })
+    .then(() => {}, () => {});
 }
 
 export async function patchContext(
@@ -186,14 +193,15 @@ export async function patchContext(
     last_action_at: new Date().toISOString(),
   };
   stateCache.set(telegram_id, { value, expiresAt: Date.now() + STATE_CACHE_TTL_MS });
-  await sb
+  void sb
     .from("user_state")
     .upsert({
       telegram_id,
       state: cur?.state ?? "idle",
       context: merged as never,
       last_action_at: value.last_action_at,
-    });
+    })
+    .then(() => {}, () => {});
 }
 
 /** Single-flight lock para /start (800ms). Devuelve true si adquirió el lock. */
@@ -326,9 +334,10 @@ export async function setActiveMessage(
   ) {
     return;
   }
-  await sb
+  void sb
     .from("active_messages")
-    .upsert({ telegram_id, chat_id, message_id });
+    .upsert({ telegram_id, chat_id, message_id })
+    .then(() => {}, () => {});
 }
 
 export { sb };

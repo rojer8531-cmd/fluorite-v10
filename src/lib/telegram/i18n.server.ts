@@ -16,7 +16,15 @@ const DEFAULT_LANG: Lang = "es";
 
 const langByChat = new Map<number, { value: Lang; at: number }>();
 const langByUser = new Map<number, { value: Lang; at: number }>();
-const TTL = 60_000;
+const TTL = 600_000;
+
+/** Guarda el idioma ya conocido (evita una consulta extra al enviar mensajes). */
+export function primeLang(telegram_id: number, chat_id: number, lang: unknown) {
+  const value = norm(lang);
+  const at = Date.now();
+  langByUser.set(telegram_id, { value, at });
+  langByChat.set(chat_id, { value, at });
+}
 
 function norm(v: unknown): Lang {
   return LANGS.includes(v as Lang) ? (v as Lang) : DEFAULT_LANG;
