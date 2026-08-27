@@ -2295,7 +2295,7 @@ interface UsFlow {
   tg?: number;
   product_id?: string;
   price_id?: string;
-  step?: "find" | "msg" | "disc";
+  step?: "find" | "msg" | "disc" | "balsub" | "baladd";
 }
 
 const US_PAGE_SIZE = 6;
