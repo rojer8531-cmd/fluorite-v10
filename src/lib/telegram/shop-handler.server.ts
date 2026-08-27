@@ -202,11 +202,11 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
-  products: "🛍 Buy keys",
-  recharge: "🏛️ Top Up Balance",
-  profile: "📜 My Profile",
-  support: "➕ Support",
-  language: "🌐 Language",
+  products: "📂-𝐏𝐫𝐨𝐝𝐮𝐜𝐭𝐨𝐬",
+  recharge: "🏛️- 𝐑𝐞𝐜𝐚𝐫𝐠𝐚𝐫 𝐬𝐚𝐥𝐝𝐨",
+  profile: "🔂- 𝐌𝐢 𝐩𝐞𝐫𝐟𝐢𝐥",
+  support: "🔀- 𝐒𝐮𝐩𝐩𝐨𝐫𝐭",
+  language: "𝐈𝐝𝐢𝐨𝐦𝐚",
   // Opciones legacy (ya no se muestran en la barra inferior, se conservan por compatibilidad)
   status: "📦 Estado",
   keys: "🔑 Mis Keys",
@@ -215,6 +215,15 @@ const BOTTOM_MENU = {
 };
 
 const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
+  "📂-𝐏𝐫𝐨𝐝𝐮𝐜𝐭𝐨𝐬": "products",
+  "𝐏𝐫𝐨𝐝𝐮𝐜𝐭𝐨𝐬": "products",
+  "🏛️- 𝐑𝐞𝐜𝐚𝐫𝐠𝐚𝐫 𝐬𝐚𝐥𝐝𝐨": "recharge",
+  "𝐑𝐞𝐜𝐚𝐫𝐠𝐚𝐫 𝐬𝐚𝐥𝐝𝐨": "recharge",
+  "🔂- 𝐌𝐢 𝐩𝐞𝐫𝐟𝐢𝐥": "profile",
+  "𝐌𝐢 𝐩𝐞𝐫𝐟𝐢𝐥": "profile",
+  "🔀- 𝐒𝐮𝐩𝐩𝐨𝐫𝐭": "support",
+  "𝐒𝐮𝐩𝐩𝐨𝐫𝐭": "support",
+  "𝐈𝐝𝐢𝐨𝐦𝐚": "language",
   "🛍 Buy keys": "products",
   "Buy keys": "products",
   "🫟 Products": "products",
@@ -227,6 +236,7 @@ const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
   "Support": "support",
   "🌐 Language": "language",
   "Language": "language",
+
   // Legacy aliases (por si un usuario tiene un mensaje antiguo con estos textos)
   "🛍️ Productos": "products",
   "🛒 Productos": "products",
