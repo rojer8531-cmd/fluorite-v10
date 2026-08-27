@@ -433,6 +433,13 @@ async function showBuyWithBalance(telegram_id: number, chat_id: number) {
   await showProducts(telegram_id, chat_id);
 }
 
+/** Número de orden numérico de 11 dígitos derivado del UUID de la orden. */
+function orderNumber(orderId: string): string {
+  const digits = orderId.replace(/\D/g, "");
+  if (digits.length >= 11) return digits.slice(0, 11);
+  return (digits + `${Date.now()}`).slice(0, 11).padEnd(11, "0");
+}
+
 async function showProfile(telegram_id: number, chat_id: number) {
   const { data: u } = await sb
     .from("bot_users")
@@ -444,18 +451,13 @@ async function showProfile(telegram_id: number, chat_id: number) {
   const balance = Number(u.balance);
 
   const text =
-    `🏛️ <b>All My Profile Information and Data</b>\n` +
-    `━━━━━━━━━━━━━━━\n` +
-    `🪪 <b>Nombre:</b> ${escapeHtml(u.display_name ?? "—")}\n` +
-    `💬 <b>Usuario:</b> @${escapeHtml(u.username ?? "—")}\n` +
-    `🆔 <b>ID:</b> <code>${u.telegram_id}</code>\n\n` +
-    `📨 <b>Saldo Actual:</b>       ~${balance.toFixed(2)} USD\n` +
-    `🛍 <b>Total Comprado:</b> ~${total.toFixed(2)} USD\n` +
-    `━━━━━━━━━━━━━━━\n\n` +
-    `Download Reseller Panel`;
+    `🏛️  𝐏𝐫𝐨𝐟𝐢𝐥𝐞 𝐈𝐧𝐟𝐨𝐫𝐦𝐚𝐭𝐢𝐨𝐧\n\n` +
+    ` 𝐔𝐬𝐞𝐫 𝐈𝐃: ${u.telegram_id}\n\n` +
+    `🔂-𝐁𝐚𝐥𝐚𝐧𝐜𝐞 :       ${balance.toFixed(2)} USD\n\n` +
+    `🔀-𝐏𝐮𝐫𝐜𝐡𝐚𝐬𝐞𝐝: ${total.toFixed(2)} USD`;
 
   await screen(telegram_id, chat_id, text, [
-    [{ text: "📥 Download Reseller Panel", url: DOWNLOAD_PANEL_URL }],
+    [{ text: "𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐞𝐝 𝐅𝐢𝐥𝐞", url: DOWNLOAD_PANEL_URL }],
     [{ text: "🏘️ Home", callback_data: "menu:main" }],
   ]);
 
