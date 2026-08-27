@@ -2420,25 +2420,72 @@ async function usDetail(
     return;
   }
   const name = u.display_name ?? u.username ?? "Usuario";
-  const head = found
-    ? `🔏 <b>Usuario encontrado</b>\n\n⭕️ ${escapeHtml(name)}\n🆔 <code>${u.telegram_id}</code>\n💲 Saldo: ${Number(u.balance).toFixed(2)} USD`
-    : `⭕️ <b>${escapeHtml(name)}</b>\n\n🆔 <code>${u.telegram_id}</code>\n💲 Saldo: ${Number(u.balance).toFixed(2)} USD`;
+  const head = `𝐂𝐥𝐢𝐞𝐧𝐭 𝐒𝐞𝐥𝐞𝐜𝐭𝐞𝐝 𝐂𝐨𝐫𝐫𝐞𝐜𝐭𝐥𝐲\n🔀 -${escapeHtml(name)}\n🔂 -<code>${u.telegram_id}</code>`;
   await usRender(
     chat_id,
     uid,
     head,
     [
       [
-        { text: "🔜 Mensaje", callback_data: "usmsg" },
-        { text: "🔜 Bloquear", callback_data: "usblock" },
+        { text: "𝐌𝐞𝐬𝐬𝐚𝐠𝐞", callback_data: "usmsg" },
+        { text: "𝐁𝐥𝐨𝐜𝐤", callback_data: "usblock" },
       ],
-      [{ text: "🔜 Descuento", callback_data: "usdisc" }],
+      [
+        { text: "𝐃𝐢𝐬𝐜𝐨𝐮𝐧𝐭", callback_data: "usdisc" },
+        { text: "𝐃𝐞𝐬𝐜𝐨𝐮𝐧𝐭𝐚𝐫", callback_data: "usbal" },
+      ],
       [{ text: "🔚 Atrás", callback_data: "usback" }, US_HOME_BTN],
     ],
     message_id,
     { page: flow?.page ?? 0, tg: u.telegram_id },
   );
 }
+
+/** Pantalla de saldo del usuario seleccionado. */
+async function usBalance(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
+  const { data: u } = await sb
+    .from("bot_users")
+    .select("balance, total_recharged")
+    .eq("telegram_id", flow.tg!)
+    .maybeSingle();
+  if (!u) return usList(chat_id, uid, flow.page ?? 0, message_id);
+  await usRender(
+    chat_id,
+    uid,
+    `𝐔𝐬𝐞𝐫’𝐬 𝐂𝐮𝐫𝐫𝐞𝐧𝐭 𝐁𝐚𝐥𝐚𝐧𝐜𝐞\n🔀 𝐀𝐜𝐭𝐮𝐚𝐥 - ${Number(u.balance).toFixed(2)} USD\n🔄 𝐆𝐚𝐬𝐭𝐨 - ${Number(u.total_recharged).toFixed(2)} USD`,
+    [
+      [
+        { text: "𝐑𝐞𝐬𝐭𝐚𝐫 𝐬𝐚𝐥𝐝𝐨", callback_data: "usbalsub" },
+        { text: "𝐀𝐝𝐝 𝐁𝐚𝐥𝐚𝐧𝐜𝐞", callback_data: "usbaladd" },
+      ],
+      [{ text: "🔙 𝐁𝐚𝐜𝐤", callback_data: "usu:back" }, { text: "🏠𝐇𝐨𝐦𝐞", callback_data: "akp:inicio" }],
+    ],
+    message_id,
+    { page: flow.page, tg: flow.tg },
+  );
+}
+
+async function usPromptBalance(
+  chat_id: number,
+  uid: number,
+  flow: UsFlow,
+  mode: "balsub" | "baladd",
+  message_id?: number,
+) {
+  const text =
+    mode === "balsub"
+      ? `🔁 𝐄𝐧𝐯𝐢́𝐚 𝐥𝐚 𝐜𝐚𝐧𝐭𝐢𝐝𝐚𝐝 𝐪𝐮𝐞 𝐬𝐞 𝐥𝐞 𝐝𝐞𝐬𝐜𝐨𝐧𝐭𝐚𝐫𝐚́ 𝐚𝐥 𝐮𝐬𝐮𝐚𝐫𝐢𝐨 𝐬𝐞𝐥𝐞𝐜𝐜𝐢𝐨𝐧𝐚𝐝𝐨.`
+      : `🔁 𝐄𝐧𝐯𝐢́𝐚 𝐥𝐚 𝐜𝐚𝐧𝐭𝐢𝐝𝐚𝐝 𝐪𝐮𝐞 𝐬𝐞 𝐥𝐞 𝐬𝐮𝐦𝐚𝐫𝐚́ 𝐚𝐥 𝐮𝐬𝐮𝐚𝐫𝐢𝐨.`;
+  await usRender(
+    chat_id,
+    uid,
+    text,
+    [[{ text: "🔙 𝐁𝐚𝐜𝐤", callback_data: "usbal" }, { text: "🏠𝐇𝐨𝐦𝐞", callback_data: "akp:inicio" }]],
+    message_id,
+    { page: flow.page, tg: flow.tg, step: mode },
+  );
+}
+
 
 async function usPromptMessage(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
   await usRender(
