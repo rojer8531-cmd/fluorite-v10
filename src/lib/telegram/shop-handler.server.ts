@@ -1179,7 +1179,7 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
   const productName = String(last?.product_name ?? "Producto");
   const duration = String(last?.duration_label ?? "");
   const balanceLeft = Number(last?.new_balance ?? 0);
-  const orderId = String(last?.order_id ?? "").replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
+  const orderId = orderNumber(String(last?.order_id ?? ""));
 
   const { data: prodRow } = await sb
     .from("product_prices")
@@ -1190,14 +1190,14 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
 
   const text =
     `✅ <b>Purchase Confirmed • ${escapeHtml(productName)} ${escapeHtml(short)}</b>\n\n` +
-    `📦 <b>Producto:</b> ${escapeHtml(productName)}\n` +
-    `⏳ <b>Duración:</b> ${escapeHtml(duration)}\n` +
-    `💵 <b>Total Pagado:</b> ${totalPaid.toFixed(2)} USD\n\n` +
-    `🔑 <b>Key${keys.length > 1 ? "s" : ""}:</b>\n` +
+    ` 𝐏𝐫𝐨𝐝𝐮𝐜𝐭𝐨 - ${escapeHtml(productName)}\n\n` +
+    `🔂 𝐃𝐮𝐫𝐚𝐜𝐢ó𝐧: ${escapeHtml(duration)}\n\n` +
+    `🔀 𝐓𝐨𝐭𝐚𝐥 𝐏𝐚𝐠𝐚𝐝𝐨: ${totalPaid.toFixed(2)} USD\n\n` +
+    `𝐏𝐚𝐬𝐬𝐰𝐨𝐫𝐝 :\n\n` +
     keys.map((k) => `<code>${escapeHtml(k)}</code>`).join("\n") +
-    `\n\n🧾 <b>Orden:</b> #${escapeHtml(orderId)}\n` +
-    `💼 <b>Saldo Restante:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
-    `Gracias por tu compra.`;
+    `\n\n🧾 Orden: #${escapeHtml(orderId)}\n\n` +
+    `•Restante: ${balanceLeft.toFixed(2)} USD\n\n` +
+    `𝐁𝐚𝐜𝐤 𝐭𝐨 𝐭𝐡𝐞 𝐩𝐫𝐢𝐦𝐞, 𝐭𝐡𝐞 𝐦𝐨𝐬𝐭 𝐡𝐚𝐭𝐞𝐝`;
 
   await screen(telegram_id, chat_id, text, [NAV_ROW("menu:products")], { final: true });
 }
