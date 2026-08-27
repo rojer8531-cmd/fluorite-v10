@@ -4118,6 +4118,23 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id && flow?.tg) await usApplyBlock(chat_id, cb.from.id, flow, cb.message?.message_id);
     return;
   }
+  if (data === "usbal") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg) await usBalance(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data === "usbalsub" || data === "usbaladd") {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg)
+      await usPromptBalance(
+        chat_id,
+        cb.from.id,
+        flow,
+        data === "usbalsub" ? "balsub" : "baladd",
+        cb.message?.message_id,
+      );
+    return;
+  }
   if (data === "usdisc") {
     const flow = await getUsFlow(cb.from.id);
     if (chat_id && flow?.tg) await usDiscountProducts(chat_id, cb.from.id, flow, cb.message?.message_id);
