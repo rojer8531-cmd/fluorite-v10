@@ -1191,13 +1191,13 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
   const short = categoryShort((prodRow as { products?: { category?: string } } | null)?.products?.category ?? "");
 
   const text =
-    `✅ <b>Purchase Confirmed • ${escapeHtml(productName)} ${escapeHtml(short)}</b>\n` +
+    `✅ <b>Purchase Confirmed • ${escapeHtml(productName)} ${escapeHtml(short)}</b>\n\n` +
     `𝐏𝐫𝐨𝐝𝐮𝐜𝐭𝐨 - ${escapeHtml(productName)}\n` +
     `🔂 𝐃𝐮𝐫𝐚𝐜𝐢ó𝐧: ${escapeHtml(duration)}\n` +
-    `🔀 𝐓𝐨𝐭𝐚𝐥 𝐏𝐚𝐠𝐚𝐝𝐨: ${totalPaid.toFixed(2)} USD\n` +
-    `𝐏𝐚𝐬𝐬𝐰𝐨𝐫𝐝:\n` +
+    `🔀 𝐓𝐨𝐭𝐚𝐥 𝐏𝐚𝐠𝐚𝐝𝐨: ${totalPaid.toFixed(2)} USD\n\n` +
+    `𝐏𝐚𝐬𝐬𝐰𝐨𝐫𝐝 :\n` +
     keys.map((k) => `<code>${escapeHtml(k)}</code>`).join("\n") +
-    `\n🧾 Orden: #${escapeHtml(orderId)}\n` +
+    `\n\n🧾 Orden: #${escapeHtml(orderId)}\n` +
     `• Restante: ${balanceLeft.toFixed(2)} USD\n` +
     `𝐁𝐚𝐜𝐤 𝐭𝐨 𝐭𝐡𝐞 𝐩𝐫𝐢𝐦𝐞, 𝐭𝐡𝐞 𝐦𝐨𝐬𝐭 𝐡𝐚𝐭𝐞𝐝`;
 
