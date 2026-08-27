@@ -433,6 +433,13 @@ async function showBuyWithBalance(telegram_id: number, chat_id: number) {
   await showProducts(telegram_id, chat_id);
 }
 
+/** Número de orden numérico de 11 dígitos derivado del UUID de la orden. */
+function orderNumber(orderId: string): string {
+  const digits = orderId.replace(/\D/g, "");
+  if (digits.length >= 11) return digits.slice(0, 11);
+  return (digits + `${Date.now()}`).slice(0, 11).padEnd(11, "0");
+}
+
 async function showProfile(telegram_id: number, chat_id: number) {
   const { data: u } = await sb
     .from("bot_users")
@@ -444,18 +451,13 @@ async function showProfile(telegram_id: number, chat_id: number) {
   const balance = Number(u.balance);
 
   const text =
-    `🏛️ <b>All My Profile Information and Data</b>\n` +
-    `━━━━━━━━━━━━━━━\n` +
-    `🪪 <b>Nombre:</b> ${escapeHtml(u.display_name ?? "—")}\n` +
-    `💬 <b>Usuario:</b> @${escapeHtml(u.username ?? "—")}\n` +
-    `🆔 <b>ID:</b> <code>${u.telegram_id}</code>\n\n` +
-    `📨 <b>Saldo Actual:</b>       ~${balance.toFixed(2)} USD\n` +
-    `🛍 <b>Total Comprado:</b> ~${total.toFixed(2)} USD\n` +
-    `━━━━━━━━━━━━━━━\n\n` +
-    `Download Reseller Panel`;
+    `🏛️  𝐏𝐫𝐨𝐟𝐢𝐥𝐞 𝐈𝐧𝐟𝐨𝐫𝐦𝐚𝐭𝐢𝐨𝐧\n\n` +
+    ` 𝐔𝐬𝐞𝐫 𝐈𝐃: ${u.telegram_id}\n\n` +
+    `🔂-𝐁𝐚𝐥𝐚𝐧𝐜𝐞 :       ${balance.toFixed(2)} USD\n\n` +
+    `🔀-𝐏𝐮𝐫𝐜𝐡𝐚𝐬𝐞𝐝: ${total.toFixed(2)} USD`;
 
   await screen(telegram_id, chat_id, text, [
-    [{ text: "📥 Download Reseller Panel", url: DOWNLOAD_PANEL_URL }],
+    [{ text: "𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝𝐞𝐝 𝐅𝐢𝐥𝐞", url: DOWNLOAD_PANEL_URL }],
     [{ text: "🏘️ Home", callback_data: "menu:main" }],
   ]);
 
@@ -1179,7 +1181,7 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
   const productName = String(last?.product_name ?? "Producto");
   const duration = String(last?.duration_label ?? "");
   const balanceLeft = Number(last?.new_balance ?? 0);
-  const orderId = String(last?.order_id ?? "").replace(/-/g, "").slice(0, 13) || `${Date.now()}`;
+  const orderId = orderNumber(String(last?.order_id ?? ""));
 
   const { data: prodRow } = await sb
     .from("product_prices")
@@ -1190,14 +1192,14 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
 
   const text =
     `✅ <b>Purchase Confirmed • ${escapeHtml(productName)} ${escapeHtml(short)}</b>\n\n` +
-    `📦 <b>Producto:</b> ${escapeHtml(productName)}\n` +
-    `⏳ <b>Duración:</b> ${escapeHtml(duration)}\n` +
-    `💵 <b>Total Pagado:</b> ${totalPaid.toFixed(2)} USD\n\n` +
-    `🔑 <b>Key${keys.length > 1 ? "s" : ""}:</b>\n` +
+    ` 𝐏𝐫𝐨𝐝𝐮𝐜𝐭𝐨 - ${escapeHtml(productName)}\n\n` +
+    `🔂 𝐃𝐮𝐫𝐚𝐜𝐢ó𝐧: ${escapeHtml(duration)}\n\n` +
+    `🔀 𝐓𝐨𝐭𝐚𝐥 𝐏𝐚𝐠𝐚𝐝𝐨: ${totalPaid.toFixed(2)} USD\n\n` +
+    `𝐏𝐚𝐬𝐬𝐰𝐨𝐫𝐝 :\n\n` +
     keys.map((k) => `<code>${escapeHtml(k)}</code>`).join("\n") +
-    `\n\n🧾 <b>Orden:</b> #${escapeHtml(orderId)}\n` +
-    `💼 <b>Saldo Restante:</b> ${balanceLeft.toFixed(2)} USD\n\n` +
-    `Gracias por tu compra.`;
+    `\n\n🧾 Orden: #${escapeHtml(orderId)}\n\n` +
+    `•Restante: ${balanceLeft.toFixed(2)} USD\n\n` +
+    `𝐁𝐚𝐜𝐤 𝐭𝐨 𝐭𝐡𝐞 𝐩𝐫𝐢𝐦𝐞, 𝐭𝐡𝐞 𝐦𝐨𝐬𝐭 𝐡𝐚𝐭𝐞𝐝`;
 
   await screen(telegram_id, chat_id, text, [NAV_ROW("menu:products")], { final: true });
 }
