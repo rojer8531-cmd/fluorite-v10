@@ -18,6 +18,7 @@ import {
   blockUserPermanent,
   getState,
   patchContext,
+  updateUser,
 } from "./db.server";
 import {
   getStockByPriceId,
