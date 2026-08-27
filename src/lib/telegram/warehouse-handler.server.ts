@@ -2684,6 +2684,56 @@ async function usSubmitText(msg: TgMessage, flow: UsFlow, rawText: string) {
     );
     return;
   }
+
+  if ((flow.step === "balsub" || flow.step === "baladd") && flow.tg) {
+    const n = Number(text.replace(",", "."));
+    const { data: u } = await sb
+      .from("bot_users")
+      .select("balance")
+      .eq("telegram_id", flow.tg)
+      .maybeSingle();
+    if (!u) {
+      await usList(chat_id, uid, flow.page ?? 0, flow.message_id);
+      return;
+    }
+    const cur = Number(u.balance);
+    const sub = flow.step === "balsub";
+    if (!Number.isFinite(n) || n <= 0 || n > 1_000_000 || (sub && n > cur)) {
+      await usRender(
+        chat_id,
+        uid,
+        sub
+          ? `⭕️ 𝐂𝐚𝐧𝐭𝐢𝐝𝐚𝐝 𝐢𝐧𝐯𝐚́𝐥𝐢𝐝𝐚. 𝐒𝐚𝐥𝐝𝐨 𝐚𝐜𝐭𝐮𝐚𝐥: ${cur.toFixed(2)} USD`
+          : `⭕️ 𝐂𝐚𝐧𝐭𝐢𝐝𝐚𝐝 𝐢𝐧𝐯𝐚́𝐥𝐢𝐝𝐚.`,
+        [[{ text: "🔙 𝐁𝐚𝐜𝐤", callback_data: "usbal" }, { text: "🏠𝐇𝐨𝐦𝐞", callback_data: "akp:inicio" }]],
+        flow.message_id,
+        { page: flow.page, tg: flow.tg, step: flow.step },
+      );
+      return;
+    }
+    const next = sub ? cur - n : cur + n;
+    await updateUser(flow.tg, { balance: next });
+    sb.from("admin_logs")
+      .insert({
+        admin_telegram_id: uid,
+        action: sub ? "balance_subtract" : "balance_add",
+        target_type: "telegram_id",
+        target_id: String(flow.tg),
+        details: { amount: n, balance: next },
+      })
+      .then(() => {}, () => {});
+    await usRender(
+      chat_id,
+      uid,
+      sub
+        ? `𝐒𝐚𝐥𝐝𝐨 𝐝𝐞𝐬𝐜𝐨𝐧𝐭𝐚𝐝𝐨 𝐜𝐨𝐫𝐫𝐞𝐜𝐭𝐚𝐦𝐞𝐧𝐭𝐞\n\n🔀 𝐀𝐜𝐭𝐮𝐚𝐥 - ${next.toFixed(2)} USD\n🔄 𝐃𝐞𝐬𝐜𝐨𝐧𝐭𝐚𝐝𝐨 - ${n.toFixed(2)} USD`
+        : `𝐒𝐚𝐥𝐝𝐨 𝐀𝐠𝐫𝐞𝐠𝐚𝐝𝐨 𝐜𝐨𝐫𝐫𝐞𝐜𝐭𝐚𝐦𝐞𝐧𝐭𝐞\n\n🔀 𝐀𝐜𝐭𝐮𝐚𝐥 - ${next.toFixed(2)} USD\n🔄 𝐀𝐠𝐫𝐞𝐠𝐚𝐝𝐨 - ${n.toFixed(2)} USD`,
+      [[{ text: "🔙 𝐁𝐚𝐜𝐤", callback_data: "usbal" }, { text: "🏠𝐇𝐨𝐦𝐞", callback_data: "akp:inicio" }]],
+      flow.message_id,
+      { page: flow.page, tg: flow.tg },
+    );
+    return;
+  }
 }
 
 
