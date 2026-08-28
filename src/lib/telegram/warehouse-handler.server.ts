@@ -1148,6 +1148,19 @@ function navRow(backCb: string): Array<{ text: string; callback_data: string }> 
   ];
 }
 
+/** Convierte texto ASCII a la fuente matemática en negrita (𝐀𝐚𝟏). */
+function mb(input: string): string {
+  let out = "";
+  for (const ch of input) {
+    const c = ch.codePointAt(0)!;
+    if (c >= 65 && c <= 90) out += String.fromCodePoint(0x1d400 + (c - 65));
+    else if (c >= 97 && c <= 122) out += String.fromCodePoint(0x1d41a + (c - 97));
+    else if (c >= 48 && c <= 57) out += String.fromCodePoint(0x1d7ce + (c - 48));
+    else out += ch;
+  }
+  return out;
+}
+
 const CATEGORY_LABELS = ["Free Fire: iOS", "Free Fire: Android", "Free Fire: Auxiliar"];
 
 function categoryRows(prefix: string): AkKeyboard {
@@ -1728,14 +1741,15 @@ async function adminListaPrecios(
   if (category) q = q.eq("category", category as never);
   const { data: products } = await q.order("sort_order");
   if (!products || products.length === 0) {
-    await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 No hay productos en esta categoría.`, [navRow("akp:prlist")], message_id);
+    await prRender(chat_id, uid, `${mb("Productos disponibles")}\n\n⁃ —`, [navRow("akp:prlist")], message_id);
     return;
   }
   const kb: AkKeyboard = products.map((p) => [
     { text: `${p.name}`, callback_data: `prprod:${p.id}` },
   ]);
   kb.push(navRow("akp:prlist"));
-  await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 Elegí el producto:`, kb, message_id);
+  const list = products.map((p) => `⁃ ${escapeHtml(p.name)}`).join("\n");
+  await prRender(chat_id, uid, `${mb("Productos disponibles")}\n\n${list}`, kb, message_id);
 }
 
 async function prStartFresh(chat_id: number, uid: number) {
@@ -1765,13 +1779,13 @@ async function adminPriceDurations(chat_id: number, uid: number, product_id: str
   const name = prod.name;
   const catIdx = PD_CATEGORIES.indexOf(prod.category as PdCategory);
   const kb: AkKeyboard = prices.map((p) => [
-    { text: `${p.duration_label}`, callback_data: `pred:${p.id}` },
+    { text: mb(`Max ${p.duration_label}`), callback_data: `pred:${p.id}` },
   ]);
   kb.push(navRow(catIdx >= 0 ? `prcat:${catIdx}` : "akp:prlist"));
   await prRender(
     chat_id,
     uid,
-    `💲 <b>Editar Precios</b>\n\n📦 ${escapeHtml(name)}\n\nElegí la duración:`,
+    `${mb("Free Fire")}: ${mb(escapeHtml(name))}`,
     kb,
     message_id,
     { product_id },
@@ -1792,8 +1806,8 @@ async function adminPromptNewPrice(chat_id: number, uid: number, price_id: strin
   await prRender(
     chat_id,
     uid,
-    `💲 <b>Editar Precio</b>\n\n📦 ${escapeHtml(name)}\n🛍️ ${escapeHtml(p.duration_label)}\n💰 $${Number(p.price_usd).toFixed(2)} USD\n\nEnviá el nuevo precio.\nEjemplo: <code>4.50</code>`,
-    [[{ text: "🔚 Atrás", callback_data: `prback:${p.product_id}` }, PR_HOME_BTN]],
+    `${mb("Free Fire")} — ${mb("Precio")}: ${mb(escapeHtml(name))}\n\n🔀 ${mb(escapeHtml(name))}\n🔄 ${mb(escapeHtml(p.duration_label))}\n🔀 $${Number(p.price_usd).toFixed(2)} USD\n\n${mb("Enter the new price")} ${mb("Example")}: ${mb("4.50")}`,
+    [navRow(`prback:${p.product_id}`)],
     message_id,
     { product_id: p.product_id, price_id },
   );
@@ -1818,8 +1832,8 @@ async function prSubmitPrice(msg: TgMessage, flow: PrFlow, rawText: string) {
     await prRender(
       flow.chat_id,
       uid,
-      `💲 <b>Editar Precio</b>\n\n📦 ${escapeHtml(name)}\n🛍️ ${escapeHtml(p.duration_label)}\n💰 $${Number(p.price_usd).toFixed(2)} USD\n\nPrecio inválido. Enviá el nuevo precio.\nEjemplo: <code>4.50</code>`,
-      [[{ text: "🔚 Atrás", callback_data: `prback:${p.product_id}` }, PR_HOME_BTN]],
+      `${mb("Free Fire")} — ${mb("Precio")}: ${mb(escapeHtml(name))}\n\n🔀 ${mb(escapeHtml(name))}\n🔄 ${mb(escapeHtml(p.duration_label))}\n🔀 $${Number(p.price_usd).toFixed(2)} USD\n\n⚠️ ${mb("Enter the new price")} ${mb("Example")}: ${mb("4.50")}`,
+      [navRow(`prback:${p.product_id}`)],
       flow.message_id,
       { product_id: p.product_id, price_id: flow.price_id },
     );
@@ -1832,8 +1846,8 @@ async function prSubmitPrice(msg: TgMessage, flow: PrFlow, rawText: string) {
   await prRender(
     flow.chat_id,
     uid,
-    `✅ <b>Precio actualizado.</b>\n\n📦 ${escapeHtml(name)}\n🛍️ ${escapeHtml(p.duration_label)}\n💰 $${n.toFixed(2)} USD`,
-    [[{ text: "🔚 Atrás", callback_data: `prback:${p.product_id}` }, PR_HOME_BTN]],
+    `${mb("Free Fire")} — ${mb("Precio")}: ${mb(escapeHtml(name))}\n\n🔀 ${mb(escapeHtml(name))}\n🔄 ${mb(escapeHtml(p.duration_label))}\n🔀 $${n.toFixed(2)} USD`,
+    [navRow(`prback:${p.product_id}`)],
     flow.message_id,
     { product_id: p.product_id },
   );
@@ -1930,10 +1944,14 @@ async function pdList(chat_id: number, uid: number, category: PdCategory, messag
   ]);
   kb.push([{ text: "➕ Agregar producto", callback_data: "pdadd" }]);
   kb.push(navRow("pdcats"));
+  const list =
+    (products ?? []).length > 0
+      ? (products ?? []).map((p) => `⁃ ${escapeHtml(p.name)}${p.active ? "" : " ⏸️"}`).join("\n")
+      : "⁃ —";
   await pdRender(
     chat_id,
     uid,
-    `❇️ <b>Lista de productos</b>\n\n🏷️ ${escapeHtml(category)}`,
+    `${mb("Productos disponibles")}\n\n${list}`,
     kb,
     message_id,
     { category },
@@ -1952,20 +1970,17 @@ async function pdProductMenu(chat_id: number, uid: number, product_id: string, m
   }
   const category = p.category as PdCategory;
   const kb: AkKeyboard = [
-    [{ text: "🔏 Renombrar", callback_data: `pdren:${p.id}` }],
     [
-      {
-        text: p.active ? "🔏 Desactivar" : "🔏 Activar",
-        callback_data: `pdtog:${p.id}`,
-      },
+      { text: mb("Renombrar"), callback_data: `pdren:${p.id}` },
+      { text: mb(p.active ? "Desactivar" : "Activar"), callback_data: `pdtog:${p.id}` },
     ],
-    [{ text: "🗑️ Eliminar definitivamente", callback_data: `pddel:${p.id}` }],
-    [{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN],
+    [{ text: mb("Eliminar"), callback_data: `pddel:${p.id}` }],
+    navRow("pdback"),
   ];
   await pdRender(
     chat_id,
     uid,
-    `${p.active ? "✅" : "⏸️"} <b>${escapeHtml(p.name)}</b> ${p.active ? "activo" : "desactivado"}`,
+    `${mb("Free Fire")} — ${mb("Producto")}: ${mb(escapeHtml(p.name))}`,
     kb,
     message_id,
     { category, product_id: p.id },
@@ -1978,8 +1993,8 @@ async function pdPromptRename(chat_id: number, uid: number, product_id: string, 
   await pdRender(
     chat_id,
     uid,
-    `🔏 <b>Renombrar</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n\n❇️ Envía el nuevo nombre del producto.`,
-    [[{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN]],
+    `${mb("Free Fire")} : ${mb("Renombrar")}\n\n🔀 ${mb("Producto")} : ${escapeHtml(p.name)}\n\n${mb("Enter the new product name")}`,
+    [navRow(`pdp:${product_id}`)],
     message_id,
     { category: p.category as PdCategory, product_id, step: "rename" },
   );
@@ -1991,13 +2006,13 @@ async function pdConfirmDeactivate(chat_id: number, uid: number, product_id: str
   await pdRender(
     chat_id,
     uid,
-    `🚨 <b>${p.active ? "Desactivar" : "Activar"} ${escapeHtml(p.name)}</b>`,
+    `${mb("Free Fire")} ${mb(p.active ? "Disable" : "Enable")}: ${mb(escapeHtml(p.name))}`,
     [
       [
-        { text: "☑️ Yes", callback_data: `pdtogok:${product_id}` },
-        { text: "☑️ No", callback_data: `pdp:${product_id}` },
+        { text: mb(p.active ? "Desactivar" : "Activar"), callback_data: `pdtogok:${product_id}` },
+        { text: mb("Cancelar"), callback_data: `pdp:${product_id}` },
       ],
-      [{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN],
+      navRow(`pdp:${product_id}`),
     ],
     message_id,
     { category: p.category as PdCategory, product_id },
@@ -2022,8 +2037,8 @@ async function pdApplyToggle(chat_id: number, uid: number, product_id: string, m
   await pdRender(
     chat_id,
     uid,
-    `✅ <b>${next ? "Activado" : "Desactivado"} correctamente.</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n📌 Estado: ${next ? "Activo" : "Desactivado"}`,
-    [[{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN]],
+    `${mb(next ? "Activado correctamente" : "Desactivado correctamente")}\n\n🔀 ${mb("Producto")} : ${escapeHtml(p.name)}\n🔄 ${mb("Estado")} : ${mb(next ? "Activo" : "Desactivado")}`,
+    [navRow(`pdp:${product_id}`)],
     message_id,
     { category: p.category as PdCategory, product_id },
   );
@@ -2035,13 +2050,13 @@ async function pdConfirmDelete(chat_id: number, uid: number, product_id: string,
   await pdRender(
     chat_id,
     uid,
-    `⭕️ <b>Eliminar ${escapeHtml(p.name)}</b>`,
+    `${mb("Free Fire")} ${mb("Eliminar")} : ${mb(escapeHtml(p.name))}`,
     [
       [
-        { text: "☑️ Yes", callback_data: `pddelok:${product_id}` },
-        { text: "☑️ Cancelar", callback_data: `pdp:${product_id}` },
+        { text: mb("Eliminar"), callback_data: `pddelok:${product_id}` },
+        { text: mb("Cancelar"), callback_data: `pdp:${product_id}` },
       ],
-      [{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN],
+      navRow(`pdp:${product_id}`),
     ],
     message_id,
     { category: p.category as PdCategory, product_id },
@@ -2070,8 +2085,8 @@ async function pdApplyDelete(chat_id: number, uid: number, product_id: string, m
   await pdRender(
     chat_id,
     uid,
-    `✅ <b>Eliminado correctamente.</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n📌 Eliminado: ${escapeHtml(p.name)}`,
-    [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+    `${mb("Free Fire")} ${mb("Eliminar")} : ${mb(escapeHtml(p.name))}\n\n${mb("Eliminado correctamente")}`,
+    [navRow("pdback")],
     message_id,
     { category: p.category as PdCategory },
   );
@@ -2243,8 +2258,8 @@ async function pdSubmitText(msg: TgMessage, flow: PdFlow, rawText: string) {
     await pdRender(
       chat_id,
       uid,
-      `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n✏️ Nuevo nombre: ${escapeHtml(text)}`,
-      [[{ text: "🔚 Atrás", callback_data: `pdp:${flow.product_id}` }, PD_HOME_BTN]],
+      `${mb("Free Fire")} : ${mb("Renombrar")}\n\n🔀 ${mb("Producto")} : ${escapeHtml(text)}\n\n${mb("Aplicado correctamente")}`,
+      [navRow(`pdp:${flow.product_id}`)],
       flow.message_id,
       { category: p.category as PdCategory, product_id: flow.product_id },
     );
