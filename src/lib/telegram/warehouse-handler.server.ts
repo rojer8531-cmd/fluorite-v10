@@ -250,7 +250,7 @@ function adminBottomKeyboard() {
   return {
     keyboard: [
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.productos }],
-      [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_TODO.usuarios }],
+      [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_BOTTOM.usuarios }],
       [{ text: ADMIN_BOTTOM.choosex }],
     ],
     resize_keyboard: true,
