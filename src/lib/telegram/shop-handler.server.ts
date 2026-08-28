@@ -182,10 +182,10 @@ function adminReceiptKeyboard(order_id: string, telegram_id: number) {
   return {
     inline_keyboard: [
       [
-        { text: "✅ Accept", callback_data: `adm:approve:${order_id}` },
-        { text: "❎ Decline", callback_data: `adm:reject:${order_id}` },
+        { text: "🔀 𝐀𝐜𝐞𝐩𝐭𝐚𝐫", callback_data: `adm:approve:${order_id}` },
+        { text: "🔀 𝐑𝐞𝐜𝐡𝐚𝐳𝐚𝐫", callback_data: `adm:reject:${order_id}` },
       ],
-      [{ text: "Permanently Block User", callback_data: `adm:block:${telegram_id}` }],
+      [{ text: "𝐁𝐥𝐨𝐪𝐮𝐞𝐚𝐫 𝐩𝐞𝐫𝐦𝐚𝐧𝐞𝐧𝐭𝐞", callback_data: `adm:block:${telegram_id}` }],
     ],
   };
 }
@@ -1465,15 +1465,15 @@ async function processReceiptPhotoReview(opts: {
         : null;
   const localLine =
     localAmount != null && localCurrency
-      ? `➕ Total : <b>${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}</b>\n`
+      ? `𝐓𝐨𝐭𝐚𝐥: ${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}\n`
       : "";
 
   const caption =
-    `📨 <b>nuevo comprobante recibido</b>\n` +
-    `💬 : <code>${telegram_id}</code>\n` +
-    `🏛️ Top Up: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
+    `𝐍𝐮𝐞𝐯𝐨 𝐜𝐨𝐦𝐩𝐫𝐨𝐛𝐚𝐧𝐭𝐞 𝐝𝐞 𝐩𝐚𝐠𝐨\n` +
+    `𝐔𝐬𝐞𝐫 𝐈𝐃: ${telegram_id}\n` +
+    `𝐏𝐚𝐠𝐨: ${Number(o.total_usd).toFixed(2)} USD\n` +
     localLine +
-    `📜 País: ${country}`;
+    `𝐏𝐚í𝐬: ${country}`;
   void pid;
 
 
