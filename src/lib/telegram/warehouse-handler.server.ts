@@ -1741,14 +1741,15 @@ async function adminListaPrecios(
   if (category) q = q.eq("category", category as never);
   const { data: products } = await q.order("sort_order");
   if (!products || products.length === 0) {
-    await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 No hay productos en esta categoría.`, [navRow("akp:prlist")], message_id);
+    await prRender(chat_id, uid, `${mb("Productos disponibles")}\n\n⁃ —`, [navRow("akp:prlist")], message_id);
     return;
   }
   const kb: AkKeyboard = products.map((p) => [
     { text: `${p.name}`, callback_data: `prprod:${p.id}` },
   ]);
   kb.push(navRow("akp:prlist"));
-  await prRender(chat_id, uid, `💲 <b>Editar Precios</b>\n\n📦 Elegí el producto:`, kb, message_id);
+  const list = products.map((p) => `⁃ ${escapeHtml(p.name)}`).join("\n");
+  await prRender(chat_id, uid, `${mb("Productos disponibles")}\n\n${list}`, kb, message_id);
 }
 
 async function prStartFresh(chat_id: number, uid: number) {
