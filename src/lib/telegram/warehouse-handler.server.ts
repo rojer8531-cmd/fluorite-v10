@@ -2250,11 +2250,12 @@ async function pdSaveProduct(chat_id: number, uid: number, flow: PdFlow) {
   await pdRender(
     chat_id,
     uid,
-    `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(d.name)}\n🏷️ ${escapeHtml(category)}\n💲 1 día: ${pdFmtPrice(d.p1)}\n💲 7 días: ${pdFmtPrice(d.p7)}\n💲 30 días: ${pdFmtPrice(d.p30)}`,
-    [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+    `${mb("Free Fire")} | ${mb("Categoría")} ${mb(escapeHtml(category))}: ${mb(escapeHtml(d.name))}\n\n${mb("Max 1 day")}: ${pdFmtPrice(d.p1)}\n${mb("Max 7 days")}: ${pdFmtPrice(d.p7)}\n${mb("Max 30 days")}: ${pdFmtPrice(d.p30)}\n\n${mb("Agregado correctamente")}`,
+    [navRow("pdback")],
     flow.message_id,
     { category, product_id: pid },
   );
+
 }
 
 /** Texto enviado durante el flujo de Productos. */
