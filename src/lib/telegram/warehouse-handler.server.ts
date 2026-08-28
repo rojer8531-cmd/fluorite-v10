@@ -1779,13 +1779,13 @@ async function adminPriceDurations(chat_id: number, uid: number, product_id: str
   const name = prod.name;
   const catIdx = PD_CATEGORIES.indexOf(prod.category as PdCategory);
   const kb: AkKeyboard = prices.map((p) => [
-    { text: `${p.duration_label}`, callback_data: `pred:${p.id}` },
+    { text: mb(`Max ${p.duration_label}`), callback_data: `pred:${p.id}` },
   ]);
   kb.push(navRow(catIdx >= 0 ? `prcat:${catIdx}` : "akp:prlist"));
   await prRender(
     chat_id,
     uid,
-    `💲 <b>Editar Precios</b>\n\n📦 ${escapeHtml(name)}\n\nElegí la duración:`,
+    `${mb("Free Fire")}: ${mb(escapeHtml(name))}`,
     kb,
     message_id,
     { product_id },
