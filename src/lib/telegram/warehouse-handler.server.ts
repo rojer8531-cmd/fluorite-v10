@@ -1944,10 +1944,14 @@ async function pdList(chat_id: number, uid: number, category: PdCategory, messag
   ]);
   kb.push([{ text: "➕ Agregar producto", callback_data: "pdadd" }]);
   kb.push(navRow("pdcats"));
+  const list =
+    (products ?? []).length > 0
+      ? (products ?? []).map((p) => `⁃ ${escapeHtml(p.name)}${p.active ? "" : " ⏸️"}`).join("\n")
+      : "⁃ —";
   await pdRender(
     chat_id,
     uid,
-    `❇️ <b>Lista de productos</b>\n\n🏷️ ${escapeHtml(category)}`,
+    `${mb("Productos disponibles")}\n\n${list}`,
     kb,
     message_id,
     { category },
