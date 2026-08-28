@@ -2118,15 +2118,19 @@ async function pdApplyDelete(chat_id: number, uid: number, product_id: string, m
 // ----- Agregar producto -----
 function pdFmtPrice(n?: number) {
   if (n == null) return "—";
-  return Number.isInteger(n) ? `$${n} USD` : `$${n.toFixed(2)} USD`;
+  return Number.isInteger(n) ? mb(`$${n} USD`) : mb(`$${n.toFixed(2)} USD`);
+}
+
+function pdMaxLabel(which: "1" | "7" | "30") {
+  return which === "1" ? mb("Max 1 day") : mb(`Max ${which} days`);
 }
 
 async function pdPromptAddName(chat_id: number, uid: number, category: PdCategory, message_id?: number) {
   await pdRender(
     chat_id,
     uid,
-    `❇️ <b>Envía el nombre del producto.</b>`,
-    [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+    `${mb("Free Fire")} — ${mb("Envía el nombre del nuevo producto para la categoría")} ${mb(escapeHtml(category))}.`,
+    [navRow("pdback")],
     message_id,
     { category, step: "addname", draft: {} },
   );
@@ -2138,13 +2142,12 @@ async function pdPricesMenu(chat_id: number, uid: number, flow: PdFlow, message_
     await pdRender(
       chat_id,
       uid,
-      `❇️ <b>Todo listo para agregar.</b>\n\n📦 Producto: ${escapeHtml(d.name ?? "")}\n💲 1 día: ${pdFmtPrice(d.p1)}\n💲 7 días: ${pdFmtPrice(d.p7)}\n💲 30 días: ${pdFmtPrice(d.p30)}`,
+      `${mb("Free Fire")} | ${mb("Categoría")} ${mb(escapeHtml(flow.category ?? ""))}: ${mb(escapeHtml(d.name ?? ""))}\n\n${mb("Max 1 day")}: ${pdFmtPrice(d.p1)}\n${mb("Max 7 days")}: ${pdFmtPrice(d.p7)}\n${mb("Max 30 days")}: ${pdFmtPrice(d.p30)}`,
       [
         [
-          { text: "☑️ Yes", callback_data: "pdsave" },
-          { text: "☑️ Cancelar", callback_data: "pdback" },
+          { text: mb("Agregar"), callback_data: "pdsave" },
+          { text: mb("Cancelar"), callback_data: "pdback" },
         ],
-        [{ text: "🔚 Atrás", callback_data: "pdprices" }, PD_HOME_BTN],
       ],
       message_id,
       { category: flow.category, draft: d, step: undefined },
@@ -2154,12 +2157,12 @@ async function pdPricesMenu(chat_id: number, uid: number, flow: PdFlow, message_
   await pdRender(
     chat_id,
     uid,
-    `🛍️ <b>Precios del producto</b>\n\n📦 Producto: ${escapeHtml(d.name ?? "")}`,
+    `${mb("Selección manual")} — ${mb("Precios del producto")} ${mb("Free Fire")} ${mb(escapeHtml(flow.category ?? ""))}\n\n${mb(escapeHtml(d.name ?? ""))}`,
     [
-      [{ text: `💲 1 día  ${pdFmtPrice(d.p1)}`, callback_data: "pdprset:1" }],
-      [{ text: `💲 7 días  ${pdFmtPrice(d.p7)}`, callback_data: "pdprset:7" }],
-      [{ text: `💲 30 días  ${pdFmtPrice(d.p30)}`, callback_data: "pdprset:30" }],
-      [{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN],
+      [{ text: `${pdMaxLabel("1")}  ${pdFmtPrice(d.p1)}`, callback_data: "pdprset:1" }],
+      [{ text: `${pdMaxLabel("7")}  ${pdFmtPrice(d.p7)}`, callback_data: "pdprset:7" }],
+      [{ text: `${pdMaxLabel("30")}  ${pdFmtPrice(d.p30)}`, callback_data: "pdprset:30" }],
+      navRow("pdback"),
     ],
     message_id,
     { category: flow.category, draft: d, step: undefined },
@@ -2176,12 +2179,13 @@ async function pdPromptAddPrice(
   await pdRender(
     chat_id,
     uid,
-    `➕ <b>Envía el precio del producto.</b>\n\n📦 Producto: ${escapeHtml(flow.draft?.name ?? "")}\n💲 ${which} ${which === "1" ? "día" : "días"}`,
-    [[{ text: "🔚 Atrás", callback_data: "pdprices" }, PD_HOME_BTN]],
+    `${mb("Ingresa el precio del producto.")}\n\n🔀${mb("Producto")}: ${mb(escapeHtml(flow.draft?.name ?? ""))}\n🔄${mb("Duración")}: ${pdMaxLabel(which)}\n🔀${mb("Precio")}: ${mb("Envía el monto")}`,
+    [navRow("pdprices")],
     message_id,
     { category: flow.category, draft: flow.draft ?? {}, step: "addprice", which },
   );
 }
+
 
 async function pdSaveProduct(chat_id: number, uid: number, flow: PdFlow) {
   const d = flow.draft ?? {};
