@@ -3767,11 +3767,14 @@ async function processWarehouseMessage(msg: TgMessage) {
     case ADMIN_LEGACY.usuariosAlt:
     case ADMIN_LEGACY.usuarios2:
     case ADMIN_TODO.usuarios:
+    case ADMIN_BOTTOM.usuarios:
       await showBackBar(msg.chat.id, msg.from.id);
       await usStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.addkeys:
     case ADMIN_LEGACY.addkeys2:
+    case ADMIN_LEGACY.addkeys3:
+    case ADMIN_LEGACY.addkeys4:
     case ADMIN_BOTTOM.addkeys:
       await showBackBar(msg.chat.id, msg.from.id);
       await akStartFresh(msg.chat.id, msg.from.id);
@@ -3784,6 +3787,7 @@ async function processWarehouseMessage(msg: TgMessage) {
       return;
     case ADMIN_LEGACY.productos:
     case ADMIN_LEGACY.productos2:
+    case ADMIN_LEGACY.productos3:
     case ADMIN_BOTTOM.productos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pdStartFresh(msg.chat.id, msg.from.id);
@@ -3795,10 +3799,12 @@ async function processWarehouseMessage(msg: TgMessage) {
       return;
     case ADMIN_LEGACY.metodos:
     case ADMIN_LEGACY.metodos2:
+    case ADMIN_LEGACY.metodos3:
     case ADMIN_BOTTOM.metodos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pmStartFresh(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_LEGACY.choosex2:
     case ADMIN_BOTTOM.choosex:
       await showBackBar(msg.chat.id, msg.from.id);
       await cxMenu(msg.chat.id);
