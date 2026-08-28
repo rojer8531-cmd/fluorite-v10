@@ -205,11 +205,12 @@ function isAdmin(telegram_id: number) {
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
   inicio: "🏠 Inicio",
-  addkeys: "🔐 Passwords",
-  productos: "📝 Products",
+  addkeys: "🔄-𝐂𝐨𝐧𝐭𝐫𝐚𝐬𝐞ñ𝐚𝐬",
+  productos: "🔀-𝐏𝐫𝐨𝐝𝐮𝐜𝐭𝐨𝐬",
   precios: "🛍️ Precios",
-  metodos: "🏛️ Métodos",
-  choosex: "📥 ChooseX",
+  metodos: "🔄-𝐌𝐞𝐭𝐨𝐝𝐨𝐬",
+  usuarios: "🔀-𝐔𝐬𝐮𝐚𝐫𝐢𝐨𝐬",
+  choosex: "𝐂𝐡𝐨𝐨𝐬𝐞𝐗",
   todo: "📥 Everything Here",
 };
 
