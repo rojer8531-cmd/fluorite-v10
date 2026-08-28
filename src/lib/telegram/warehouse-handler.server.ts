@@ -1970,20 +1970,17 @@ async function pdProductMenu(chat_id: number, uid: number, product_id: string, m
   }
   const category = p.category as PdCategory;
   const kb: AkKeyboard = [
-    [{ text: "🔏 Renombrar", callback_data: `pdren:${p.id}` }],
     [
-      {
-        text: p.active ? "🔏 Desactivar" : "🔏 Activar",
-        callback_data: `pdtog:${p.id}`,
-      },
+      { text: mb("Renombrar"), callback_data: `pdren:${p.id}` },
+      { text: mb(p.active ? "Desactivar" : "Activar"), callback_data: `pdtog:${p.id}` },
     ],
-    [{ text: "🗑️ Eliminar definitivamente", callback_data: `pddel:${p.id}` }],
-    [{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN],
+    [{ text: mb("Eliminar"), callback_data: `pddel:${p.id}` }],
+    navRow("pdback"),
   ];
   await pdRender(
     chat_id,
     uid,
-    `${p.active ? "✅" : "⏸️"} <b>${escapeHtml(p.name)}</b> ${p.active ? "activo" : "desactivado"}`,
+    `${mb("Free Fire")} — ${mb("Producto")}: ${mb(escapeHtml(p.name))}`,
     kb,
     message_id,
     { category, product_id: p.id },
