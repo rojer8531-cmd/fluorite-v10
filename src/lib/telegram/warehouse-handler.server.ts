@@ -2050,13 +2050,13 @@ async function pdConfirmDelete(chat_id: number, uid: number, product_id: string,
   await pdRender(
     chat_id,
     uid,
-    `⭕️ <b>Eliminar ${escapeHtml(p.name)}</b>`,
+    `${mb("Free Fire")} ${mb("Eliminar")} : ${mb(escapeHtml(p.name))}`,
     [
       [
-        { text: "☑️ Yes", callback_data: `pddelok:${product_id}` },
-        { text: "☑️ Cancelar", callback_data: `pdp:${product_id}` },
+        { text: mb("Eliminar"), callback_data: `pddelok:${product_id}` },
+        { text: mb("Cancelar"), callback_data: `pdp:${product_id}` },
       ],
-      [{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN],
+      navRow(`pdp:${product_id}`),
     ],
     message_id,
     { category: p.category as PdCategory, product_id },
