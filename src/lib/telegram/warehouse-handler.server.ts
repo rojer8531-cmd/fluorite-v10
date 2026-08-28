@@ -240,6 +240,10 @@ const ADMIN_LEGACY = {
   usuariosAlt: "👥 Usuarios",
   usuarios2: "📜 Users",
   minrecharge: "Recarga Mínima",
+  addkeys4: "🔐 Passwords",
+  productos3: "📝 Products",
+  metodos3: "🏛️ Métodos",
+  choosex2: "📥 ChooseX",
 };
 
 function adminBottomKeyboard() {
