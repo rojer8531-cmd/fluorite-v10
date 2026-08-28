@@ -2037,8 +2037,8 @@ async function pdApplyToggle(chat_id: number, uid: number, product_id: string, m
   await pdRender(
     chat_id,
     uid,
-    `✅ <b>${next ? "Activado" : "Desactivado"} correctamente.</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n📌 Estado: ${next ? "Activo" : "Desactivado"}`,
-    [[{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN]],
+    `${mb(next ? "Activado correctamente" : "Desactivado correctamente")}\n\n🔀 ${mb("Producto")} : ${escapeHtml(p.name)}\n🔄 ${mb("Estado")} : ${mb(next ? "Activo" : "Desactivado")}`,
+    [navRow(`pdp:${product_id}`)],
     message_id,
     { category: p.category as PdCategory, product_id },
   );
