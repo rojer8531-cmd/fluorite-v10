@@ -2006,13 +2006,13 @@ async function pdConfirmDeactivate(chat_id: number, uid: number, product_id: str
   await pdRender(
     chat_id,
     uid,
-    `🚨 <b>${p.active ? "Desactivar" : "Activar"} ${escapeHtml(p.name)}</b>`,
+    `${mb("Free Fire")} ${mb(p.active ? "Disable" : "Enable")}: ${mb(escapeHtml(p.name))}`,
     [
       [
-        { text: "☑️ Yes", callback_data: `pdtogok:${product_id}` },
-        { text: "☑️ No", callback_data: `pdp:${product_id}` },
+        { text: mb(p.active ? "Desactivar" : "Activar"), callback_data: `pdtogok:${product_id}` },
+        { text: mb("Cancelar"), callback_data: `pdp:${product_id}` },
       ],
-      [{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN],
+      navRow(`pdp:${product_id}`),
     ],
     message_id,
     { category: p.category as PdCategory, product_id },
