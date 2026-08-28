@@ -2081,13 +2081,21 @@ async function pdConfirmDelete(chat_id: number, uid: number, product_id: string,
 async function pdApplyDelete(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: p } = await sb.from("products").select("name, category").eq("id", product_id).maybeSingle();
   if (!p) return pdCategories(chat_id, uid, message_id);
+  // Limpiar dependencias para que el borrado no falle por llaves foráneas.
+  const { data: priceRows } = await sb.from("product_prices").select("id").eq("product_id", product_id);
+  const priceIds = (priceRows ?? []).map((r) => r.id as string);
+  if (priceIds.length) {
+    await sb.from("user_price_overrides").delete().in("price_id", priceIds);
+  }
   await sb.from("product_stock_keys").delete().eq("product_id", product_id);
+  await sb.from("orders").update({ product_id: null, price_id: null }).eq("product_id", product_id);
   await sb.from("product_prices").delete().eq("product_id", product_id);
   const { error } = await sb.from("products").delete().eq("id", product_id);
   if (error) {
-    await pdProductMenu(chat_id, uid, product_id, message_id);
-    return;
+    // Fallback: ocultarlo del catálogo (bot de compras) si el borrado duro no es posible.
+    await sb.from("products").update({ active: false }).eq("id", product_id);
   }
+
   invalidateCatalogCache();
   sb.from("admin_logs")
     .insert({
