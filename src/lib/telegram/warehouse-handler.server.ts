@@ -2320,11 +2320,12 @@ async function pdSubmitText(msg: TgMessage, flow: PdFlow, rawText: string) {
     await pdRender(
       chat_id,
       uid,
-      `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(draft.name ?? "")}\n💲 ${flow.which} ${flow.which === "1" ? "día" : "días"}: ${pdFmtPrice(n)}`,
-      [[{ text: "🔚 Atrás", callback_data: "pdprices" }, PD_HOME_BTN]],
+      `📨${mb("Aplicado correctamente.")}\n\n${mb("Producto")}: ${mb(escapeHtml(draft.name ?? ""))}\n${mb(flow.which === "1" ? "1 día" : `${flow.which} días`)}: ${pdFmtPrice(n)}`,
+      [navRow("pdprices")],
       flow.message_id,
       { category: flow.category, draft },
     );
+
     return;
   }
 }
