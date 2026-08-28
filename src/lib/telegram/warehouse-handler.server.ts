@@ -1951,24 +1951,27 @@ async function pdList(chat_id: number, uid: number, category: PdCategory, messag
     .select("id, name, active")
     .eq("category", category)
     .order("sort_order");
-  const kb: AkKeyboard = (products ?? []).map((p) => [
-    { text: `${p.name}`, callback_data: `pdp:${p.id}` },
-  ]);
-  kb.push([{ text: "➕ Agregar producto", callback_data: "pdadd" }]);
+  const rows = products ?? [];
+  const kb: AkKeyboard = [];
+  for (let i = 0; i < rows.length; i += 2) {
+    const pair = rows.slice(i, i + 2).map((p) => ({
+      text: `${p.name}`,
+      callback_data: `pdp:${p.id}`,
+    }));
+    kb.push(pair);
+  }
+  kb.push([{ text: mb("Agregar producto"), callback_data: "pdadd" }]);
   kb.push(navRow("pdcats"));
-  const list =
-    (products ?? []).length > 0
-      ? (products ?? []).map((p) => `- ${escapeHtml(p.name)}`).join("\n")
-      : "- —";
   await pdRender(
     chat_id,
     uid,
-    `${mb("Productos disponibles")}\n\n${list}`,
+    `${mb("Free Fire")} — ${mb("Selecciona el producto")}`,
     kb,
     message_id,
     { category },
   );
 }
+
 
 async function pdProductMenu(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: p } = await sb
@@ -2078,13 +2081,21 @@ async function pdConfirmDelete(chat_id: number, uid: number, product_id: string,
 async function pdApplyDelete(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: p } = await sb.from("products").select("name, category").eq("id", product_id).maybeSingle();
   if (!p) return pdCategories(chat_id, uid, message_id);
+  // Limpiar dependencias para que el borrado no falle por llaves foráneas.
+  const { data: priceRows } = await sb.from("product_prices").select("id").eq("product_id", product_id);
+  const priceIds = (priceRows ?? []).map((r) => r.id as string);
+  if (priceIds.length) {
+    await sb.from("user_price_overrides").delete().in("price_id", priceIds);
+  }
   await sb.from("product_stock_keys").delete().eq("product_id", product_id);
+  await sb.from("orders").update({ product_id: null, price_id: null }).eq("product_id", product_id);
   await sb.from("product_prices").delete().eq("product_id", product_id);
   const { error } = await sb.from("products").delete().eq("id", product_id);
   if (error) {
-    await pdProductMenu(chat_id, uid, product_id, message_id);
-    return;
+    // Fallback: ocultarlo del catálogo (bot de compras) si el borrado duro no es posible.
+    await sb.from("products").update({ active: false }).eq("id", product_id);
   }
+
   invalidateCatalogCache();
   sb.from("admin_logs")
     .insert({
@@ -2107,15 +2118,19 @@ async function pdApplyDelete(chat_id: number, uid: number, product_id: string, m
 // ----- Agregar producto -----
 function pdFmtPrice(n?: number) {
   if (n == null) return "—";
-  return Number.isInteger(n) ? `$${n} USD` : `$${n.toFixed(2)} USD`;
+  return Number.isInteger(n) ? mb(`$${n} USD`) : mb(`$${n.toFixed(2)} USD`);
+}
+
+function pdMaxLabel(which: "1" | "7" | "30") {
+  return which === "1" ? mb("Max 1 day") : mb(`Max ${which} days`);
 }
 
 async function pdPromptAddName(chat_id: number, uid: number, category: PdCategory, message_id?: number) {
   await pdRender(
     chat_id,
     uid,
-    `❇️ <b>Envía el nombre del producto.</b>`,
-    [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+    `${mb("Free Fire")} — ${mb("Envía el nombre del nuevo producto para la categoría")} ${mb(escapeHtml(category))}.`,
+    [navRow("pdback")],
     message_id,
     { category, step: "addname", draft: {} },
   );
@@ -2127,13 +2142,12 @@ async function pdPricesMenu(chat_id: number, uid: number, flow: PdFlow, message_
     await pdRender(
       chat_id,
       uid,
-      `❇️ <b>Todo listo para agregar.</b>\n\n📦 Producto: ${escapeHtml(d.name ?? "")}\n💲 1 día: ${pdFmtPrice(d.p1)}\n💲 7 días: ${pdFmtPrice(d.p7)}\n💲 30 días: ${pdFmtPrice(d.p30)}`,
+      `${mb("Free Fire")} | ${mb("Categoría")} ${mb(escapeHtml(flow.category ?? ""))}: ${mb(escapeHtml(d.name ?? ""))}\n\n${mb("Max 1 day")}: ${pdFmtPrice(d.p1)}\n${mb("Max 7 days")}: ${pdFmtPrice(d.p7)}\n${mb("Max 30 days")}: ${pdFmtPrice(d.p30)}`,
       [
         [
-          { text: "☑️ Yes", callback_data: "pdsave" },
-          { text: "☑️ Cancelar", callback_data: "pdback" },
+          { text: mb("Agregar"), callback_data: "pdsave" },
+          { text: mb("Cancelar"), callback_data: "pdback" },
         ],
-        [{ text: "🔚 Atrás", callback_data: "pdprices" }, PD_HOME_BTN],
       ],
       message_id,
       { category: flow.category, draft: d, step: undefined },
@@ -2143,12 +2157,12 @@ async function pdPricesMenu(chat_id: number, uid: number, flow: PdFlow, message_
   await pdRender(
     chat_id,
     uid,
-    `🛍️ <b>Precios del producto</b>\n\n📦 Producto: ${escapeHtml(d.name ?? "")}`,
+    `${mb("Selección manual")} — ${mb("Precios del producto")} ${mb("Free Fire")} ${mb(escapeHtml(flow.category ?? ""))}\n\n${mb(escapeHtml(d.name ?? ""))}`,
     [
-      [{ text: `💲 1 día  ${pdFmtPrice(d.p1)}`, callback_data: "pdprset:1" }],
-      [{ text: `💲 7 días  ${pdFmtPrice(d.p7)}`, callback_data: "pdprset:7" }],
-      [{ text: `💲 30 días  ${pdFmtPrice(d.p30)}`, callback_data: "pdprset:30" }],
-      [{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN],
+      [{ text: `${pdMaxLabel("1")}  ${pdFmtPrice(d.p1)}`, callback_data: "pdprset:1" }],
+      [{ text: `${pdMaxLabel("7")}  ${pdFmtPrice(d.p7)}`, callback_data: "pdprset:7" }],
+      [{ text: `${pdMaxLabel("30")}  ${pdFmtPrice(d.p30)}`, callback_data: "pdprset:30" }],
+      navRow("pdback"),
     ],
     message_id,
     { category: flow.category, draft: d, step: undefined },
@@ -2165,12 +2179,13 @@ async function pdPromptAddPrice(
   await pdRender(
     chat_id,
     uid,
-    `➕ <b>Envía el precio del producto.</b>\n\n📦 Producto: ${escapeHtml(flow.draft?.name ?? "")}\n💲 ${which} ${which === "1" ? "día" : "días"}`,
-    [[{ text: "🔚 Atrás", callback_data: "pdprices" }, PD_HOME_BTN]],
+    `${mb("Ingresa el precio del producto.")}\n\n🔀${mb("Producto")}: ${mb(escapeHtml(flow.draft?.name ?? ""))}\n🔄${mb("Duración")}: ${pdMaxLabel(which)}\n🔀${mb("Precio")}: ${mb("Envía el monto")}`,
+    [navRow("pdprices")],
     message_id,
     { category: flow.category, draft: flow.draft ?? {}, step: "addprice", which },
   );
 }
+
 
 async function pdSaveProduct(chat_id: number, uid: number, flow: PdFlow) {
   const d = flow.draft ?? {};
@@ -2235,11 +2250,12 @@ async function pdSaveProduct(chat_id: number, uid: number, flow: PdFlow) {
   await pdRender(
     chat_id,
     uid,
-    `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(d.name)}\n🏷️ ${escapeHtml(category)}\n💲 1 día: ${pdFmtPrice(d.p1)}\n💲 7 días: ${pdFmtPrice(d.p7)}\n💲 30 días: ${pdFmtPrice(d.p30)}`,
-    [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+    `${mb("Free Fire")} | ${mb("Categoría")} ${mb(escapeHtml(category))}: ${mb(escapeHtml(d.name))}\n\n${mb("Max 1 day")}: ${pdFmtPrice(d.p1)}\n${mb("Max 7 days")}: ${pdFmtPrice(d.p7)}\n${mb("Max 30 days")}: ${pdFmtPrice(d.p30)}\n\n${mb("Agregado correctamente")}`,
+    [navRow("pdback")],
     flow.message_id,
     { category, product_id: pid },
   );
+
 }
 
 /** Texto enviado durante el flujo de Productos. */
@@ -2304,11 +2320,12 @@ async function pdSubmitText(msg: TgMessage, flow: PdFlow, rawText: string) {
     await pdRender(
       chat_id,
       uid,
-      `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(draft.name ?? "")}\n💲 ${flow.which} ${flow.which === "1" ? "día" : "días"}: ${pdFmtPrice(n)}`,
-      [[{ text: "🔚 Atrás", callback_data: "pdprices" }, PD_HOME_BTN]],
+      `📨${mb("Aplicado correctamente.")}\n\n${mb("Producto")}: ${mb(escapeHtml(draft.name ?? ""))}\n${mb(flow.which === "1" ? "1 día" : `${flow.which} días`)}: ${pdFmtPrice(n)}`,
+      [navRow("pdprices")],
       flow.message_id,
       { category: flow.category, draft },
     );
+
     return;
   }
 }
