@@ -1951,24 +1951,27 @@ async function pdList(chat_id: number, uid: number, category: PdCategory, messag
     .select("id, name, active")
     .eq("category", category)
     .order("sort_order");
-  const kb: AkKeyboard = (products ?? []).map((p) => [
-    { text: `${p.name}`, callback_data: `pdp:${p.id}` },
-  ]);
-  kb.push([{ text: "➕ Agregar producto", callback_data: "pdadd" }]);
+  const rows = products ?? [];
+  const kb: AkKeyboard = [];
+  for (let i = 0; i < rows.length; i += 2) {
+    const pair = rows.slice(i, i + 2).map((p) => ({
+      text: `${p.name}`,
+      callback_data: `pdp:${p.id}`,
+    }));
+    kb.push(pair);
+  }
+  kb.push([{ text: mb("Agregar producto"), callback_data: "pdadd" }]);
   kb.push(navRow("pdcats"));
-  const list =
-    (products ?? []).length > 0
-      ? (products ?? []).map((p) => `- ${escapeHtml(p.name)}`).join("\n")
-      : "- —";
   await pdRender(
     chat_id,
     uid,
-    `${mb("Productos disponibles")}\n\n${list}`,
+    `${mb("Free Fire")} — ${mb("Selecciona el producto")}`,
     kb,
     message_id,
     { category },
   );
 }
+
 
 async function pdProductMenu(chat_id: number, uid: number, product_id: string, message_id?: number) {
   const { data: p } = await sb
