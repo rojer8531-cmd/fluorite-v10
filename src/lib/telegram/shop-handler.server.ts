@@ -1465,15 +1465,15 @@ async function processReceiptPhotoReview(opts: {
         : null;
   const localLine =
     localAmount != null && localCurrency
-      ? `➕ Total : <b>${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}</b>\n`
+      ? `𝐓𝐨𝐭𝐚𝐥: ${localAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${escapeHtml(localCurrency)}\n`
       : "";
 
   const caption =
-    `📨 <b>nuevo comprobante recibido</b>\n` +
-    `💬 : <code>${telegram_id}</code>\n` +
-    `🏛️ Top Up: <b>${Number(o.total_usd).toFixed(2)} USD</b>\n` +
+    `𝐍𝐮𝐞𝐯𝐨 𝐜𝐨𝐦𝐩𝐫𝐨𝐛𝐚𝐧𝐭𝐞 𝐝𝐞 𝐩𝐚𝐠𝐨\n` +
+    `𝐔𝐬𝐞𝐫 𝐈𝐃: ${telegram_id}\n` +
+    `𝐏𝐚𝐠𝐨: ${Number(o.total_usd).toFixed(2)} USD\n` +
     localLine +
-    `📜 País: ${country}`;
+    `𝐏𝐚í𝐬: ${country}`;
   void pid;
 
 
