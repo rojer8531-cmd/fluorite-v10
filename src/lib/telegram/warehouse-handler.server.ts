@@ -1148,6 +1148,19 @@ function navRow(backCb: string): Array<{ text: string; callback_data: string }> 
   ];
 }
 
+/** Convierte texto ASCII a la fuente matemática en negrita (𝐀𝐚𝟏). */
+function mb(input: string): string {
+  let out = "";
+  for (const ch of input) {
+    const c = ch.codePointAt(0)!;
+    if (c >= 65 && c <= 90) out += String.fromCodePoint(0x1d400 + (c - 65));
+    else if (c >= 97 && c <= 122) out += String.fromCodePoint(0x1d41a + (c - 97));
+    else if (c >= 48 && c <= 57) out += String.fromCodePoint(0x1d7ce + (c - 48));
+    else out += ch;
+  }
+  return out;
+}
+
 const CATEGORY_LABELS = ["Free Fire: iOS", "Free Fire: Android", "Free Fire: Auxiliar"];
 
 function categoryRows(prefix: string): AkKeyboard {
