@@ -2258,8 +2258,8 @@ async function pdSubmitText(msg: TgMessage, flow: PdFlow, rawText: string) {
     await pdRender(
       chat_id,
       uid,
-      `✅ <b>Aplicado correctamente.</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n✏️ Nuevo nombre: ${escapeHtml(text)}`,
-      [[{ text: "🔚 Atrás", callback_data: `pdp:${flow.product_id}` }, PD_HOME_BTN]],
+      `${mb("Free Fire")} : ${mb("Renombrar")}\n\n🔀 ${mb("Producto")} : ${escapeHtml(text)}\n\n${mb("Aplicado correctamente")}`,
+      [navRow(`pdp:${flow.product_id}`)],
       flow.message_id,
       { category: p.category as PdCategory, product_id: flow.product_id },
     );
