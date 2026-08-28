@@ -205,11 +205,12 @@ function isAdmin(telegram_id: number) {
 // ===== Barra inferior persistente del almacén =====
 const ADMIN_BOTTOM = {
   inicio: "🏠 Inicio",
-  addkeys: "🔐 Passwords",
-  productos: "📝 Products",
+  addkeys: "🔄-𝐂𝐨𝐧𝐭𝐫𝐚𝐬𝐞ñ𝐚𝐬",
+  productos: "🔀-𝐏𝐫𝐨𝐝𝐮𝐜𝐭𝐨𝐬",
   precios: "🛍️ Precios",
-  metodos: "🏛️ Métodos",
-  choosex: "📥 ChooseX",
+  metodos: "🔄-𝐌𝐞𝐭𝐨𝐝𝐨𝐬",
+  usuarios: "🔀-𝐔𝐬𝐮𝐚𝐫𝐢𝐨𝐬",
+  choosex: "𝐂𝐡𝐨𝐨𝐬𝐞𝐗",
   todo: "📥 Everything Here",
 };
 
@@ -239,13 +240,17 @@ const ADMIN_LEGACY = {
   usuariosAlt: "👥 Usuarios",
   usuarios2: "📜 Users",
   minrecharge: "Recarga Mínima",
+  addkeys4: "🔐 Passwords",
+  productos3: "📝 Products",
+  metodos3: "🏛️ Métodos",
+  choosex2: "📥 ChooseX",
 };
 
 function adminBottomKeyboard() {
   return {
     keyboard: [
       [{ text: ADMIN_BOTTOM.addkeys }, { text: ADMIN_BOTTOM.productos }],
-      [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_TODO.usuarios }],
+      [{ text: ADMIN_BOTTOM.metodos }, { text: ADMIN_BOTTOM.usuarios }],
       [{ text: ADMIN_BOTTOM.choosex }],
     ],
     resize_keyboard: true,
@@ -1205,7 +1210,14 @@ async function adminListProducts(
     { text: `${p.name}`, callback_data: `akprod:${p.id}` },
   ]);
   kb.push(navRow("akp:add"));
-  await akRender(chat_id, uid, `📦 <b>Passwords</b>\n\nElegí el producto:`, kb, message_id);
+  const list = products.map((p) => `- ${escapeHtml(p.name)}`).join("\n");
+  await akRender(
+    chat_id,
+    uid,
+    `${mb("Free Fire")} — ${mb("Selecciona el producto")}\n\n${list}`,
+    kb,
+    message_id,
+  );
 }
 
 async function adminListDurations(chat_id: number, uid: number, product_id: string, message_id?: number) {
@@ -1231,13 +1243,13 @@ async function adminListDurations(chat_id: number, uid: number, product_id: stri
   const catIdx = PD_CATEGORIES.indexOf(prod.category as PdCategory);
   const backCb = catIdx >= 0 ? `akcat:${catIdx}` : "akp:add";
   const kb: AkKeyboard = prices.map((p) => [
-    { text: `${p.duration_label}`, callback_data: `akdur:${p.id}` },
+    { text: mb(`Max ${p.duration_label}`), callback_data: `akdur:${p.id}` },
   ]);
   kb.push(navRow(backCb));
   await akRender(
     chat_id,
     uid,
-    `📦 <b>Producto:</b> ${escapeHtml(name)}\n\nElegí la duración:`,
+    `${mb("Free Fire")}: ${mb(escapeHtml(name))}`,
     kb,
     message_id,
     { product_id },
@@ -1258,7 +1270,7 @@ async function adminPromptKeys(chat_id: number, uid: number, price_id: string, m
   await akRender(
     chat_id,
     uid,
-    `📦 <b>Producto:</b> ${escapeHtml(name)}\n⏳ <b>Duración:</b> ${escapeHtml(price.duration_label)}\n\nEnviá las keys (una por línea).`,
+    `🔀-${mb("Free Fire Producto")}: ${mb(escapeHtml(name))}\n🔄-${mb("Duración")}: ${mb(escapeHtml(price.duration_label))}\n\n${mb("Enviá las keys (una por línea).")}`,
     [[{ text: "🔙 Atrás", callback_data: `akback:${price.product_id}` }, AK_HOME_BTN]],
     message_id,
     { product_id: price.product_id, price_id },
@@ -1288,7 +1300,7 @@ async function akSubmitKeys(msg: TgMessage, flow: AkFlow, rawText: string) {
     await akRender(
       flow.chat_id,
       uid,
-      `📦 <b>Producto:</b> ${escapeHtml(name)}\n⏳ <b>Duración:</b> ${escapeHtml(price.duration_label)}\n\n⚠️ No detecté keys válidas. Enviá las keys (una por línea).`,
+      `🔀-${mb("Free Fire Producto")}: ${mb(escapeHtml(name))}\n🔄-${mb("Duración")}: ${mb(escapeHtml(price.duration_label))}\n\n⚠️ ${mb("No detecté keys válidas. Enviá las keys (una por línea).")}`,
       backKb,
       flow.message_id,
       { product_id: price.product_id, price_id: price.id },
@@ -1741,14 +1753,14 @@ async function adminListaPrecios(
   if (category) q = q.eq("category", category as never);
   const { data: products } = await q.order("sort_order");
   if (!products || products.length === 0) {
-    await prRender(chat_id, uid, `${mb("Productos disponibles")}\n\n⁃ —`, [navRow("akp:prlist")], message_id);
+    await prRender(chat_id, uid, `${mb("Productos disponibles")}\n\n- —`, [navRow("akp:prlist")], message_id);
     return;
   }
   const kb: AkKeyboard = products.map((p) => [
     { text: `${p.name}`, callback_data: `prprod:${p.id}` },
   ]);
   kb.push(navRow("akp:prlist"));
-  const list = products.map((p) => `⁃ ${escapeHtml(p.name)}`).join("\n");
+  const list = products.map((p) => `- ${escapeHtml(p.name)}`).join("\n");
   await prRender(chat_id, uid, `${mb("Productos disponibles")}\n\n${list}`, kb, message_id);
 }
 
@@ -1940,14 +1952,14 @@ async function pdList(chat_id: number, uid: number, category: PdCategory, messag
     .eq("category", category)
     .order("sort_order");
   const kb: AkKeyboard = (products ?? []).map((p) => [
-    { text: `${p.active ? "🔜" : "⏸️"} ${p.name}`, callback_data: `pdp:${p.id}` },
+    { text: `${p.name}`, callback_data: `pdp:${p.id}` },
   ]);
   kb.push([{ text: "➕ Agregar producto", callback_data: "pdadd" }]);
   kb.push(navRow("pdcats"));
   const list =
     (products ?? []).length > 0
-      ? (products ?? []).map((p) => `⁃ ${escapeHtml(p.name)}${p.active ? "" : " ⏸️"}`).join("\n")
-      : "⁃ —";
+      ? (products ?? []).map((p) => `- ${escapeHtml(p.name)}`).join("\n")
+      : "- —";
   await pdRender(
     chat_id,
     uid,
@@ -3762,11 +3774,14 @@ async function processWarehouseMessage(msg: TgMessage) {
     case ADMIN_LEGACY.usuariosAlt:
     case ADMIN_LEGACY.usuarios2:
     case ADMIN_TODO.usuarios:
+    case ADMIN_BOTTOM.usuarios:
       await showBackBar(msg.chat.id, msg.from.id);
       await usStartFresh(msg.chat.id, msg.from.id);
       return;
     case ADMIN_LEGACY.addkeys:
     case ADMIN_LEGACY.addkeys2:
+    case ADMIN_LEGACY.addkeys3:
+    case ADMIN_LEGACY.addkeys4:
     case ADMIN_BOTTOM.addkeys:
       await showBackBar(msg.chat.id, msg.from.id);
       await akStartFresh(msg.chat.id, msg.from.id);
@@ -3779,6 +3794,7 @@ async function processWarehouseMessage(msg: TgMessage) {
       return;
     case ADMIN_LEGACY.productos:
     case ADMIN_LEGACY.productos2:
+    case ADMIN_LEGACY.productos3:
     case ADMIN_BOTTOM.productos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pdStartFresh(msg.chat.id, msg.from.id);
@@ -3790,10 +3806,12 @@ async function processWarehouseMessage(msg: TgMessage) {
       return;
     case ADMIN_LEGACY.metodos:
     case ADMIN_LEGACY.metodos2:
+    case ADMIN_LEGACY.metodos3:
     case ADMIN_BOTTOM.metodos:
       await showBackBar(msg.chat.id, msg.from.id);
       await pmStartFresh(msg.chat.id, msg.from.id);
       return;
+    case ADMIN_LEGACY.choosex2:
     case ADMIN_BOTTOM.choosex:
       await showBackBar(msg.chat.id, msg.from.id);
       await cxMenu(msg.chat.id);
