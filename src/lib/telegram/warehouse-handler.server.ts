@@ -2085,8 +2085,8 @@ async function pdApplyDelete(chat_id: number, uid: number, product_id: string, m
   await pdRender(
     chat_id,
     uid,
-    `✅ <b>Eliminado correctamente.</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n📌 Eliminado: ${escapeHtml(p.name)}`,
-    [[{ text: "🔚 Atrás", callback_data: "pdback" }, PD_HOME_BTN]],
+    `${mb("Free Fire")} ${mb("Eliminar")} : ${mb(escapeHtml(p.name))}\n\n${mb("Eliminado correctamente")}`,
+    [navRow("pdback")],
     message_id,
     { category: p.category as PdCategory },
   );
