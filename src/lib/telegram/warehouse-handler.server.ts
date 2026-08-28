@@ -1832,8 +1832,8 @@ async function prSubmitPrice(msg: TgMessage, flow: PrFlow, rawText: string) {
     await prRender(
       flow.chat_id,
       uid,
-      `💲 <b>Editar Precio</b>\n\n📦 ${escapeHtml(name)}\n🛍️ ${escapeHtml(p.duration_label)}\n💰 $${Number(p.price_usd).toFixed(2)} USD\n\nPrecio inválido. Enviá el nuevo precio.\nEjemplo: <code>4.50</code>`,
-      [[{ text: "🔚 Atrás", callback_data: `prback:${p.product_id}` }, PR_HOME_BTN]],
+      `${mb("Free Fire")} — ${mb("Precio")}: ${mb(escapeHtml(name))}\n\n🔀 ${mb(escapeHtml(name))}\n🔄 ${mb(escapeHtml(p.duration_label))}\n🔀 $${Number(p.price_usd).toFixed(2)} USD\n\n⚠️ ${mb("Enter the new price")} ${mb("Example")}: ${mb("4.50")}`,
+      [navRow(`prback:${p.product_id}`)],
       flow.message_id,
       { product_id: p.product_id, price_id: flow.price_id },
     );
