@@ -1993,8 +1993,8 @@ async function pdPromptRename(chat_id: number, uid: number, product_id: string, 
   await pdRender(
     chat_id,
     uid,
-    `🔏 <b>Renombrar</b>\n\n📦 Producto: ${escapeHtml(p.name)}\n\n❇️ Envía el nuevo nombre del producto.`,
-    [[{ text: "🔚 Atrás", callback_data: `pdp:${product_id}` }, PD_HOME_BTN]],
+    `${mb("Free Fire")} : ${mb("Renombrar")}\n\n🔀 ${mb("Producto")} : ${escapeHtml(p.name)}\n\n${mb("Enter the new product name")}`,
+    [navRow(`pdp:${product_id}`)],
     message_id,
     { category: p.category as PdCategory, product_id, step: "rename" },
   );
