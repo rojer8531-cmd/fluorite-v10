@@ -542,14 +542,25 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   await patchContext(telegram_id, { product_id });
 
   function fmtPrice(n: number) {
-    return Number.isInteger(n) ? `💲${n}` : `💲${n.toFixed(2)}`;
+    return Number.isInteger(n) ? `${n}` : `${n.toFixed(2)}`;
   }
 
-  const rows = prices.map((p) => {
+  function maxLabel(p: { duration_days: number; duration_label: string }) {
+    const d = Number(p.duration_days);
+    if (!d || Number.isNaN(d)) return `Max ${p.duration_label}`;
+    return `Max ${d} ${d === 1 ? "Day" : "Days"}`;
+  }
+
+  const btnLabels = prices.map((p) => maxLabel(p));
+  const maxBtnLen = Math.max(...btnLabels.map((l) => l.length), 1);
+
+  const rows = prices.map((p, i) => {
     // Sin stock: botón visible pero deshabilitado (callback no-op para cumplir con la API de Telegram).
     const callback_data = p.available_stock > 0 ? `dur:${p.id}` : "noop";
+    const label = btnLabels[i];
+    const pad = " ".repeat(Math.max(0, maxBtnLen - label.length) + 6);
     return [{
-      text: `${p.duration_label}.   ${fmtPrice(Number(p.price_usd))} USD`,
+      text: `${label}${pad}${fmtPrice(Number(p.price_usd))} Dollars`,
       callback_data,
     }];
   });
@@ -576,12 +587,13 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   const stockBlock = buildStockBlock(prices);
 
   const productTitle = escapeHtml(product.name);
-  const short = categoryShort(product.category);
+  const short = escapeHtml(categoryShort(product.category));
   const header =
-    `<b>${productTitle} Product - Free Fire ${escapeHtml(short)} Category</b>\n\n` +
-    `🏛️ <b>Saldo:</b> • ${balance.toFixed(2)} 💲USD\n\n` +
-    `${stockBlock}\n\n` +
-    `Selecciona una duración ${productTitle}:`;
+    `<b>${productTitle} Product - Free Fire ${short}</b>\n\n` +
+    `🏛️ <b>Saldo:</b> • ${balance.toFixed(2)} Dollars\n\n` +
+    `${stockBlock}\n` +
+    `<b>Select a Duration - Free Fire ${short}</b>`;
+
 
   await screen(telegram_id, chat_id, header, rows);
 }
