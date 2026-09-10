@@ -1429,6 +1429,7 @@ async function cxMenu(chat_id: number, message_id?: number) {
     [{ text: "~ Stock", callback_data: "cx:stock" }],
     [{ text: "~ Recarga mínima", callback_data: "cx:minrec" }],
     [{ text: "~ ventasX", callback_data: "cx:sales" }],
+    [{ text: "~ Comunicado", callback_data: "cx:comm" }],
     navRow("akp:inicio"),
   ];
   await stRender(chat_id, `📋 <b>Choose a opciónes</b>`, kb, message_id);
