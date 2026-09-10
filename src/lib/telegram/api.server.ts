@@ -32,6 +32,7 @@ export interface TgResult<T = unknown> {
 // Timeouts razonables: dejamos que la request a Telegram complete sin fallar
 // por microcortes, pero con retry acotado para no bloquear al usuario.
 const TG_TIMEOUT_MS = 10_000;
+const TG_MEDIA_TIMEOUT_MS = 120_000;
 const MAX_ATTEMPTS = 3;
 const MAX_RETRY_AFTER_SEC = 2;
 const MAX_MESSAGE_TEXT = 3900;
@@ -128,7 +129,10 @@ export async function tg<T = unknown>(
   const url = `https://api.telegram.org/bot${token}/${method}`;
   const maxAttempts = method === "answerCallbackQuery" || method.startsWith("editMessage") ? 1 : MAX_ATTEMPTS;
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), TG_TIMEOUT_MS);
+  // Telegram puede tardar bastante al recibir archivos grandes. Los mensajes
+  // normales conservan el timeout corto para no volver lento el bot.
+  const timeoutMs = payload instanceof FormData ? TG_MEDIA_TIMEOUT_MS : TG_TIMEOUT_MS;
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
     const init: RequestInit = { method: "POST", signal: ac.signal };
     if (payload instanceof FormData) {
@@ -419,7 +423,7 @@ export async function downloadFile(
   if (!token) return null;
   const url = `https://api.telegram.org/file/bot${token}/${file_path}`;
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), TG_TIMEOUT_MS);
+  const timer = setTimeout(() => ac.abort(), TG_MEDIA_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: ac.signal });
     if (!res.ok) return null;
