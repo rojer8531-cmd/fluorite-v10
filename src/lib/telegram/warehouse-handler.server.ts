@@ -52,8 +52,8 @@ interface TgMessage {
   text?: string;
   caption?: string;
   photo?: TgPhotoSize[];
-  document?: { file_id: string; file_name?: string; mime_type?: string };
-  video?: { file_id: string };
+  document?: { file_id: string; file_name?: string; mime_type?: string; file_size?: number };
+  video?: { file_id: string; duration?: number; file_size?: number };
   audio?: { file_id: string };
   voice?: { file_id: string };
   forward_from?: unknown;
