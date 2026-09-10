@@ -4213,6 +4213,13 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminPromptMinRecharge(chat_id);
     return;
   }
+  if (data.startsWith("cx:comm:")) {
+    const mode = data.slice(8) as CommMode;
+    if (chat_id && ["text", "photo", "document", "video"].includes(mode)) {
+      await cxComunicadoMode(chat_id, cb.from.id, mode, cb.message?.message_id);
+    }
+    return;
+  }
   if (data === "cx:comm") {
     if (chat_id) await cxComunicadoPrompt(chat_id, cb.from.id, cb.message?.message_id);
     return;
