@@ -44,7 +44,7 @@ const timeOf = (iso: string) => {
   return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 };
 
-const TABS = ["Resumen", "Ventas", "Usuarios", "Inventario"] as const;
+const TABS = ["Resumen", "Ventas", "Movimientos", "Usuarios", "Inventario"] as const;
 type Tab = (typeof TABS)[number];
 
 function DatosPage() {
@@ -82,7 +82,7 @@ function DatosPage() {
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={`flex-1 rounded-[0.9rem] px-2 py-2 text-[13px] font-medium transition ${
+              className={`flex-1 rounded-[0.9rem] px-1.5 py-2 text-[12px] font-medium transition ${
                 tab === t ? "neu-soft" : "neu-text-soft"
               }`}
             >
@@ -99,6 +99,7 @@ function DatosPage() {
           <>
             {tab === "Resumen" && <Resumen d={data} />}
             {tab === "Ventas" && <Ventas d={data} />}
+            {tab === "Movimientos" && <Movimientos d={data} />}
             {tab === "Usuarios" && <Usuarios d={data} />}
             {tab === "Inventario" && <Inventario d={data} />}
             <p className="neu-text-soft mt-8 text-center text-xs">
