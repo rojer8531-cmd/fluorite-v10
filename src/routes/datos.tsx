@@ -228,8 +228,8 @@ function Chart({ daily }: { daily: DatosPayload["daily"] }) {
         {daily.map((d) => (
           <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
             <div
-              className="neu-soft w-full rounded-md"
-              style={{ height: `${Math.max(4, (d.total / max) * 100)}%` }}
+              className="w-full rounded-md"
+              style={{ height: `${Math.max(6, (d.total / max) * 100)}%`, backgroundColor: "var(--neu-accent)", opacity: d.total ? 1 : 0.25 }}
               title={`${d.date}: ${money(d.total)}`}
             />
           </div>
