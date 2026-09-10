@@ -3176,6 +3176,156 @@ async function handleBroadcast(msg: TgMessage) {
   );
 }
 
+// ===== Comunicado (ChooseX) =====
+interface CommFlow {
+  chat_id: number;
+  message_id: number;
+  ts: number;
+}
+
+async function getCommFlow(uid: number): Promise<CommFlow | null> {
+  const st = await getState(uid);
+  const flow = (st?.context as Record<string, unknown> | undefined)?.comm_flow as CommFlow | undefined;
+  if (!flow?.message_id) return null;
+  if (Date.now() - Number(flow.ts ?? 0) > 30 * 60 * 1000) return null;
+  return flow;
+}
+
+async function cxComunicadoPrompt(chat_id: number, uid: number, message_id?: number) {
+  const text =
+    `Escribe aquí el mensaje que deseas enviar al usuario. ` +
+    `Puedes incluir toda la información que consideres necesaria.\n\n` +
+    `Texto · Imágenes · Archivos · Videos · Links\n` +
+    `Archivos: máximo 100 MB · Videos: máximo 15 minutos`;
+  await stRender(chat_id, text, [navRow("cx:menu")], message_id);
+  if (message_id) {
+    await patchContext(uid, { comm_flow: { chat_id, message_id, ts: Date.now() } });
+  }
+}
+
+const COMM_MAX_FILE_BYTES = 100 * 1024 * 1024;
+const COMM_MAX_VIDEO_SECONDS = 15 * 60;
+
+async function commEdit(flow: CommFlow, text: string, keyboard?: AkKeyboard) {
+  await editMessageText("warehouse", flow.chat_id, flow.message_id, text, {
+    reply_markup: keyboard ? { inline_keyboard: keyboard } : undefined,
+  }).catch(() => {});
+}
+
+async function sendComunicado(msg: TgMessage, flow: CommFlow) {
+  if (!msg.from) return;
+  await patchContext(msg.from.id, { comm_flow: null });
+
+  let kind: MediaKind = null;
+  let sourceFileId: string | null = null;
+  let filename = "comunicado";
+  if (msg.photo && msg.photo.length > 0) {
+    kind = "photo";
+    sourceFileId = msg.photo[msg.photo.length - 1].file_id;
+    filename = "comunicado.jpg";
+  } else if (msg.document) {
+    kind = "document";
+    sourceFileId = msg.document.file_id;
+    filename = msg.document.file_name || "archivo";
+    if (Number(msg.document.file_size ?? 0) > COMM_MAX_FILE_BYTES) {
+      await commEdit(flow, `El archivo supera los 100 MB permitidos.`, [navRow("cx:menu")]);
+      return;
+    }
+  } else if (msg.video) {
+    kind = "video";
+    sourceFileId = msg.video.file_id;
+    filename = "video.mp4";
+    if (Number(msg.video.duration ?? 0) > COMM_MAX_VIDEO_SECONDS) {
+      await commEdit(flow, `El video supera los 15 minutos permitidos.`, [navRow("cx:menu")]);
+      return;
+    }
+    if (Number(msg.video.file_size ?? 0) > COMM_MAX_FILE_BYTES) {
+      await commEdit(flow, `El video supera los 100 MB permitidos.`, [navRow("cx:menu")]);
+      return;
+    }
+  } else if (msg.audio) {
+    kind = "audio";
+    sourceFileId = msg.audio.file_id;
+    filename = "audio.mp3";
+  } else if (msg.voice) {
+    kind = "voice";
+    sourceFileId = msg.voice.file_id;
+    filename = "voice.ogg";
+  }
+
+  const raw = (msg.text ?? msg.caption ?? "").trim();
+  if (!raw && !kind) {
+    await commEdit(flow, `Envía texto, imagen, archivo o video para el comunicado.`, [navRow("cx:menu")]);
+    return;
+  }
+
+  await commEdit(flow, `<b>COMUNICADO EN PROCESO</b>`);
+
+  const body = raw
+    ? `• <b>AVISO IMPORTANTE</b> • 🅾️\n\n⁃ ${escapeHtml(raw)}`
+    : `• <b>AVISO IMPORTANTE</b> • 🅾️`;
+
+  // Solo usuarios que ya recargaron saldo alguna vez.
+  const usersPromise = sb
+    .from("bot_users")
+    .select("telegram_id, chat_id, total_recharged")
+    .gt("total_recharged", 0);
+
+  let mediaBytes: ArrayBuffer | null = null;
+  if (kind && sourceFileId) {
+    const f = await getFile("warehouse", sourceFileId);
+    if (f.ok && f.result?.file_path) {
+      mediaBytes = await downloadFile("warehouse", f.result.file_path);
+      const parts = f.result.file_path.split("/");
+      const baseName = parts[parts.length - 1];
+      if (baseName && kind !== "document") filename = baseName;
+    }
+    if (!mediaBytes) {
+      await commEdit(flow, `No pude procesar el archivo. Intentá de nuevo.`, [navRow("cx:menu")]);
+      return;
+    }
+  }
+
+  const { data: users } = await usersPromise;
+  const targets = (users ?? []).filter((u) => u.chat_id) as Array<{ telegram_id: number; chat_id: number }>;
+  if (targets.length === 0) {
+    await commEdit(flow, `No hay usuarios con recargas para el comunicado.`, [navRow("cx:menu")]);
+    return;
+  }
+
+  let shopFileId: string | null = null;
+  let ok = 0;
+  let fail = 0;
+
+  async function sendOne(u: { telegram_id: number; chat_id: number }) {
+    let sent: { ok: boolean; result?: { message_id: number } } = { ok: false };
+    if (kind && shopFileId) {
+      sent = await sendByFileId(u.chat_id, kind, shopFileId, body);
+    } else if (kind && mediaBytes) {
+      sent = await uploadMedia(u.chat_id, kind, mediaBytes, filename, body);
+      const fid = extractShopFileId(kind, sent.result as never);
+      if (fid && !shopFileId) shopFileId = fid;
+    } else {
+      sent = await _rawSendMessage("shop", u.chat_id, body);
+    }
+    if (sent.ok) ok++;
+    else fail++;
+  }
+
+  if (kind && targets.length > 0) await sendOne(targets[0]);
+  const rest = kind ? targets.slice(1) : targets;
+  const CONCURRENCY = 50;
+  for (let i = 0; i < rest.length; i += CONCURRENCY) {
+    await Promise.all(rest.slice(i, i + CONCURRENCY).map((u) => sendOne(u)));
+  }
+
+  await commEdit(
+    flow,
+    `<b>Free Fire : comunicado completado Correctamente</b>\n\nEntregados: <b>${ok}</b>${fail ? ` · Fallidos: <b>${fail}</b>` : ""}`,
+    [navRow("cx:menu")],
+  );
+}
+
 
 
 
