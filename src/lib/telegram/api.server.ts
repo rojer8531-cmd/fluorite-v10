@@ -186,6 +186,13 @@ export async function tg<T = unknown>(
   }
 }
 
+/** URL pública temporal del archivo en los servidores de Telegram. */
+export function fileUrl(bot: BotKind, file_path: string): string | null {
+  const token = tokenFor(bot);
+  if (!token) return null;
+  return `https://api.telegram.org/file/bot${token}/${file_path}`;
+}
+
 export async function getMe(bot: BotKind) {
   return tg<{ id: number; username: string; is_bot: boolean }>(bot, "getMe");
 }
