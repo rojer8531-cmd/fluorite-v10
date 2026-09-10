@@ -4127,6 +4127,10 @@ async function handleCallback(cb: TgCallback) {
     if (chat_id) await adminPromptMinRecharge(chat_id);
     return;
   }
+  if (data === "cx:comm") {
+    if (chat_id) await cxComunicadoPrompt(chat_id, cb.from.id, cb.message?.message_id);
+    return;
+  }
   if (data === "cx:sales") {
     if (chat_id) await cxSalesMenu(chat_id, cb.message?.message_id);
     return;
