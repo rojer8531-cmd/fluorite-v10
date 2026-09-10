@@ -3178,10 +3178,13 @@ async function handleBroadcast(msg: TgMessage) {
 }
 
 // ===== Comunicado (ChooseX) =====
+type CommMode = "text" | "photo" | "document" | "video";
+
 interface CommFlow {
   chat_id: number;
   message_id: number;
   ts: number;
+  mode?: CommMode;
 }
 
 async function getCommFlow(uid: number): Promise<CommFlow | null> {
@@ -3192,15 +3195,54 @@ async function getCommFlow(uid: number): Promise<CommFlow | null> {
   return flow;
 }
 
+const COMM_MODE_ROWS: AkKeyboard = [
+  [
+    { text: "📝 Texto", callback_data: "cx:comm:text" },
+    { text: "🖼️ Imagen", callback_data: "cx:comm:photo" },
+  ],
+  [
+    { text: "📁 Archivo", callback_data: "cx:comm:document" },
+    { text: "🎬 Video", callback_data: "cx:comm:video" },
+  ],
+];
+
+const COMM_MODE_LABEL: Record<CommMode, string> = {
+  text: "Texto",
+  photo: "Imagen",
+  document: "Archivo",
+  video: "Video",
+};
+
 async function cxComunicadoPrompt(chat_id: number, uid: number, message_id?: number) {
   const text =
     `Escribe aquí el mensaje que deseas enviar al usuario. ` +
     `Puedes incluir toda la información que consideres necesaria.\n\n` +
     `Texto · Imágenes · Archivos · Videos · Links\n` +
-    `Archivos: máximo 100 MB · Videos: máximo 15 minutos`;
-  await stRender(chat_id, text, [navRow("cx:menu")], message_id);
+    `Archivos: máximo 100 MB · Videos: máximo 15 minutos\n\n` +
+    `<b>Elegí qué vas a enviar</b>`;
+  await stRender(chat_id, text, [...COMM_MODE_ROWS, navRow("cx:menu")], message_id);
   if (message_id) {
     await patchContext(uid, { comm_flow: { chat_id, message_id, ts: Date.now() } });
+  }
+}
+
+async function cxComunicadoMode(chat_id: number, uid: number, mode: CommMode, message_id?: number) {
+  const hint =
+    mode === "text"
+      ? `Envía el texto del comunicado. Podés incluir links.`
+      : mode === "photo"
+        ? `Envía la imagen del comunicado. Podés agregarle descripción.`
+        : mode === "document"
+          ? `Envía el archivo del comunicado (máximo 100 MB).`
+          : `Envía el video del comunicado (máximo 15 minutos y 100 MB).`;
+  await stRender(
+    chat_id,
+    `<b>Comunicado · ${COMM_MODE_LABEL[mode]}</b>\n\n${hint}`,
+    [navRow("cx:comm")],
+    message_id,
+  );
+  if (message_id) {
+    await patchContext(uid, { comm_flow: { chat_id, message_id, ts: Date.now(), mode } });
   }
 }
 
@@ -3215,7 +3257,6 @@ async function commEdit(flow: CommFlow, text: string, keyboard?: AkKeyboard) {
 
 async function sendComunicado(msg: TgMessage, flow: CommFlow) {
   if (!msg.from) return;
-  await patchContext(msg.from.id, { comm_flow: null });
 
   let kind: MediaKind = null;
   let sourceFileId: string | null = null;
@@ -3229,7 +3270,7 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     sourceFileId = msg.document.file_id;
     filename = msg.document.file_name || "archivo";
     if (Number(msg.document.file_size ?? 0) > COMM_MAX_FILE_BYTES) {
-      await commEdit(flow, `El archivo supera los 100 MB permitidos.`, [navRow("cx:menu")]);
+      await commEdit(flow, `El archivo supera los 100 MB permitidos.`, [navRow("cx:comm")]);
       return;
     }
   } else if (msg.video) {
@@ -3237,11 +3278,11 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     sourceFileId = msg.video.file_id;
     filename = "video.mp4";
     if (Number(msg.video.duration ?? 0) > COMM_MAX_VIDEO_SECONDS) {
-      await commEdit(flow, `El video supera los 15 minutos permitidos.`, [navRow("cx:menu")]);
+      await commEdit(flow, `El video supera los 15 minutos permitidos.`, [navRow("cx:comm")]);
       return;
     }
     if (Number(msg.video.file_size ?? 0) > COMM_MAX_FILE_BYTES) {
-      await commEdit(flow, `El video supera los 100 MB permitidos.`, [navRow("cx:menu")]);
+      await commEdit(flow, `El video supera los 100 MB permitidos.`, [navRow("cx:comm")]);
       return;
     }
   } else if (msg.audio) {
@@ -3256,75 +3297,102 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
 
   const raw = (msg.text ?? msg.caption ?? "").trim();
   if (!raw && !kind) {
-    await commEdit(flow, `Envía texto, imagen, archivo o video para el comunicado.`, [navRow("cx:menu")]);
+    await commEdit(flow, `Envía texto, imagen, archivo o video para el comunicado.`, [navRow("cx:comm")]);
     return;
   }
 
+  // Si el admin eligió un tipo, validamos que coincida con lo enviado.
+  if (flow.mode) {
+    const expected: MediaKind = flow.mode === "text" ? null : (flow.mode as MediaKind);
+    if (expected !== kind) {
+      await commEdit(
+        flow,
+        `Elegiste <b>${COMM_MODE_LABEL[flow.mode]}</b> pero enviaste otro tipo de contenido.\n\nVolvé a enviarlo o cambiá la opción.`,
+        [...COMM_MODE_ROWS, navRow("cx:menu")],
+      );
+      return;
+    }
+  }
+
+  await patchContext(msg.from.id, { comm_flow: null });
   await commEdit(flow, `<b>COMUNICADO EN PROCESO</b>`);
 
   const body = raw
     ? `• <b>AVISO IMPORTANTE</b> • 🅾️\n\n⁃ ${escapeHtml(raw)}`
     : `• <b>AVISO IMPORTANTE</b> • 🅾️`;
 
-  // Solo usuarios que ya recargaron saldo alguna vez.
-  const usersPromise = sb
-    .from("bot_users")
-    .select("telegram_id, chat_id, total_recharged")
-    .gt("total_recharged", 0);
+  const work = (async () => {
+    // Solo usuarios que ya recargaron saldo alguna vez.
+    const usersPromise = sb
+      .from("bot_users")
+      .select("telegram_id, chat_id, total_recharged")
+      .gt("total_recharged", 0);
 
-  let mediaBytes: ArrayBuffer | null = null;
-  if (kind && sourceFileId) {
-    const f = await getFile("warehouse", sourceFileId);
-    if (f.ok && f.result?.file_path) {
-      mediaBytes = await downloadFile("warehouse", f.result.file_path);
-      const parts = f.result.file_path.split("/");
-      const baseName = parts[parts.length - 1];
-      if (baseName && kind !== "document") filename = baseName;
+    // Preferimos pasarle a Telegram la URL del archivo: así el propio Telegram
+    // lo descarga y no hay que traer los bytes al worker (que se corta con
+    // archivos grandes y hacía que nunca llegaran videos ni documentos).
+    let mediaUrl: string | null = null;
+    if (kind && sourceFileId) {
+      const f = await getFile("warehouse", sourceFileId);
+      if (f.ok && f.result?.file_path) {
+        mediaUrl = fileUrl("warehouse", f.result.file_path);
+        const parts = f.result.file_path.split("/");
+        const baseName = parts[parts.length - 1];
+        if (baseName && kind !== "document") filename = baseName;
+      }
+      if (!mediaUrl) {
+        await commEdit(flow, `No pude procesar el archivo. Intentá de nuevo.`, [navRow("cx:comm")]);
+        return;
+      }
     }
-    if (!mediaBytes) {
-      await commEdit(flow, `No pude procesar el archivo. Intentá de nuevo.`, [navRow("cx:menu")]);
+
+    const { data: users } = await usersPromise;
+    const targets = (users ?? []).filter((u) => u.chat_id) as Array<{ telegram_id: number; chat_id: number }>;
+    if (targets.length === 0) {
+      await commEdit(flow, `No hay usuarios con recargas para el comunicado.`, [navRow("cx:menu")]);
       return;
     }
-  }
 
-  const { data: users } = await usersPromise;
-  const targets = (users ?? []).filter((u) => u.chat_id) as Array<{ telegram_id: number; chat_id: number }>;
-  if (targets.length === 0) {
-    await commEdit(flow, `No hay usuarios con recargas para el comunicado.`, [navRow("cx:menu")]);
-    return;
-  }
+    let shopFileId: string | null = null;
+    let ok = 0;
+    let fail = 0;
 
-  let shopFileId: string | null = null;
-  let ok = 0;
-  let fail = 0;
-
-  async function sendOne(u: { telegram_id: number; chat_id: number }) {
-    let sent: { ok: boolean; result?: { message_id: number } } = { ok: false };
-    if (kind && shopFileId) {
-      sent = await sendByFileId(u.chat_id, kind, shopFileId, body);
-    } else if (kind && mediaBytes) {
-      sent = await uploadMedia(u.chat_id, kind, mediaBytes, filename, body);
-      const fid = extractShopFileId(kind, sent.result as never);
-      if (fid && !shopFileId) shopFileId = fid;
-    } else {
-      sent = await _rawSendMessage("shop", u.chat_id, body);
+    async function sendOne(u: { telegram_id: number; chat_id: number }) {
+      let sent: { ok: boolean; result?: { message_id: number } } = { ok: false };
+      if (kind) {
+        const ref = shopFileId ?? mediaUrl!;
+        sent = await sendByFileId(u.chat_id, kind, ref, body);
+        if (!sent.ok && !shopFileId) {
+          // Fallback: descargar y subir los bytes (archivos chicos).
+          const path = mediaUrl!.split("/file/bot")[1]?.split("/").slice(1).join("/");
+          const bytes = path ? await downloadFile("warehouse", path) : null;
+          if (bytes) sent = await uploadMedia(u.chat_id, kind, bytes, filename, body);
+        }
+        const fid = extractShopFileId(kind, sent.result as never);
+        if (fid && !shopFileId) shopFileId = fid;
+      } else {
+        sent = await _rawSendMessage("shop", u.chat_id, body);
+      }
+      if (sent.ok) ok++;
+      else fail++;
     }
-    if (sent.ok) ok++;
-    else fail++;
-  }
 
-  if (kind && targets.length > 0) await sendOne(targets[0]);
-  const rest = kind ? targets.slice(1) : targets;
-  const CONCURRENCY = 50;
-  for (let i = 0; i < rest.length; i += CONCURRENCY) {
-    await Promise.all(rest.slice(i, i + CONCURRENCY).map((u) => sendOne(u)));
-  }
+    if (kind && targets.length > 0) await sendOne(targets[0]);
+    const rest = kind ? targets.slice(1) : targets;
+    const CONCURRENCY = 50;
+    for (let i = 0; i < rest.length; i += CONCURRENCY) {
+      await Promise.all(rest.slice(i, i + CONCURRENCY).map((u) => sendOne(u)));
+    }
 
-  await commEdit(
-    flow,
-    `<b>Free Fire : comunicado completado Correctamente</b>\n\nEntregados: <b>${ok}</b>${fail ? ` · Fallidos: <b>${fail}</b>` : ""}`,
-    [navRow("cx:menu")],
-  );
+    await commEdit(
+      flow,
+      `<b>Free Fire : comunicado completado Correctamente</b>\n\nEntregados: <b>${ok}</b>${fail ? ` · Fallidos: <b>${fail}</b>` : ""}`,
+      [navRow("cx:menu")],
+    );
+  })().catch((err) => console.error("[comunicado] error", err));
+
+  // El envío puede tardar más que el webhook: lo mantenemos vivo aparte.
+  keepTelegramPromiseAlive(work);
 }
 
 
