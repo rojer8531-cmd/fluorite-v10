@@ -103,7 +103,7 @@ function DatosPage() {
             {tab === "Usuarios" && <Usuarios d={data} />}
             {tab === "Inventario" && <Inventario d={data} />}
             <p className="neu-text-soft mt-8 text-center text-xs">
-              Actualizado {timeOf(data.generatedAt)}
+              Actualizado {timeOf(data.generatedAt)} · Excluido {data.excluded.join(", ")}
             </p>
           </>
         )}
@@ -192,6 +192,14 @@ function Resumen({ d }: { d: DatosPayload }) {
           <Stat label="Compras" value={String(d.sales.orders)} hint={`${d.sales.delivered} entregadas`} />
           <Stat label="Keys entregadas" value={String(d.sales.keysDelivered)} />
           <Stat label="Comprobantes" value={String(d.receipts.total)} hint={`${d.receipts.pending} pendientes`} />
+          <Stat label="Ticket promedio" value={money(d.sales.avgTicket)} />
+          <Stat label="Promedio diario" value={money(d.sales.avgPerDay30d)} hint="Últimos 30 días" />
+          <Stat
+            label="Variación 7 días"
+            value={`${d.sales.growth7d >= 0 ? "+" : ""}${d.sales.growth7d.toFixed(1)} %`}
+            hint={`Semana previa ${money(d.sales.revenuePrev7d)}`}
+          />
+          <Stat label="Mejor día" value={money(d.sales.bestDay.total)} hint={shortDate(d.sales.bestDay.date)} />
         </div>
       </Section>
 
@@ -253,7 +261,37 @@ function Ventas({ d }: { d: DatosPayload }) {
           <Stat label="Pendientes" value={String(d.sales.pending)} />
           <Stat label="Aprobados" value={String(d.receipts.approved)} hint="Comprobantes" />
           <Stat label="Rechazados" value={String(d.receipts.rejected)} hint="Comprobantes" />
+          <Stat label="Canceladas" value={String(d.sales.cancelled)} />
+          <Stat label="Compras hoy" value={String(d.sales.ordersToday)} hint={`${d.sales.keysToday} keys`} />
+          <Stat label="Compras 7 días" value={String(d.sales.orders7d)} />
+          <Stat label="Compras 30 días" value={String(d.sales.orders30d)} />
+          <Stat label="Ayer" value={money(d.sales.revenueYesterday)} />
+          <Stat
+            label="Aprobación"
+            value={`${d.receipts.approvalRate.toFixed(0)} %`}
+            hint={`${d.receipts.today} comprobantes hoy`}
+          />
         </div>
+      </Section>
+
+      <Section title="Horario con más ventas">
+        <div className="neu-card p-4">
+          <Bars
+            items={d.hourly.map((h) => ({
+              key: String(h.hour),
+              label: `${String(h.hour).padStart(2, "0")}h`,
+              value: h.total,
+            }))}
+          />
+        </div>
+      </Section>
+
+      <Section title="Ventas por día de semana">
+        <List>
+          {d.weekday.map((w) => (
+            <Row key={w.label} left={w.label} sub={`${w.orders} compras`} right={money(w.total)} />
+          ))}
+        </List>
       </Section>
 
       <Section title="Compras recientes">
@@ -277,6 +315,56 @@ function Ventas({ d }: { d: DatosPayload }) {
   );
 }
 
+function Bars({ items }: { items: { key: string; label: string; value: number }[] }) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  return (
+    <div>
+      <div className="flex h-28 items-end gap-[3px]">
+        {items.map((i) => (
+          <div
+            key={i.key}
+            className="flex-1 rounded-sm"
+            title={`${i.label}: ${money(i.value)}`}
+            style={{
+              height: `${Math.max(5, (i.value / max) * 100)}%`,
+              backgroundColor: "var(--neu-accent)",
+              opacity: i.value ? 1 : 0.2,
+            }}
+          />
+        ))}
+      </div>
+      <div className="neu-text-soft mt-2 flex justify-between text-[10px]">
+        <span>{items[0]?.label}</span>
+        <span>{items[items.length - 1]?.label}</span>
+      </div>
+    </div>
+  );
+}
+
+function Movimientos({ d }: { d: DatosPayload }) {
+  return (
+    <>
+      <Section title="Actividad reciente">
+        <List>
+          {d.movements.length === 0 ? (
+            <Empty text="Sin movimientos" />
+          ) : (
+            d.movements.map((m) => (
+              <Row
+                key={m.id}
+                left={`${m.kind} · ${m.title}`}
+                sub={m.detail}
+                right={m.amount}
+                rightSub={`${shortDate(m.createdAt)} ${timeOf(m.createdAt)}`}
+              />
+            ))
+          )}
+        </List>
+      </Section>
+    </>
+  );
+}
+
 function Usuarios({ d }: { d: DatosPayload }) {
   return (
     <>
@@ -288,7 +376,26 @@ function Usuarios({ d }: { d: DatosPayload }) {
           <Stat label="Bloqueados" value={String(d.users.blocked)} />
           <Stat label="Saldo en cuentas" value={money(d.users.balanceTotal)} />
           <Stat label="Recargado" value={money(d.users.rechargedTotal)} />
+          <Stat label="Nuevos 24 horas" value={String(d.users.new24h)} />
+          <Stat label="Activos hoy" value={String(d.users.activeToday)} hint={`${d.users.active7d} en 7 días`} />
+          <Stat label="Compradores" value={String(d.users.buyers)} hint={`${d.users.repeatBuyers} recurrentes`} />
         </div>
+      </Section>
+
+      <Section title="Rangos">
+        <List>
+          {d.users.byRank.map((r) => (
+            <Row key={r.label} left={r.label} right={String(r.count)} />
+          ))}
+        </List>
+      </Section>
+
+      <Section title="Idiomas">
+        <List>
+          {d.users.byLang.map((l) => (
+            <Row key={l.label} left={l.label} right={String(l.count)} />
+          ))}
+        </List>
       </Section>
 
       <Section title="Mejores clientes">
@@ -338,7 +445,20 @@ function Inventario({ d }: { d: DatosPayload }) {
           <Stat label="Duraciones" value={String(d.catalog.prices)} />
           <Stat label="Keys en stock" value={String(d.catalog.stockKeys)} />
           <Stat label="Métodos de pago" value={String(d.catalog.paymentMethods)} hint="Activos" />
+          <Stat label="Sin stock" value={String(d.catalog.outOfStock)} hint="Duraciones activas" />
         </div>
+      </Section>
+
+      <Section title="Stock bajo">
+        <List>
+          {d.lowStock.length === 0 ? (
+            <Empty text="Todo con stock suficiente" />
+          ) : (
+            d.lowStock.map((s) => (
+              <Row key={`low-${s.name}-${s.duration}`} left={s.name} sub={s.duration} right={String(s.keys)} />
+            ))
+          )}
+        </List>
       </Section>
 
       <Section title="Stock por producto">
@@ -348,6 +468,18 @@ function Inventario({ d }: { d: DatosPayload }) {
           ) : (
             d.stockByProduct.map((s) => (
               <Row key={`${s.name}-${s.duration}`} left={s.name} sub={s.duration} right={String(s.keys)} />
+            ))
+          )}
+        </List>
+      </Section>
+
+      <Section title="Métodos de pago activos">
+        <List>
+          {d.paymentMethods.length === 0 ? (
+            <Empty text="Sin métodos activos" />
+          ) : (
+            d.paymentMethods.map((m, i) => (
+              <Row key={`${m.country}-${m.method}-${i}`} left={m.country} sub={m.method} right={m.currency} />
             ))
           )}
         </List>
