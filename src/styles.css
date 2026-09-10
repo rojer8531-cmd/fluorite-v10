@@ -142,3 +142,42 @@
     color: var(--color-foreground);
   }
 }
+
+/* Panel /datos — superficie estilo iOS neumórfico */
+:root {
+  --neu-surface: oklch(0.955 0.003 250);
+  --neu-surface-raised: oklch(0.975 0.003 250);
+  --neu-text: oklch(0.32 0.02 260);
+  --neu-text-soft: oklch(0.58 0.015 260);
+  --neu-accent: oklch(0.52 0.02 260);
+  --neu-shadow-out: 8px 8px 18px oklch(0.78 0.01 260 / 55%), -8px -8px 18px oklch(1 0 0 / 90%);
+  --neu-shadow-soft: 4px 4px 10px oklch(0.80 0.01 260 / 45%), -4px -4px 10px oklch(1 0 0 / 85%);
+  --neu-shadow-in: inset 4px 4px 9px oklch(0.80 0.01 260 / 50%), inset -4px -4px 9px oklch(1 0 0 / 90%);
+}
+
+@utility neu-page {
+  background-color: var(--neu-surface);
+  color: var(--neu-text);
+}
+
+@utility neu-card {
+  background-color: var(--neu-surface-raised);
+  box-shadow: var(--neu-shadow-out);
+  border-radius: 1.5rem;
+}
+
+@utility neu-soft {
+  background-color: var(--neu-surface-raised);
+  box-shadow: var(--neu-shadow-soft);
+  border-radius: 1.25rem;
+}
+
+@utility neu-inset {
+  background-color: var(--neu-surface);
+  box-shadow: var(--neu-shadow-in);
+  border-radius: 1.25rem;
+}
+
+@utility neu-text-soft {
+  color: var(--neu-text-soft);
+}
