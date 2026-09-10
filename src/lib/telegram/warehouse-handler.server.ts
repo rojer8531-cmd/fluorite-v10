@@ -3316,7 +3316,12 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
   }
 
   await patchContext(msg.from.id, { comm_flow: null });
-  await commEdit(flow, `<b>Preparando comunicado…</b>\n\nEl archivo se está procesando. Puede tardar unos minutos.`);
+  await commEdit(
+    flow,
+    kind
+      ? `<b>Preparando comunicado…</b>\n\nEl archivo se está procesando. Puede tardar unos minutos.`
+      : `<b>Enviando comunicado de texto…</b>`,
+  );
 
   const body = raw
     ? `• <b>AVISO IMPORTANTE</b> • 🅾️\n\n⁃ ${escapeHtml(raw)}`
@@ -3378,7 +3383,15 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
         const fid = extractShopFileId(kind, sent.result as never);
         if (fid && !shopFileId) shopFileId = fid;
       } else {
-        sent = await _rawSendMessage("shop", u.chat_id, body);
+        // Un comunicado de texto debe terminar dentro de la ejecución actual.
+        // El contenido ya está escapado, así que evitamos reintentos largos por
+        // usuario y enviamos todos en paralelo dentro del límite de Telegram.
+        sent = await tg<{ message_id: number }>("shop", "sendMessage", {
+          chat_id: u.chat_id,
+          text: body,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }, 2);
       }
       if (sent.ok) ok++;
       else fail++;
@@ -3394,7 +3407,7 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
       }
     }
     const rest = kind ? targets.slice(seedCount) : targets;
-    const CONCURRENCY = 10;
+    const CONCURRENCY = kind ? 10 : 25;
     for (let i = 0; i < rest.length; i += CONCURRENCY) {
       await Promise.all(rest.slice(i, i + CONCURRENCY).map((u) => sendOne(u)));
       await commEdit(
