@@ -3417,6 +3417,23 @@ async function processWarehouseMessage(msg: TgMessage) {
     return;
   }
 
+  // ===== Comunicado en espera: capturar el contenido del admin =====
+  {
+    const commFlow = await getCommFlow(msg.from.id);
+    if (commFlow) {
+      const bottomLabels = [
+        ...Object.values(ADMIN_BOTTOM),
+        ...Object.values(ADMIN_TODO),
+        ...Object.values(ADMIN_LEGACY),
+        ADMIN_BACK_LABEL,
+      ];
+      if (!bottomLabels.includes(text) && !text.startsWith("/")) {
+        await sendComunicado(msg, commFlow);
+        return;
+      }
+    }
+  }
+
   // ===== Modo broadcast activo: capturar el siguiente mensaje y enviarlo =====
   const st = await getState(msg.from.id);
   const awaiting = Number(((st?.context as Record<string, unknown>)?.awaiting_broadcast as number) ?? 0);
