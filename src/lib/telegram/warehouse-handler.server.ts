@@ -3316,7 +3316,7 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
   }
 
   await patchContext(msg.from.id, { comm_flow: null });
-  await commEdit(flow, `<b>COMUNICADO EN PROCESO</b>`);
+  await commEdit(flow, `<b>Preparando comunicado…</b>\n\nEl archivo se está procesando. Puede tardar unos minutos.`);
 
   const body = raw
     ? `• <b>AVISO IMPORTANTE</b> • 🅾️\n\n⁃ ${escapeHtml(raw)}`
@@ -3329,19 +3329,21 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
       .select("telegram_id, chat_id, total_recharged")
       .gt("total_recharged", 0);
 
-    // Preferimos pasarle a Telegram la URL del archivo: así el propio Telegram
-    // lo descarga y no hay que traer los bytes al worker (que se corta con
-    // archivos grandes y hacía que nunca llegaran videos ni documentos).
+    // Los file_id pertenecen al bot que recibió el archivo y no funcionan con
+    // el bot Shop. Descargamos una vez con Warehouse, subimos una vez con Shop
+    // y reutilizamos el nuevo file_id para todos los destinatarios.
     let mediaUrl: string | null = null;
+    let mediaBytes: ArrayBuffer | null = null;
     if (kind && sourceFileId) {
       const f = await getFile("warehouse", sourceFileId);
       if (f.ok && f.result?.file_path) {
         mediaUrl = fileUrl("warehouse", f.result.file_path);
+        mediaBytes = await downloadFile("warehouse", f.result.file_path);
         const parts = f.result.file_path.split("/");
         const baseName = parts[parts.length - 1];
         if (baseName && kind !== "document") filename = baseName;
       }
-      if (!mediaUrl) {
+      if (!mediaBytes && !mediaUrl) {
         await commEdit(flow, `No pude procesar el archivo. Intentá de nuevo.`, [navRow("cx:comm")]);
         return;
       }
@@ -3354,6 +3356,11 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
       return;
     }
 
+    await commEdit(
+      flow,
+      `<b>Enviando comunicado…</b>\n\nDestinatarios: <b>${targets.length}</b>\nEnviados: <b>0</b>`,
+    );
+
     let shopFileId: string | null = null;
     let ok = 0;
     let fail = 0;
@@ -3361,13 +3368,12 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     async function sendOne(u: { telegram_id: number; chat_id: number }) {
       let sent: { ok: boolean; result?: { message_id: number } } = { ok: false };
       if (kind) {
-        const ref = shopFileId ?? mediaUrl!;
-        sent = await sendByFileId(u.chat_id, kind, ref, body);
-        if (!sent.ok && !shopFileId) {
-          // Fallback: descargar y subir los bytes (archivos chicos).
-          const path = mediaUrl!.split("/file/bot")[1]?.split("/").slice(1).join("/");
-          const bytes = path ? await downloadFile("warehouse", path) : null;
-          if (bytes) sent = await uploadMedia(u.chat_id, kind, bytes, filename, body);
+        if (shopFileId) {
+          sent = await sendByFileId(u.chat_id, kind, shopFileId, body);
+        } else if (mediaBytes) {
+          sent = await uploadMedia(u.chat_id, kind, mediaBytes, filename, body);
+        } else if (mediaUrl) {
+          sent = await sendByFileId(u.chat_id, kind, mediaUrl, body);
         }
         const fid = extractShopFileId(kind, sent.result as never);
         if (fid && !shopFileId) shopFileId = fid;
@@ -3378,11 +3384,23 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
       else fail++;
     }
 
-    if (kind && targets.length > 0) await sendOne(targets[0]);
-    const rest = kind ? targets.slice(1) : targets;
-    const CONCURRENCY = 50;
+    // Conseguir primero un file_id del bot Shop. Si el primer usuario bloqueó
+    // el bot, probamos con el siguiente en vez de lanzar muchas subidas.
+    let seedCount = 0;
+    if (kind) {
+      while (!shopFileId && seedCount < targets.length) {
+        await sendOne(targets[seedCount]);
+        seedCount++;
+      }
+    }
+    const rest = kind ? targets.slice(seedCount) : targets;
+    const CONCURRENCY = 10;
     for (let i = 0; i < rest.length; i += CONCURRENCY) {
       await Promise.all(rest.slice(i, i + CONCURRENCY).map((u) => sendOne(u)));
+      await commEdit(
+        flow,
+        `<b>Enviando comunicado…</b>\n\nDestinatarios: <b>${targets.length}</b>\nEnviados: <b>${ok}</b>${fail ? ` · Fallidos: <b>${fail}</b>` : ""}`,
+      );
     }
 
     await commEdit(
@@ -3390,7 +3408,14 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
       `<b>Free Fire : comunicado completado Correctamente</b>\n\nEntregados: <b>${ok}</b>${fail ? ` · Fallidos: <b>${fail}</b>` : ""}`,
       [navRow("cx:menu")],
     );
-  })().catch((err) => console.error("[comunicado] error", err));
+  })().catch(async (err) => {
+    console.error("[comunicado] error", err);
+    await commEdit(
+      flow,
+      `<b>No se pudo completar el comunicado</b>\n\nIntentá enviarlo nuevamente.`,
+      [navRow("cx:comm")],
+    );
+  });
 
   // El envío puede tardar más que el webhook: lo mantenemos vivo aparte.
   keepTelegramPromiseAlive(work);
