@@ -3430,7 +3430,15 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     );
   });
 
-  // El envío puede tardar más que el webhook: lo mantenemos vivo aparte.
+  // Los comunicados de texto son rápidos y deben completarse antes de cerrar
+  // el webhook. Si se dejan únicamente en segundo plano, algunos runtimes
+  // finalizan la ejecución al responder y el contador queda en cero.
+  if (!kind) {
+    await work;
+    return;
+  }
+
+  // Los archivos pueden tardar más: mantenemos su transferencia viva aparte.
   keepTelegramPromiseAlive(work);
 }
 
