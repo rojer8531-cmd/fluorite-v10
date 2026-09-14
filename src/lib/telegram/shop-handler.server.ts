@@ -496,11 +496,10 @@ async function showCategory(telegram_id: number, chat_id: number, category: stri
     { text: p.name, callback_data: `prod:${p.id}` },
   ]);
   rows.push(NAV_ROW("menu:products"));
-  const list = section.products.map((p) => `~ ${escapeHtml(p.name)}`).join("\n");
   await screen(
     telegram_id,
     chat_id,
-    `📋 <b>Choose a product in category ${escapeHtml(categoryTitle(section.category))}:</b>\n\n${list}`,
+    `📋 <b>Choose a product in category ${escapeHtml(categoryTitle(section.category))}:</b>`,
     rows,
   );
 }
