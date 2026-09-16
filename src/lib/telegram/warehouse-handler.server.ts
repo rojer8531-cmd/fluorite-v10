@@ -3327,7 +3327,34 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     ? `• <b>AVISO IMPORTANTE</b> • 🅾️\n\n⁃ ${escapeHtml(raw)}`
     : `• <b>AVISO IMPORTANTE</b> • 🅾️`;
 
+  // Historial del comunicado (visible en /datos).
+  let annId: string | null = null;
+  const annUpdate = async (patch: Record<string, unknown>) => {
+    if (!annId) return;
+    await sb
+      .from("announcements")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", annId)
+      .then(() => {}, () => {});
+  };
+
   const work = (async () => {
+    const { data: annRow } = await sb
+      .from("announcements")
+      .insert({
+        preview: (raw || COMM_MODE_LABEL[flow.mode ?? "text"]).slice(0, 200),
+        source_chat_id: flow.chat_id,
+        source_message_id: flow.message_id,
+        status: "processing",
+        kind: kind ?? "text",
+        body,
+        total_targets: 0,
+      })
+      .select("id")
+      .single();
+    annId = (annRow?.id as string | undefined) ?? null;
+
+
     // Solo usuarios que ya recargaron saldo alguna vez.
     const usersPromise = sb
       .from("bot_users")
