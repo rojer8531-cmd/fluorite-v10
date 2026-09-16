@@ -45,7 +45,7 @@ const timeOf = (iso: string) => {
   return new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 };
 
-const TABS = ["Resumen", "Ventas", "Movimientos", "Usuarios", "Inventario"] as const;
+const TABS = ["Resumen", "Ventas", "Movimientos", "Usuarios", "Inventario", "Comunicados"] as const;
 type Tab = (typeof TABS)[number];
 
 function DatosPage() {
