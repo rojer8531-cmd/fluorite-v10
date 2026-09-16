@@ -467,7 +467,7 @@ async function showProfile(telegram_id: number, chat_id: number) {
     sb
       .from("order_keys")
       .select("id", { count: "exact", head: true })
-      .eq("telegram_id", telegram_id),
+      .eq("user_id", u.id),
   ]);
 
   const list = (orders ?? []) as Array<{ total_usd: number; keys_qty: number; status: string; created_at: string }>;
