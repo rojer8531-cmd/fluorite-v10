@@ -103,6 +103,8 @@ function DatosPage() {
             {tab === "Movimientos" && <Movimientos d={data} />}
             {tab === "Usuarios" && <Usuarios d={data} />}
             {tab === "Inventario" && <Inventario d={data} />}
+            {tab === "Comunicados" && <Comunicados d={data} onDone={() => refetch()} />}
+
             <p className="neu-text-soft mt-8 text-center text-xs">
               Actualizado {timeOf(data.generatedAt)} · Excluido {data.excluded.join(", ")}
             </p>
