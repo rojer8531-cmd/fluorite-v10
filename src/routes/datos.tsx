@@ -490,3 +490,117 @@ function Inventario({ d }: { d: DatosPayload }) {
     </>
   );
 }
+
+const ANN_STATUS: Record<string, string> = {
+  processing: "En proceso",
+  completed: "Completado",
+  failed: "Fallido",
+};
+
+const ANN_KIND: Record<string, string> = {
+  text: "Texto",
+  photo: "Imagen",
+  document: "Archivo",
+  video: "Video",
+  audio: "Audio",
+  voice: "Audio",
+};
+
+function Comunicados({ d, onDone }: { d: DatosPayload; onDone: () => void }) {
+  const resend = useServerFn(resendAnnouncement);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [note, setNote] = useState<string>("");
+
+  const mutation = useMutation({
+    mutationFn: (id: string) => resend({ data: { id } }),
+    onSuccess: (r) => {
+      setNote(`Reenviado a ${r.sent} de ${r.targets} usuarios${r.failed ? ` · ${r.failed} fallidos` : ""}`);
+      onDone();
+    },
+    onError: (e: Error) => setNote(e.message || "No se pudo reenviar"),
+    onSettled: () => setActiveId(null),
+  });
+
+  const list = d.announcements;
+  const total = list.length;
+  const done = list.filter((a) => a.status === "completed").length;
+  const running = list.filter((a) => a.status === "processing").length;
+  const failed = list.filter((a) => a.status === "failed").length;
+
+  return (
+    <>
+      <Section title="Resumen de envíos">
+        <div className="grid grid-cols-2 gap-4">
+          <Stat label="Comunicados" value={String(total)} />
+          <Stat label="Completados" value={String(done)} />
+          <Stat label="En proceso" value={String(running)} />
+          <Stat label="Fallidos" value={String(failed)} />
+        </div>
+      </Section>
+
+      {note ? (
+        <div className="neu-card mb-4 px-4 py-3">
+          <p className="text-sm">{note}</p>
+        </div>
+      ) : null}
+
+      <Section title="Historial">
+        {list.length === 0 ? (
+          <List>
+            <Empty text="Sin comunicados enviados" />
+          </List>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {list.map((a) => (
+              <div key={a.id} className="neu-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{a.preview}</p>
+                    <p className="neu-text-soft mt-1 text-xs">
+                      {ANN_KIND[a.kind] ?? a.kind} · {shortDate(a.createdAt)} {timeOf(a.createdAt)}
+                    </p>
+                  </div>
+                  <span className="neu-inset shrink-0 rounded-full px-3 py-1 text-[11px] font-medium">
+                    {ANN_STATUS[a.status] ?? a.status}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="neu-inset rounded-[0.9rem] py-2">
+                    <p className="neu-text-soft text-[10px] uppercase tracking-[0.12em]">Destinatarios</p>
+                    <p className="text-sm font-semibold tabular-nums">{a.targets}</p>
+                  </div>
+                  <div className="neu-inset rounded-[0.9rem] py-2">
+                    <p className="neu-text-soft text-[10px] uppercase tracking-[0.12em]">Enviados</p>
+                    <p className="text-sm font-semibold tabular-nums">{a.sent}</p>
+                  </div>
+                  <div className="neu-inset rounded-[0.9rem] py-2">
+                    <p className="neu-text-soft text-[10px] uppercase tracking-[0.12em]">Fallidos</p>
+                    <p className="text-sm font-semibold tabular-nums">{a.failed}</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={!a.canResend || mutation.isPending}
+                  onClick={() => {
+                    setNote("");
+                    setActiveId(a.id);
+                    mutation.mutate(a.id);
+                  }}
+                  className="neu-soft mt-3 w-full px-4 py-2 text-sm font-medium transition active:shadow-none disabled:opacity-50"
+                >
+                  {mutation.isPending && activeId === a.id
+                    ? "Reenviando"
+                    : a.canResend
+                      ? "Reenviar"
+                      : "No disponible"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+    </>
+  );
+}
