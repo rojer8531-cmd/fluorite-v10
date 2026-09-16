@@ -424,5 +424,17 @@ export const getDatos = createServerFn({ method: "GET" }).handler(async (): Prom
         active: Boolean(m.active),
       }))
       .slice(0, 30),
+    announcements: ((annRes.data ?? []) as any[]).map((a) => ({
+      id: String(a.id),
+      preview: String(a.preview ?? "").trim() || "Sin texto",
+      kind: String(a.kind ?? "text"),
+      status: String(a.status ?? "completed"),
+      targets: num(a.total_targets),
+      sent: num(a.total_sent),
+      failed: num(a.total_failed),
+      createdAt: String(a.created_at ?? ""),
+      canResend: Boolean(a.body) || Boolean(a.media_file_id),
+    })),
   };
+
 });
