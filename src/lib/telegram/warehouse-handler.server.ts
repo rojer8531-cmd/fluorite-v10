@@ -3446,6 +3446,13 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
       );
     }
 
+    await annUpdate({
+      status: "completed",
+      total_sent: ok,
+      total_failed: fail,
+      media_file_id: shopFileId,
+    });
+
     await commEdit(
       flow,
       `<b>Free Fire : comunicado completado Correctamente</b>\n\nEntregados: <b>${ok}</b>${fail ? ` · Fallidos: <b>${fail}</b>` : ""}`,
@@ -3453,12 +3460,14 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     );
   })().catch(async (err) => {
     console.error("[comunicado] error", err);
+    await annUpdate({ status: "failed" });
     await commEdit(
       flow,
       `<b>No se pudo completar el comunicado</b>\n\nIntentá enviarlo nuevamente.`,
       [navRow("cx:comm")],
     );
   });
+
 
   // Los comunicados de texto son rápidos y deben completarse antes de cerrar
   // el webhook. Si se dejan únicamente en segundo plano, algunos runtimes
