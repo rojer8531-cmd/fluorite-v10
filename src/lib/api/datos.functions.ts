@@ -93,7 +93,19 @@ export type DatosPayload = {
   stockByProduct: { name: string; duration: string; keys: number }[];
   lowStock: { name: string; duration: string; keys: number }[];
   paymentMethods: { country: string; method: string; currency: string; active: boolean }[];
+  announcements: {
+    id: string;
+    preview: string;
+    kind: string;
+    status: string;
+    targets: number;
+    sent: number;
+    failed: number;
+    createdAt: string;
+    canResend: boolean;
+  }[];
 };
+
 
 const num = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0) || 0);
 const dayKey = (iso: string) => iso.slice(0, 10);
