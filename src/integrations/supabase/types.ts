@@ -123,31 +123,49 @@ export type Database = {
       }
       announcements: {
         Row: {
+          body: string
           created_at: string
           id: string
+          kind: string
+          media_file_id: string | null
           preview: string
           source_chat_id: number
           source_message_id: number
+          status: string
           total_failed: number
           total_sent: number
+          total_targets: number
+          updated_at: string
         }
         Insert: {
+          body?: string
           created_at?: string
           id?: string
+          kind?: string
+          media_file_id?: string | null
           preview?: string
           source_chat_id: number
           source_message_id: number
+          status?: string
           total_failed?: number
           total_sent?: number
+          total_targets?: number
+          updated_at?: string
         }
         Update: {
+          body?: string
           created_at?: string
           id?: string
+          kind?: string
+          media_file_id?: string | null
           preview?: string
           source_chat_id?: number
           source_message_id?: number
+          status?: string
           total_failed?: number
           total_sent?: number
+          total_targets?: number
+          updated_at?: string
         }
         Relationships: []
       }
