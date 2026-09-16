@@ -488,20 +488,17 @@ async function showProfile(telegram_id: number, chat_id: number) {
   const days = Math.max(1, Math.floor((Date.now() - new Date(registered).getTime()) / 86_400_000));
 
   const text =
-    `🏛️ Mi perfil\n\n` +
-    `Usuario: ${u.username ? "@" + escapeHtml(u.username) : escapeHtml(u.display_name ?? "—")}\n` +
-    `ID: <code>${u.telegram_id}</code>\n` +
-    `Rango: ${rankLabel}\n` +
-    `Idioma: ${String(u.lang ?? "es").toUpperCase()}\n\n` +
-    `Saldo: ${balance.toFixed(2)} USD\n` +
-    `Recargado: ${total.toFixed(2)} USD\n` +
-    `Gastado: ${spent.toFixed(2)} USD\n\n` +
-    `Compras: ${delivered.length}\n` +
-    `Keys recibidas: ${keysTotal}\n` +
-    `Pendientes: ${pending}\n` +
-    `Última compra: ${fmtDate(lastBuy)}\n\n` +
-    `Registro: ${fmtDate(registered)}\n` +
-    `Antigüedad: ${days} día${days === 1 ? "" : "s"}`;
+    `Información de mi cuenta\n\n` +
+    `🆔 N.º de usuario\n${u.telegram_id}\n\n` +
+    `~Saldo disponible\n${balance.toFixed(2)} USD\n\n` +
+    `🔄 Total recargado\n${total.toFixed(2)} USD\n\n` +
+    `• Gastado: ${spent.toFixed(2)} USD\n` +
+    `• Compras: ${delivered.length} · Keys: ${keysTotal}\n` +
+    `• Pendientes: ${pending}\n` +
+    `• Última compra: ${fmtDate(lastBuy)}\n` +
+    `• Registro: ${fmtDate(registered)} (${days} día${days === 1 ? "" : "s"})\n` +
+    `• Rango: ${rankLabel}`;
+
 
   await screen(telegram_id, chat_id, text, [
     [{ text: "Mis keys", callback_data: "menu:keys" }, { text: "Mis órdenes", callback_data: "menu:status" }],
