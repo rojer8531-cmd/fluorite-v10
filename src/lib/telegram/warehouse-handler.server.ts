@@ -3327,7 +3327,34 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     ? `• <b>AVISO IMPORTANTE</b> • 🅾️\n\n⁃ ${escapeHtml(raw)}`
     : `• <b>AVISO IMPORTANTE</b> • 🅾️`;
 
+  // Historial del comunicado (visible en /datos).
+  let annId: string | null = null;
+  const annUpdate = async (patch: Record<string, unknown>) => {
+    if (!annId) return;
+    await sb
+      .from("announcements")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("id", annId)
+      .then(() => {}, () => {});
+  };
+
   const work = (async () => {
+    const { data: annRow } = await sb
+      .from("announcements")
+      .insert({
+        preview: (raw || COMM_MODE_LABEL[flow.mode ?? "text"]).slice(0, 200),
+        source_chat_id: flow.chat_id,
+        source_message_id: flow.message_id,
+        status: "processing",
+        kind: kind ?? "text",
+        body,
+        total_targets: 0,
+      })
+      .select("id")
+      .single();
+    annId = (annRow?.id as string | undefined) ?? null;
+
+
     // Solo usuarios que ya recargaron saldo alguna vez.
     const usersPromise = sb
       .from("bot_users")
@@ -3357,14 +3384,17 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     const { data: users } = await usersPromise;
     const targets = (users ?? []).filter((u) => u.chat_id) as Array<{ telegram_id: number; chat_id: number }>;
     if (targets.length === 0) {
+      await annUpdate({ status: "failed", total_targets: 0 });
       await commEdit(flow, `No hay usuarios con recargas para el comunicado.`, [navRow("cx:menu")]);
       return;
     }
+    await annUpdate({ total_targets: targets.length });
 
     await commEdit(
       flow,
       `<b>Enviando comunicado…</b>\n\nDestinatarios: <b>${targets.length}</b>\nEnviados: <b>0</b>`,
     );
+
 
     let shopFileId: string | null = null;
     let ok = 0;
@@ -3416,6 +3446,13 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
       );
     }
 
+    await annUpdate({
+      status: "completed",
+      total_sent: ok,
+      total_failed: fail,
+      media_file_id: shopFileId,
+    });
+
     await commEdit(
       flow,
       `<b>Free Fire : comunicado completado Correctamente</b>\n\nEntregados: <b>${ok}</b>${fail ? ` · Fallidos: <b>${fail}</b>` : ""}`,
@@ -3423,12 +3460,14 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     );
   })().catch(async (err) => {
     console.error("[comunicado] error", err);
+    await annUpdate({ status: "failed" });
     await commEdit(
       flow,
       `<b>No se pudo completar el comunicado</b>\n\nIntentá enviarlo nuevamente.`,
       [navRow("cx:comm")],
     );
   });
+
 
   // Los comunicados de texto son rápidos y deben completarse antes de cerrar
   // el webhook. Si se dejan únicamente en segundo plano, algunos runtimes

@@ -93,7 +93,19 @@ export type DatosPayload = {
   stockByProduct: { name: string; duration: string; keys: number }[];
   lowStock: { name: string; duration: string; keys: number }[];
   paymentMethods: { country: string; method: string; currency: string; active: boolean }[];
+  announcements: {
+    id: string;
+    preview: string;
+    kind: string;
+    status: string;
+    targets: number;
+    sent: number;
+    failed: number;
+    createdAt: string;
+    canResend: boolean;
+  }[];
 };
+
 
 const num = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0) || 0);
 const dayKey = (iso: string) => iso.slice(0, 10);
@@ -112,7 +124,7 @@ export const getDatos = createServerFn({ method: "GET" }).handler(async (): Prom
   const todayKey = dayKey(iso(now));
   const yesterdayKey = dayKey(iso(new Date(now.getTime() - 864e5)));
 
-  const [usersRes, ordersRes, receiptsRes, productsRes, pricesRes, stockRes, methodsRes, blockedRes] =
+  const [usersRes, ordersRes, receiptsRes, productsRes, pricesRes, stockRes, methodsRes, blockedRes, annRes] =
     await Promise.all([
       db
         .from("bot_users")
@@ -136,7 +148,13 @@ export const getDatos = createServerFn({ method: "GET" }).handler(async (): Prom
       db.from("product_stock_keys").select("product_id, price_id").limit(20000),
       db.from("payment_methods").select("id, active, country_name, method_name, currency").limit(500),
       db.from("blocked_users").select("telegram_id").limit(5000),
+      db
+        .from("announcements")
+        .select("id, preview, kind, status, body, media_file_id, total_targets, total_sent, total_failed, created_at")
+        .order("created_at", { ascending: false })
+        .limit(50),
     ]);
+
 
   const skip = new Set(EXCLUDED_TELEGRAM_IDS);
   const usersRows: any[] = (usersRes.data ?? []).filter((u: any) => !skip.has(String(u.telegram_id)));
@@ -406,5 +424,101 @@ export const getDatos = createServerFn({ method: "GET" }).handler(async (): Prom
         active: Boolean(m.active),
       }))
       .slice(0, 30),
+    announcements: ((annRes.data ?? []) as any[]).map((a) => ({
+      id: String(a.id),
+      preview: String(a.preview ?? "").trim() || "Sin texto",
+      kind: String(a.kind ?? "text"),
+      status: String(a.status ?? "completed"),
+      targets: num(a.total_targets),
+      sent: num(a.total_sent),
+      failed: num(a.total_failed),
+      createdAt: String(a.created_at ?? ""),
+      canResend: Boolean(a.body) || Boolean(a.media_file_id),
+    })),
   };
+
 });
+
+const MEDIA_METHOD: Record<string, { method: string; field: string }> = {
+  photo: { method: "sendPhoto", field: "photo" },
+  document: { method: "sendDocument", field: "document" },
+  video: { method: "sendVideo", field: "video" },
+  audio: { method: "sendAudio", field: "audio" },
+  voice: { method: "sendVoice", field: "voice" },
+};
+
+/** Reenvía un comunicado guardado a todos los usuarios que ya recargaron. */
+export const resendAnnouncement = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string }) => {
+    if (!data?.id || typeof data.id !== "string") throw new Error("id requerido");
+    return { id: data.id };
+  })
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { tg } = await import("@/lib/telegram/api.server");
+    const db = supabaseAdmin as never as { from: (t: string) => any };
+
+    const { data: ann } = await db
+      .from("announcements")
+      .select("id, body, kind, media_file_id")
+      .eq("id", data.id)
+      .single();
+    if (!ann) throw new Error("Comunicado no encontrado");
+
+    const kind = String(ann.kind ?? "text");
+    const media = MEDIA_METHOD[kind];
+    if (kind !== "text" && (!media || !ann.media_file_id)) {
+      throw new Error("Este comunicado no se puede reenviar (archivo no disponible)");
+    }
+
+    await db
+      .from("announcements")
+      .update({ status: "processing", updated_at: new Date().toISOString() })
+      .eq("id", ann.id);
+
+    const { data: users } = await db
+      .from("bot_users")
+      .select("telegram_id, chat_id")
+      .gt("total_recharged", 0);
+    const targets = ((users ?? []) as any[]).filter(
+      (u) => u.chat_id && !EXCLUDED_TELEGRAM_IDS.includes(String(u.telegram_id)),
+    );
+
+    let ok = 0;
+    let fail = 0;
+    const send = async (chat_id: number) => {
+      const res = media
+        ? await tg("shop", media.method, {
+            chat_id,
+            [media.field]: ann.media_file_id,
+            caption: ann.body || undefined,
+            parse_mode: "HTML",
+          }, 2)
+        : await tg("shop", "sendMessage", {
+            chat_id,
+            text: ann.body,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          }, 2);
+      if (res.ok) ok++;
+      else fail++;
+    };
+
+    const CONCURRENCY = 20;
+    for (let i = 0; i < targets.length; i += CONCURRENCY) {
+      await Promise.all(targets.slice(i, i + CONCURRENCY).map((u) => send(Number(u.chat_id))));
+    }
+
+    await db
+      .from("announcements")
+      .update({
+        status: ok > 0 ? "completed" : "failed",
+        total_targets: targets.length,
+        total_sent: ok,
+        total_failed: fail,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", ann.id);
+
+    return { sent: ok, failed: fail, targets: targets.length };
+  });
