@@ -3384,14 +3384,17 @@ async function sendComunicado(msg: TgMessage, flow: CommFlow) {
     const { data: users } = await usersPromise;
     const targets = (users ?? []).filter((u) => u.chat_id) as Array<{ telegram_id: number; chat_id: number }>;
     if (targets.length === 0) {
+      await annUpdate({ status: "failed", total_targets: 0 });
       await commEdit(flow, `No hay usuarios con recargas para el comunicado.`, [navRow("cx:menu")]);
       return;
     }
+    await annUpdate({ total_targets: targets.length });
 
     await commEdit(
       flow,
       `<b>Enviando comunicado…</b>\n\nDestinatarios: <b>${targets.length}</b>\nEnviados: <b>0</b>`,
     );
+
 
     let shopFileId: string | null = null;
     let ok = 0;
