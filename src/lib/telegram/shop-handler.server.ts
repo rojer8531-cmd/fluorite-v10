@@ -458,51 +458,14 @@ async function showProfile(telegram_id: number, chat_id: number) {
   const total = Number(u.total_recharged);
   const balance = Number(u.balance);
 
-  const [{ data: orders }, { count: keysCount }] = await Promise.all([
-    sb
-      .from("orders")
-      .select("total_usd, keys_qty, status, created_at")
-      .eq("telegram_id", telegram_id)
-      .order("created_at", { ascending: false }),
-    sb
-      .from("order_keys")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", u.id),
-  ]);
-
-  const list = (orders ?? []) as Array<{ total_usd: number; keys_qty: number; status: string; created_at: string }>;
-  const delivered = list.filter((o) => o.status === "delivered");
-  const pending = list.length - delivered.length;
-  const spent = delivered.reduce((a, o) => a + Number(o.total_usd ?? 0), 0);
-  const keysTotal = keysCount ?? delivered.reduce((a, o) => a + Number(o.keys_qty ?? 0), 0);
-  const lastBuy = delivered[0]?.created_at ?? null;
-
-  const fmtDate = (iso: string | null) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
-  };
-  const rankName = normalizeRank(u.rank);
-  const rankLabel = rankName.charAt(0).toUpperCase() + rankName.slice(1);
-  const registered = (u as { registered_at?: string; created_at?: string }).registered_at ?? u.created_at;
-  const days = Math.max(1, Math.floor((Date.now() - new Date(registered).getTime()) / 86_400_000));
-
   const text =
     `Información de mi cuenta\n\n` +
     `🆔 N.º de usuario\n${u.telegram_id}\n\n` +
     `~Saldo disponible\n${balance.toFixed(2)} USD\n\n` +
-    `🔄 Total recargado\n${total.toFixed(2)} USD\n\n` +
-    `• Gastado: ${spent.toFixed(2)} USD\n` +
-    `• Compras: ${delivered.length} · Keys: ${keysTotal}\n` +
-    `• Pendientes: ${pending}\n` +
-    `• Última compra: ${fmtDate(lastBuy)}\n` +
-    `• Registro: ${fmtDate(registered)} (${days} día${days === 1 ? "" : "s"})\n` +
-    `• Rango: ${rankLabel}`;
+    `🔄 Total recargado\n${total.toFixed(2)} USD`;
 
 
   await screen(telegram_id, chat_id, text, [
-    [{ text: "Mis keys", callback_data: "menu:keys" }, { text: "Mis órdenes", callback_data: "menu:status" }],
-    [{ text: "Recargar saldo", callback_data: "menu:recharge" }],
     [{ text: "Descargar panel", url: DOWNLOAD_PANEL_URL }],
     [{ text: "🏘️ Home", callback_data: "menu:main" }],
   ]);
