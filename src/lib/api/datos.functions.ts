@@ -124,7 +124,7 @@ export const getDatos = createServerFn({ method: "GET" }).handler(async (): Prom
   const todayKey = dayKey(iso(now));
   const yesterdayKey = dayKey(iso(new Date(now.getTime() - 864e5)));
 
-  const [usersRes, ordersRes, receiptsRes, productsRes, pricesRes, stockRes, methodsRes, blockedRes] =
+  const [usersRes, ordersRes, receiptsRes, productsRes, pricesRes, stockRes, methodsRes, blockedRes, annRes] =
     await Promise.all([
       db
         .from("bot_users")
@@ -148,7 +148,13 @@ export const getDatos = createServerFn({ method: "GET" }).handler(async (): Prom
       db.from("product_stock_keys").select("product_id, price_id").limit(20000),
       db.from("payment_methods").select("id, active, country_name, method_name, currency").limit(500),
       db.from("blocked_users").select("telegram_id").limit(5000),
+      db
+        .from("announcements")
+        .select("id, preview, kind, status, body, media_file_id, total_targets, total_sent, total_failed, created_at")
+        .order("created_at", { ascending: false })
+        .limit(50),
     ]);
+
 
   const skip = new Set(EXCLUDED_TELEGRAM_IDS);
   const usersRows: any[] = (usersRes.data ?? []).filter((u: any) => !skip.has(String(u.telegram_id)));
