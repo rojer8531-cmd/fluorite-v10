@@ -1,7 +1,9 @@
 // Endpoint para registrar los webhooks contra Telegram. Visitar en navegador.
 import { createFileRoute } from "@tanstack/react-router";
 import { createHash } from "crypto";
-import { setWebhook, getWebhookInfo, getMe } from "@/lib/telegram/api.server";
+import { setWebhook, getWebhookInfo, getMe, setMyCommands } from "@/lib/telegram/api.server";
+
+const START_COMMANDS = [{ command: "start", description: "Start the bot" }];
 
 function deriveSecret(token: string) {
   return createHash("sha256").update(`tg-webhook:${token}`).digest("base64url");
