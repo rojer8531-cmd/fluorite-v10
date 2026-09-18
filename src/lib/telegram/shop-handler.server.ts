@@ -201,11 +201,13 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 }
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
+// Relleno con espacios de ancho fijo (U+2007) para que los textos queden alineados en columna
+const PAD = "\u2007";
 const BOTTOM_MENU = {
-  products: "FF · Panel",
-  recharge: "FF · Saldo",
-  profile: "FF · Perfil",
-  support: "FF · Soporte",
+  products: `${PAD.repeat(2)}FF · Panel${PAD.repeat(2)}`,
+  recharge: `${PAD.repeat(2)}FF · Saldo${PAD.repeat(2)}`,
+  profile: `${PAD.repeat(2)}FF · Perfil${PAD}`,
+  support: `${PAD}FF · Soporte${PAD}`,
   language: "Free Fire · Idioma",
   // Opciones legacy (ya no se muestran en la barra inferior, se conservan por compatibilidad)
   status: "📦 Estado",
@@ -225,6 +227,7 @@ const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
   "🔂• Mi perfil": "profile",
   "🔀• Support": "support",
   "Idioma": "language",
+
 
   "Recargar": "recharge",
   "Mi perfil": "profile",
@@ -273,9 +276,18 @@ function downloadUrlFor(productName: string) {
 }
 const OFFICIAL_CHANNEL_URL = "https://whatsapp.com/channel/0029VbC678PIyPtc7iERCH2R";
 
-function isBottomMenuText(text: string) {
-  return text in BOTTOM_MENU_ALIASES || Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
+function stripPad(text: string) {
+  return text.replace(/\u2007/g, "").trim();
 }
+function isBottomMenuText(text: string) {
+  const t = stripPad(text);
+  return (
+    text in BOTTOM_MENU_ALIASES ||
+    t in BOTTOM_MENU_ALIASES ||
+    Object.values(BOTTOM_MENU).some((label) => label === text || stripPad(label) === t)
+  );
+}
+
 
 function bottomKeyboard() {
   return {
@@ -493,7 +505,7 @@ async function showProducts(telegram_id: number, chat_id: number) {
     telegram_id,
     chat_id,
     `📋 <b>Choose a category:</b>`,
-    [...categoryButtons(grouped), NAV_ROW("menu:main")],
+    [...categoryButtons(grouped), HOME_ROW],
   );
 }
 
@@ -835,7 +847,7 @@ async function startRecharge(telegram_id: number, chat_id: number) {
     }
     kb.push(row);
   }
-  kb.push(NAV_ROW("menu:main"));
+  kb.push(HOME_ROW);
   await screen(
     telegram_id,
     chat_id,
@@ -1131,7 +1143,12 @@ async function routeBottomMenu(
     download_panel: showDownloadPanel,
     language: showLanguageMenu,
   };
-  const key = BOTTOM_MENU_ALIASES[text] ?? (Object.entries(BOTTOM_MENU).find(([, label]) => label === text)?.[0] as keyof typeof BOTTOM_MENU | undefined);
+  const plain = stripPad(text);
+  const key =
+    BOTTOM_MENU_ALIASES[text] ??
+    BOTTOM_MENU_ALIASES[plain] ??
+    (Object.entries(BOTTOM_MENU).find(([, label]) => label === text || stripPad(label) === plain)?.[0] as keyof typeof BOTTOM_MENU | undefined);
+
   const action = key ? map[key] : undefined;
   if (!action) return false;
   // Forzar mensaje NUEVO debajo del tap del usuario (no editar arriba).
