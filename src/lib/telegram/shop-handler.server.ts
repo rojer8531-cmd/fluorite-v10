@@ -493,7 +493,7 @@ async function showProducts(telegram_id: number, chat_id: number) {
     telegram_id,
     chat_id,
     `📋 <b>Choose a category:</b>`,
-    [...categoryButtons(grouped), NAV_ROW("menu:main")],
+    [...categoryButtons(grouped), HOME_ROW],
   );
 }
 
