@@ -4,7 +4,7 @@
 // tarde o falle.
 
 const SLOW_LOG_MS = 3_000;
-const HARD_TIMEOUT_MS = 8_500;
+const HARD_TIMEOUT_MS = 20_000;
 const userQueues = new Map<string, Promise<void>>();
 
 export function keepTelegramPromiseAlive(promise: Promise<unknown>) {
