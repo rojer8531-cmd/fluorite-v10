@@ -1975,10 +1975,39 @@ async function handleMessage(msg: TgMessage) {
 }
 
 
+// Anti doble toque: ignora el mismo botón repetido por el mismo usuario
+// dentro de una ventana corta (evita compras/recargas duplicadas).
+const lastTap = new Map<string, number>();
+function isDuplicateTap(telegram_id: number, data: string, windowMs = 1500) {
+  const key = `${telegram_id}:${data}`;
+  const now = Date.now();
+  const prev = lastTap.get(key);
+  if (prev && now - prev < windowMs) return true;
+  lastTap.set(key, now);
+  if (lastTap.size > 5000) {
+    for (const [k, t] of lastTap) if (now - t > 60_000) lastTap.delete(k);
+  }
+  return false;
+}
+
 async function handleCallback(cb: TgCallback) {
+  try {
+    await routeCallback(cb);
+  } catch (err) {
+    console.error("[shop callback]", cb.data, err);
+    const chat = cb.message?.chat.id ?? cb.from.id;
+    await answerCallbackQuery("shop", cb.id, "Ocurrió un error, intentá de nuevo.", false).catch(() => {});
+    await sendMessage("shop", chat, `No pudimos completar esa acción. Intentá de nuevo.`, {
+      reply_markup: bottomKeyboard(),
+    }).catch(() => {});
+  }
+}
+
+async function routeCallback(cb: TgCallback) {
   const telegram_id = cb.from.id;
   const chat_id = cb.message?.chat.id ?? telegram_id;
   const data = cb.data ?? "";
+
 
   // ACK INMEDIATO — primero de todo, para apagar el spinner "actualizando"
   // de Telegram al instante. No esperamos ni a checks de bloqueo/rate-limit.
