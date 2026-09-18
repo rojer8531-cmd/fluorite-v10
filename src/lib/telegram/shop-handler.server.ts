@@ -1143,7 +1143,12 @@ async function routeBottomMenu(
     download_panel: showDownloadPanel,
     language: showLanguageMenu,
   };
-  const key = BOTTOM_MENU_ALIASES[text] ?? (Object.entries(BOTTOM_MENU).find(([, label]) => label === text)?.[0] as keyof typeof BOTTOM_MENU | undefined);
+  const plain = stripPad(text);
+  const key =
+    BOTTOM_MENU_ALIASES[text] ??
+    BOTTOM_MENU_ALIASES[plain] ??
+    (Object.entries(BOTTOM_MENU).find(([, label]) => label === text || stripPad(label) === plain)?.[0] as keyof typeof BOTTOM_MENU | undefined);
+
   const action = key ? map[key] : undefined;
   if (!action) return false;
   // Forzar mensaje NUEVO debajo del tap del usuario (no editar arriba).
