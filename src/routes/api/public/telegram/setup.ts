@@ -69,6 +69,13 @@ export const Route = createFileRoute("/api/public/telegram/setup")({
           getWebhookInfo("admin"),
           getWebhookInfo("warehouse"),
         ]);
+        // Menú de comandos: muestra "/start — Start the bot" junto al campo de texto.
+        await Promise.all([
+          setMyCommands("shop", START_COMMANDS),
+          setMyCommands("admin", START_COMMANDS),
+          setMyCommands("warehouse", START_COMMANDS),
+        ]).catch(() => {});
+
         const [shopMe, adminMe, warehouseMe] = await Promise.all([
           getMe("shop"),
           getMe("admin"),
