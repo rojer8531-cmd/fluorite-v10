@@ -201,11 +201,13 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 }
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
+// Relleno con espacios de ancho fijo (U+2007) para que los textos queden alineados en columna
+const PAD = "\u2007";
 const BOTTOM_MENU = {
-  products: "FF · Panel",
-  recharge: "FF · Saldo",
-  profile: "FF · Perfil",
-  support: "FF · Soporte",
+  products: `${PAD.repeat(2)}FF · Panel${PAD.repeat(2)}`,
+  recharge: `${PAD.repeat(2)}FF · Saldo${PAD.repeat(2)}`,
+  profile: `${PAD.repeat(2)}FF · Perfil${PAD}`,
+  support: `${PAD}FF · Soporte${PAD}`,
   language: "Free Fire · Idioma",
   // Opciones legacy (ya no se muestran en la barra inferior, se conservan por compatibilidad)
   status: "📦 Estado",
@@ -225,6 +227,7 @@ const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
   "🔂• Mi perfil": "profile",
   "🔀• Support": "support",
   "Idioma": "language",
+
 
   "Recargar": "recharge",
   "Mi perfil": "profile",
