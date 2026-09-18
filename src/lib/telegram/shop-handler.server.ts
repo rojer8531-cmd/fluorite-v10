@@ -430,6 +430,8 @@ function categoryButtons(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>[
     {
       text: categoryLabel(section.category),
       callback_data: `cat:${section.category}`,
+      ...(section.category === "iOS" ? { style: "success" as const } :
+        section.category === "Android" ? { style: "primary" as const } : {}),
     },
   ]);
 }
