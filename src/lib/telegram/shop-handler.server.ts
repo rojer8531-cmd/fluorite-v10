@@ -202,11 +202,11 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 
 // Menú inferior fijo (ReplyKeyboardMarkup) — siempre visible
 const BOTTOM_MENU = {
-  products: "📂• Productos",
-  recharge: "🏛️• Recargar",
-  profile: "🔂• Mi perfil",
-  support: "🔀• Support",
-  language: "Idioma",
+  products: "FF · Panel",
+  recharge: "FF · Saldo",
+  profile: "FF · Perfil",
+  support: "FF · Soporte",
+  language: "Free Fire · Idioma",
   // Opciones legacy (ya no se muestran en la barra inferior, se conservan por compatibilidad)
   status: "📦 Estado",
   keys: "🔑 Mis Keys",
@@ -215,11 +215,17 @@ const BOTTOM_MENU = {
 };
 
 const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
+  "FF · Panel": "products",
+  "FF · Saldo": "recharge",
+  "FF · Perfil": "profile",
+  "FF · Soporte": "support",
+  "Free Fire · Idioma": "language",
   "📂• Productos": "products",
   "🏛️• Recargar": "recharge",
   "🔂• Mi perfil": "profile",
   "🔀• Support": "support",
   "Idioma": "language",
+
   "Recargar": "recharge",
   "Mi perfil": "profile",
   "📂-𝐏𝐫𝐨𝐝𝐮𝐜𝐭𝐨𝐬": "products",
