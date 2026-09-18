@@ -276,9 +276,18 @@ function downloadUrlFor(productName: string) {
 }
 const OFFICIAL_CHANNEL_URL = "https://whatsapp.com/channel/0029VbC678PIyPtc7iERCH2R";
 
-function isBottomMenuText(text: string) {
-  return text in BOTTOM_MENU_ALIASES || Object.values(BOTTOM_MENU).includes(text as (typeof BOTTOM_MENU)[keyof typeof BOTTOM_MENU]);
+function stripPad(text: string) {
+  return text.replace(/\u2007/g, "").trim();
 }
+function isBottomMenuText(text: string) {
+  const t = stripPad(text);
+  return (
+    text in BOTTOM_MENU_ALIASES ||
+    t in BOTTOM_MENU_ALIASES ||
+    Object.values(BOTTOM_MENU).some((label) => label === text || stripPad(label) === t)
+  );
+}
+
 
 function bottomKeyboard() {
   return {
