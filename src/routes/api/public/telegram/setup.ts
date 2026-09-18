@@ -1,7 +1,9 @@
 // Endpoint para registrar los webhooks contra Telegram. Visitar en navegador.
 import { createFileRoute } from "@tanstack/react-router";
 import { createHash } from "crypto";
-import { setWebhook, getWebhookInfo, getMe } from "@/lib/telegram/api.server";
+import { setWebhook, getWebhookInfo, getMe, setMyCommands } from "@/lib/telegram/api.server";
+
+const START_COMMANDS = [{ command: "start", description: "Start the bot" }];
 
 function deriveSecret(token: string) {
   return createHash("sha256").update(`tg-webhook:${token}`).digest("base64url");
@@ -67,6 +69,13 @@ export const Route = createFileRoute("/api/public/telegram/setup")({
           getWebhookInfo("admin"),
           getWebhookInfo("warehouse"),
         ]);
+        // Menú de comandos: muestra "/start — Start the bot" junto al campo de texto.
+        await Promise.all([
+          setMyCommands("shop", START_COMMANDS),
+          setMyCommands("admin", START_COMMANDS),
+          setMyCommands("warehouse", START_COMMANDS),
+        ]).catch(() => {});
+
         const [shopMe, adminMe, warehouseMe] = await Promise.all([
           getMe("shop"),
           getMe("admin"),

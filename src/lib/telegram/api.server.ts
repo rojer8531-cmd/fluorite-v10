@@ -454,3 +454,13 @@ export async function setWebhook(bot: BotKind, url: string, secret_token: string
 export async function getWebhookInfo(bot: BotKind) {
   return tg(bot, "getWebhookInfo");
 }
+
+export async function setMyCommands(
+  bot: BotKind,
+  commands: { command: string; description: string }[],
+) {
+  return tg(bot, "setMyCommands", {
+    commands,
+    scope: { type: "all_private_chats" },
+  });
+}
