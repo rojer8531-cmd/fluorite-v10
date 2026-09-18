@@ -2059,6 +2059,14 @@ async function routeCallback(cb: TgCallback) {
   }
   if (data.startsWith("qty:")) return showCountries(telegram_id, chat_id, Number(data.slice(4)) || 1);
 
+  // Acciones sensibles: ignorar toques repetidos muy seguidos.
+  if (
+    (data === "pay:balance" || data === "manukey:accept" || data.startsWith("rcpay:")) &&
+    isDuplicateTap(telegram_id, data, 4000)
+  ) {
+    return;
+  }
+
   if (data === "pay:balance") return payWithBalance(telegram_id, chat_id);
   if (data === "manukey:accept") return acceptManualKey(telegram_id, chat_id);
   if (data.startsWith("pm:")) return showPaymentInstructions(telegram_id, chat_id, data.slice(3));
