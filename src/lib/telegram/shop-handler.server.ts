@@ -563,13 +563,34 @@ async function showDurations(telegram_id: number, chat_id: number, product_id: s
   const btnLabels = prices.map((p) => maxLabel(p));
   const maxBtnLen = Math.max(...btnLabels.map((l) => l.length), 1);
 
+  // Los botones de Telegram usan fuente proporcional, así que los espacios
+  // normales no alinean. Convertimos el texto a caracteres monoespaciados
+  // Unicode (todos del mismo ancho) para que los precios queden en columna.
+  const MONO_SPACE = "\u2007";
+  function toMono(s: string) {
+    let out = "";
+    for (const ch of s) {
+      const c = ch.codePointAt(0)!;
+      if (ch === " ") out += MONO_SPACE;
+      else if (c >= 48 && c <= 57) out += String.fromCodePoint(0x1d7f6 + (c - 48));
+      else if (c >= 65 && c <= 90) out += String.fromCodePoint(0x1d670 + (c - 65));
+      else if (c >= 97 && c <= 122) out += String.fromCodePoint(0x1d68a + (c - 97));
+      else out += ch;
+    }
+    return out;
+  }
+
+  const priceTexts = prices.map((p) => `${fmtPrice(Number(p.price_usd))} Dollars`);
+  const maxPriceLen = Math.max(...priceTexts.map((t) => t.length), 1);
+
   const rows = prices.map((p, i) => {
     // Sin stock: botón visible pero deshabilitado (callback no-op para cumplir con la API de Telegram).
     const callback_data = p.available_stock > 0 ? `dur:${p.id}` : "noop";
     const label = btnLabels[i];
-    const pad = " ".repeat(Math.max(0, maxBtnLen - label.length) + 6);
+    const pad = " ".repeat(Math.max(0, maxBtnLen - label.length) + 4);
+    const price = priceTexts[i].padStart(maxPriceLen, " ");
     return [{
-      text: `${label}${pad}${fmtPrice(Number(p.price_usd))} Dollars`,
+      text: toMono(`${label}${pad}${price}`),
       callback_data,
     }];
   });
