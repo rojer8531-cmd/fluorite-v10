@@ -835,7 +835,7 @@ async function startRecharge(telegram_id: number, chat_id: number) {
     }
     kb.push(row);
   }
-  kb.push(NAV_ROW("menu:main"));
+  kb.push(HOME_ROW);
   await screen(
     telegram_id,
     chat_id,
