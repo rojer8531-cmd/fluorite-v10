@@ -299,7 +299,7 @@ function bottomKeyboard() {
   return {
     keyboard: [
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.recharge }],
-      [{ text: BOTTOM_MENU.profile, style: "success" }, { text: BOTTOM_MENU.support }],
+      [{ text: BOTTOM_MENU.profile }, { text: BOTTOM_MENU.support }],
       [{ text: BOTTOM_MENU.language }],
     ],
     resize_keyboard: true,
