@@ -204,11 +204,11 @@ function receiptFilename(filePath: string | undefined, fallback: string) {
 // Relleno con espacios de ancho fijo (U+2007) para que los textos queden alineados en columna
 const PAD = "\u2007";
 const BOTTOM_MENU = {
-  products: `${PAD.repeat(2)}FF · Panel${PAD.repeat(2)}`,
-  recharge: `${PAD.repeat(2)}FF · Saldo${PAD.repeat(2)}`,
-  profile: `${PAD.repeat(2)}FF · Perfil${PAD}`,
-  support: `${PAD}FF · Soporte${PAD}`,
-  language: "Free Fire · Idioma",
+  products: `${PAD.repeat(2)}Option: Panel${PAD.repeat(2)}`,
+  recharge: `${PAD.repeat(2)}Option: Saldo${PAD.repeat(2)}`,
+  profile: `${PAD.repeat(2)}Option: Perfil${PAD}`,
+  support: `${PAD.repeat(2)}Option: Agent${PAD.repeat(2)}`,
+  language: "Free Fire · Language",
   // Opciones legacy (ya no se muestran en la barra inferior, se conservan por compatibilidad)
   status: "📦 Estado",
   keys: "🔑 Mis Keys",
@@ -217,11 +217,17 @@ const BOTTOM_MENU = {
 };
 
 const BOTTOM_MENU_ALIASES: Record<string, keyof typeof BOTTOM_MENU> = {
+  "Option: Panel": "products",
+  "Option: Saldo": "recharge",
+  "Option: Perfil": "profile",
+  "Option: Agent": "support",
+  "Free Fire · Language": "language",
   "FF · Panel": "products",
   "FF · Saldo": "recharge",
   "FF · Perfil": "profile",
   "FF · Soporte": "support",
   "Free Fire · Idioma": "language",
+
   "📂• Productos": "products",
   "🏛️• Recargar": "recharge",
   "🔂• Mi perfil": "profile",
