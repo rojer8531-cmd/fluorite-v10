@@ -481,22 +481,39 @@ async function showProfile(telegram_id: number, chat_id: number) {
     .eq("telegram_id", telegram_id)
     .single();
   if (!u) return;
-  const total = Number(u.total_recharged);
   const balance = Number(u.balance);
 
+  const { data: spentRows } = await sb
+    .from("orders")
+    .select("total_usd, status")
+    .eq("telegram_id", telegram_id);
+  const spent = (spentRows ?? [])
+    .filter((o) => (o as { status: string }).status !== "rejected" && (o as { status: string }).status !== "cancelled")
+    .reduce((acc, o) => acc + Number((o as { total_usd: number }).total_usd ?? 0), 0);
+
+  const created = (u as { created_at?: string }).created_at;
+  const reg = created ? new Date(created) : null;
+  const regText = reg
+    ? `${String(reg.getUTCDate()).padStart(2, "0")}/${String(reg.getUTCMonth() + 1).padStart(2, "0")}/${reg.getUTCFullYear()}`
+    : "—";
+
   const text =
-    `Información de mi cuenta\n\n` +
-    `🆔 N.º de usuario\n${u.telegram_id}\n\n` +
-    `~Saldo disponible\n${balance.toFixed(2)} USD\n\n` +
-    `🔄 Total recargado\n${total.toFixed(2)} USD`;
+    `* Free Fire · Account Information · UID\n\n` +
+    `Identification · UID ${u.telegram_id}\n\n` +
+    `Free Fire · Available Balance\n` +
+    `• ${balance.toFixed(2)} USD\n\n` +
+    `Free Fire · Money Spent\n` +
+    `• −${spent.toFixed(2)} USD\n\n` +
+    `Free Fire · Registration\n` +
+    `User Registration · ${regText}`;
 
-
-  await screen(telegram_id, chat_id, text, [
+  await screen(telegram_id, chat_id, escapeHtml(text), [
     [{ text: "Descargar panel", url: DOWNLOAD_PANEL_URL }],
     [{ text: "🏘️ Home", callback_data: "menu:main" }],
   ]);
 
 }
+
 
 
 
