@@ -1859,6 +1859,27 @@ async function handleMessage(msg: TgMessage) {
   const { untranslate } = await import("./i18n.server");
   const text = untranslate(rawText);
 
+  // /actualizar — limpia el chat (Telegram solo permite borrar mensajes de
+  // menos de 48h) y vuelve a mostrar el menú principal.
+  if (text === "/actualizar" || text.startsWith("/actualizar ")) {
+    const from = msg.message_id;
+    const ids: number[] = [];
+    for (let id = from; id > Math.max(1, from - 200); id--) ids.push(id);
+    for (let i = 0; i < ids.length; i += 20) {
+      await Promise.all(
+        ids.slice(i, i + 20).map((id) => silentDelete("shop", chat_id, id).catch(() => {})),
+      );
+    }
+    await setActiveMessage(telegram_id, chat_id, 0).catch(() => {});
+    await sendMessage(
+      "shop",
+      chat_id,
+      `🏠 <b>Main Menu</b>\n\nSelect an Option`,
+      { reply_markup: bottomKeyboard() },
+    ).catch(() => {});
+    return;
+  }
+
   if (text === "/start" || text.startsWith("/start ")) {
     const rawParam = text.startsWith("/start ") ? text.slice(7).trim() : "";
     const refMatch = rawParam.match(/ref(\d+)/i);
