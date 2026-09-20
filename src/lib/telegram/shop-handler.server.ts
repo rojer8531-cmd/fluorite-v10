@@ -723,11 +723,12 @@ async function showCountries(telegram_id: number, chat_id: number, qty: number) 
   await screen(
     telegram_id,
     chat_id,
-    `🧾 <b>Confirm ${productName} ${short} Purchase • ${duration} Duration</b>\n\n` +
-      `📦 <b>Producto:</b> ${productName} ${short}\n` +
-      `⏳ <b>Duración:</b> ${duration}\n` +
-      `🔑 <b>Cantidad:</b> ${qty} ${qty === 1 ? "Key" : "Keys"}\n\n` +
-      `💵 <b>Total:</b> ${total_usd.toFixed(2)} 💲USD`,
+    `🧾 <b>Confirm ${productName} ${short} Purchase · ${duration} Duration</b>\n\n` +
+      `Product · ${productName}\n` +
+      `Duration · Max ${duration}\n` +
+      `Quantity · ${qty} ${qty === 1 ? "Key" : "Keys"}\n` +
+      `Total Amount · $${total_usd.toFixed(2)} USD\n\n` +
+      `Complete Payment to Confirm`,
     [
       [{ text: `✅ Confirmar ${prod?.name ?? "compra"} • ${price.duration_label}`, callback_data: "pay:balance" }],
       NAV_ROW(`dur:${ctx.price_id}`),
