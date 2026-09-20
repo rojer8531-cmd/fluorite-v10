@@ -1298,7 +1298,7 @@ async function deliverAutomaticKey(telegram_id: number, chat_id: number, price_i
     chat_id,
     text,
     [
-      [{ text: "Free Fire · Copy Password", copy_text: { text: cleanKeys.join("\n") } } as any],
+      [{ text: "Free Fire · Copy Password", copy_text: { text: cleanKeys.join("\n") }, style: "success" } as any],
       NAV_ROW("menu:products"),
     ],
     { final: true },
