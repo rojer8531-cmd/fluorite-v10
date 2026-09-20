@@ -300,7 +300,7 @@ function bottomKeyboard() {
     keyboard: [
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.recharge }],
       [{ text: BOTTOM_MENU.profile }, { text: BOTTOM_MENU.support }],
-      [{ text: BOTTOM_MENU.language, style: "success" }],
+      [{ text: BOTTOM_MENU.language }],
     ],
     resize_keyboard: true,
     is_persistent: true,
@@ -455,7 +455,8 @@ function categoryButtons(grouped: Awaited<ReturnType<typeof getVisibleCatalog>>[
       text: categoryLabel(section.category),
       callback_data: `cat:${section.category}`,
       ...(section.category === "iOS" ? { style: "success" as const } :
-        section.category === "Android" ? { style: "primary" as const } : {}),
+        section.category === "Android" ? { style: "primary" as const } :
+        { style: "danger" as const }),
     },
   ]);
 }
