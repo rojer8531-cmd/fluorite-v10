@@ -2492,22 +2492,26 @@ async function usDetail(
 
 /** Pantalla de saldo del usuario seleccionado. */
 async function usBalance(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
-  const { data: u } = await sb
-    .from("bot_users")
-    .select("balance, total_recharged")
-    .eq("telegram_id", flow.tg!)
-    .maybeSingle();
+  const [{ data: u }, { data: ords }] = await Promise.all([
+    sb.from("bot_users").select("balance").eq("telegram_id", flow.tg!).maybeSingle(),
+    sb
+      .from("orders")
+      .select("total_usd, status")
+      .eq("telegram_id", flow.tg!)
+      .not("status", "in", "(rejected,cancelled)"),
+  ]);
   if (!u) return usList(chat_id, uid, flow.page ?? 0, message_id);
+  const spent = (ords ?? []).reduce((s, o) => s + Number(o.total_usd ?? 0), 0);
   await usRender(
     chat_id,
     uid,
-    `𝐔𝐬𝐞𝐫’𝐬 𝐂𝐮𝐫𝐫𝐞𝐧𝐭 𝐁𝐚𝐥𝐚𝐧𝐜𝐞\n🔀 𝐀𝐜𝐭𝐮𝐚𝐥 - ${Number(u.balance).toFixed(2)} USD\n🔄 𝐆𝐚𝐬𝐭𝐨 - ${Number(u.total_recharged).toFixed(2)} USD`,
+    `<b>Free Fire · Customer Account Information</b>\n\n<b>Free Fire · Available Balance</b>\n${Number(u.balance).toFixed(2)} USD\n\n<b>Free Fire · Total Amount Spent</b>\n${spent.toFixed(2)} USD`,
     [
       [
-        { text: "𝐑𝐞𝐬𝐭𝐚𝐫 𝐬𝐚𝐥𝐝𝐨", callback_data: "usbalsub" },
-        { text: "𝐀𝐝𝐝 𝐁𝐚𝐥𝐚𝐧𝐜𝐞", callback_data: "usbaladd" },
+        { text: "Sumar saldo", callback_data: "usbaladd" },
+        { text: "Restar saldo", callback_data: "usbalsub" },
       ],
-      [{ text: "🔙 𝐁𝐚𝐜𝐤", callback_data: "usu:back" }, { text: "🏠𝐇𝐨𝐦𝐞", callback_data: "akp:inicio" }],
+      [{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN],
     ],
     message_id,
     { page: flow.page, tg: flow.tg },
