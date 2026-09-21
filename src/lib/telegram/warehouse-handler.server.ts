@@ -2597,17 +2597,47 @@ async function usApplyBlock(chat_id: number, uid: number, flow: UsFlow, message_
   );
 }
 
-async function usDiscountProducts(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
+const US_DISC_CATS: { key: string; label: string; match: string[] }[] = [
+  { key: "ios", label: "Free Fire: iOS", match: ["iOS"] },
+  { key: "and", label: "Free Fire: Android", match: ["Android"] },
+  { key: "aux", label: "Free Fire: Auxiliar", match: ["Auxilio de Famosos", "Auxiliar de Famosos"] },
+];
+
+/** Paso 1: categorías para el descuento personal. */
+async function usDiscountCategories(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
+  const kb: AkKeyboard = US_DISC_CATS.map((c) => [
+    { text: c.label, callback_data: `usdc:${c.key}` },
+  ]);
+  kb.push([{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]);
+  await usRender(
+    chat_id,
+    uid,
+    `<b>Productos disponibles</b> · Selecciona uno para reducir su precio\n\n📋 Choose a category`,
+    kb,
+    message_id,
+    { page: flow.page, tg: flow.tg },
+  );
+}
+
+async function usDiscountProducts(
+  chat_id: number,
+  uid: number,
+  flow: UsFlow,
+  catKey: string,
+  message_id?: number,
+) {
+  const cat = US_DISC_CATS.find((c) => c.key === catKey) ?? US_DISC_CATS[0];
   const { data: products } = await sb
     .from("products")
-    .select("id, name")
+    .select("id, name, category")
     .eq("active", true)
+    .in("category", cat.match as never[])
     .order("sort_order");
   const kb: AkKeyboard = (products ?? []).map((p) => [
     { text: p.name, callback_data: `usdp:${p.id}` },
   ]);
-  kb.push([{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]);
-  await usRender(chat_id, uid, `❇️ <b>Lista de productos disponibles</b>`, kb, message_id, {
+  kb.push([{ text: "🔚 Atrás", callback_data: "usdisc" }, US_HOME_BTN]);
+  await usRender(chat_id, uid, `<b>${escapeHtml(cat.label)}</b>\n\n📋 Choose a product`, kb, message_id, {
     page: flow.page,
     tg: flow.tg,
   });
@@ -2630,13 +2660,13 @@ async function usDiscountDurations(
       .order("sort_order"),
   ]);
   const kb: AkKeyboard = (prices ?? []).map((p) => [
-    { text: `💲 ${p.duration_label}`, callback_data: `usde:${p.id}` },
+    { text: p.duration_label, callback_data: `usde:${p.id}` },
   ]);
   kb.push([{ text: "🔚 Atrás", callback_data: "usdisc" }, US_HOME_BTN]);
   await usRender(
     chat_id,
     uid,
-    `⭕️ <b>Descuento personal</b>\n\n🔏 ${escapeHtml(prod?.name ?? "")}`,
+    `<b>Free Fire · ${escapeHtml(prod?.name ?? "")} Product Discount</b>`,
     kb,
     message_id,
     { page: flow.page, tg: flow.tg, product_id },
