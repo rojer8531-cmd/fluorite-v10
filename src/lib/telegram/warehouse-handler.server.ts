@@ -2527,13 +2527,13 @@ async function usPromptBalance(
 ) {
   const text =
     mode === "balsub"
-      ? `🔁 𝐄𝐧𝐯𝐢́𝐚 𝐥𝐚 𝐜𝐚𝐧𝐭𝐢𝐝𝐚𝐝 𝐪𝐮𝐞 𝐬𝐞 𝐥𝐞 𝐝𝐞𝐬𝐜𝐨𝐧𝐭𝐚𝐫𝐚́ 𝐚𝐥 𝐮𝐬𝐮𝐚𝐫𝐢𝐨 𝐬𝐞𝐥𝐞𝐜𝐜𝐢𝐨𝐧𝐚𝐝𝐨.`
-      : `🔁 𝐄𝐧𝐯𝐢́𝐚 𝐥𝐚 𝐜𝐚𝐧𝐭𝐢𝐝𝐚𝐝 𝐪𝐮𝐞 𝐬𝐞 𝐥𝐞 𝐬𝐮𝐦𝐚𝐫𝐚́ 𝐚𝐥 𝐮𝐬𝐮𝐚𝐫𝐢𝐨.`;
+      ? `Escribe la cantidad que se descontará del saldo disponible del usuario.`
+      : `Escribe la cantidad que se agregará al saldo disponible del usuario.`;
   await usRender(
     chat_id,
     uid,
     text,
-    [[{ text: "🔙 𝐁𝐚𝐜𝐤", callback_data: "usbal" }, { text: "🏠𝐇𝐨𝐦𝐞", callback_data: "akp:inicio" }]],
+    [[{ text: "🔚 Atrás", callback_data: "usbal" }, US_HOME_BTN]],
     message_id,
     { page: flow.page, tg: flow.tg, step: mode },
   );
