@@ -300,7 +300,7 @@ function bottomKeyboard() {
     keyboard: [
       [{ text: BOTTOM_MENU.products }, { text: BOTTOM_MENU.recharge }],
       [{ text: BOTTOM_MENU.profile }, { text: BOTTOM_MENU.support }],
-      [{ text: BOTTOM_MENU.language }],
+      [{ text: BOTTOM_MENU.language, style: "danger" } as any],
     ],
     resize_keyboard: true,
     is_persistent: true,
