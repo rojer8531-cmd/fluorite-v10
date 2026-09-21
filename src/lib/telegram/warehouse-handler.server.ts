@@ -2466,19 +2466,22 @@ async function usDetail(
     return;
   }
   const name = u.display_name ?? u.username ?? "Usuario";
-  const head = `𝐂𝐥𝐢𝐞𝐧𝐭 𝐒𝐞𝐥𝐞𝐜𝐭𝐞𝐝 𝐂𝐨𝐫𝐫𝐞𝐜𝐭𝐥𝐲\n🔀 -${escapeHtml(name)}\n🔂 -<code>${u.telegram_id}</code>`;
+  const head =
+    `<b>Free Fire · User Information</b>\nIdentification ·\n\n` +
+    `<b>Free Fire · User Name</b>\n${escapeHtml(name)}\n\n` +
+    `<b>Fr· User UID</b> · <code>${u.telegram_id}</code>`;
   await usRender(
     chat_id,
     uid,
     head,
     [
       [
-        { text: "𝐌𝐞𝐬𝐬𝐚𝐠𝐞", callback_data: "usmsg" },
-        { text: "𝐁𝐥𝐨𝐜𝐤", callback_data: "usblock" },
+        { text: "Message · Note", callback_data: "usmsg" },
+        { text: "Block · User", callback_data: "usblock" },
       ],
       [
-        { text: "𝐃𝐢𝐬𝐜𝐨𝐮𝐧𝐭", callback_data: "usdisc" },
-        { text: "𝐃𝐞𝐬𝐜𝐨𝐮𝐧𝐭𝐚𝐫", callback_data: "usbal" },
+        { text: "Price Discount", callback_data: "usdisc" },
+        { text: "Add / Remove", callback_data: "usbal" },
       ],
       [{ text: "🔚 Atrás", callback_data: "usback" }, US_HOME_BTN],
     ],
