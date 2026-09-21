@@ -2540,7 +2540,7 @@ async function usPromptMessage(chat_id: number, uid: number, flow: UsFlow, messa
   await usRender(
     chat_id,
     uid,
-    `❇️ <b>Envía el mensaje.</b>`,
+    `Escribe el mensaje que deseas enviar al usuario. Una vez confirmado, será enviado de forma inmediata y aparecerá directamente en su chat.`,
     [[{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]],
     message_id,
     { page: flow.page, tg: flow.tg, step: "msg" },
