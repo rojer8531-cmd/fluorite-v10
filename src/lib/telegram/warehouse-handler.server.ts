@@ -2466,19 +2466,22 @@ async function usDetail(
     return;
   }
   const name = u.display_name ?? u.username ?? "Usuario";
-  const head = `𝐂𝐥𝐢𝐞𝐧𝐭 𝐒𝐞𝐥𝐞𝐜𝐭𝐞𝐝 𝐂𝐨𝐫𝐫𝐞𝐜𝐭𝐥𝐲\n🔀 -${escapeHtml(name)}\n🔂 -<code>${u.telegram_id}</code>`;
+  const head =
+    `<b>Free Fire · User Information</b>\nIdentification ·\n\n` +
+    `<b>Free Fire · User Name</b>\n${escapeHtml(name)}\n\n` +
+    `<b>Fr· User UID</b> · <code>${u.telegram_id}</code>`;
   await usRender(
     chat_id,
     uid,
     head,
     [
       [
-        { text: "𝐌𝐞𝐬𝐬𝐚𝐠𝐞", callback_data: "usmsg" },
-        { text: "𝐁𝐥𝐨𝐜𝐤", callback_data: "usblock" },
+        { text: "Message · Note", callback_data: "usmsg" },
+        { text: "Block · User", callback_data: "usblock" },
       ],
       [
-        { text: "𝐃𝐢𝐬𝐜𝐨𝐮𝐧𝐭", callback_data: "usdisc" },
-        { text: "𝐃𝐞𝐬𝐜𝐨𝐮𝐧𝐭𝐚𝐫", callback_data: "usbal" },
+        { text: "Price Discount", callback_data: "usdisc" },
+        { text: "Add / Remove", callback_data: "usbal" },
       ],
       [{ text: "🔚 Atrás", callback_data: "usback" }, US_HOME_BTN],
     ],
@@ -2489,22 +2492,26 @@ async function usDetail(
 
 /** Pantalla de saldo del usuario seleccionado. */
 async function usBalance(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
-  const { data: u } = await sb
-    .from("bot_users")
-    .select("balance, total_recharged")
-    .eq("telegram_id", flow.tg!)
-    .maybeSingle();
+  const [{ data: u }, { data: ords }] = await Promise.all([
+    sb.from("bot_users").select("balance").eq("telegram_id", flow.tg!).maybeSingle(),
+    sb
+      .from("orders")
+      .select("total_usd, status")
+      .eq("telegram_id", flow.tg!)
+      .not("status", "in", "(rejected,cancelled)"),
+  ]);
   if (!u) return usList(chat_id, uid, flow.page ?? 0, message_id);
+  const spent = (ords ?? []).reduce((s, o) => s + Number(o.total_usd ?? 0), 0);
   await usRender(
     chat_id,
     uid,
-    `𝐔𝐬𝐞𝐫’𝐬 𝐂𝐮𝐫𝐫𝐞𝐧𝐭 𝐁𝐚𝐥𝐚𝐧𝐜𝐞\n🔀 𝐀𝐜𝐭𝐮𝐚𝐥 - ${Number(u.balance).toFixed(2)} USD\n🔄 𝐆𝐚𝐬𝐭𝐨 - ${Number(u.total_recharged).toFixed(2)} USD`,
+    `<b>Free Fire · Customer Account Information</b>\n\n<b>Free Fire · Available Balance</b>\n${Number(u.balance).toFixed(2)} USD\n\n<b>Free Fire · Total Amount Spent</b>\n${spent.toFixed(2)} USD`,
     [
       [
-        { text: "𝐑𝐞𝐬𝐭𝐚𝐫 𝐬𝐚𝐥𝐝𝐨", callback_data: "usbalsub" },
-        { text: "𝐀𝐝𝐝 𝐁𝐚𝐥𝐚𝐧𝐜𝐞", callback_data: "usbaladd" },
+        { text: "Sumar saldo", callback_data: "usbaladd" },
+        { text: "Restar saldo", callback_data: "usbalsub" },
       ],
-      [{ text: "🔙 𝐁𝐚𝐜𝐤", callback_data: "usu:back" }, { text: "🏠𝐇𝐨𝐦𝐞", callback_data: "akp:inicio" }],
+      [{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN],
     ],
     message_id,
     { page: flow.page, tg: flow.tg },
@@ -2520,13 +2527,13 @@ async function usPromptBalance(
 ) {
   const text =
     mode === "balsub"
-      ? `🔁 𝐄𝐧𝐯𝐢́𝐚 𝐥𝐚 𝐜𝐚𝐧𝐭𝐢𝐝𝐚𝐝 𝐪𝐮𝐞 𝐬𝐞 𝐥𝐞 𝐝𝐞𝐬𝐜𝐨𝐧𝐭𝐚𝐫𝐚́ 𝐚𝐥 𝐮𝐬𝐮𝐚𝐫𝐢𝐨 𝐬𝐞𝐥𝐞𝐜𝐜𝐢𝐨𝐧𝐚𝐝𝐨.`
-      : `🔁 𝐄𝐧𝐯𝐢́𝐚 𝐥𝐚 𝐜𝐚𝐧𝐭𝐢𝐝𝐚𝐝 𝐪𝐮𝐞 𝐬𝐞 𝐥𝐞 𝐬𝐮𝐦𝐚𝐫𝐚́ 𝐚𝐥 𝐮𝐬𝐮𝐚𝐫𝐢𝐨.`;
+      ? `Escribe la cantidad que se descontará del saldo disponible del usuario.`
+      : `Escribe la cantidad que se agregará al saldo disponible del usuario.`;
   await usRender(
     chat_id,
     uid,
     text,
-    [[{ text: "🔙 𝐁𝐚𝐜𝐤", callback_data: "usbal" }, { text: "🏠𝐇𝐨𝐦𝐞", callback_data: "akp:inicio" }]],
+    [[{ text: "🔚 Atrás", callback_data: "usbal" }, US_HOME_BTN]],
     message_id,
     { page: flow.page, tg: flow.tg, step: mode },
   );
@@ -2537,7 +2544,7 @@ async function usPromptMessage(chat_id: number, uid: number, flow: UsFlow, messa
   await usRender(
     chat_id,
     uid,
-    `❇️ <b>Envía el mensaje.</b>`,
+    `Escribe el mensaje que deseas enviar al usuario. Una vez confirmado, será enviado de forma inmediata y aparecerá directamente en su chat.`,
     [[{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]],
     message_id,
     { page: flow.page, tg: flow.tg, step: "msg" },
@@ -2555,11 +2562,11 @@ async function usConfirmBlock(chat_id: number, uid: number, flow: UsFlow, messag
   await usRender(
     chat_id,
     uid,
-    `⛔️ <b>¿Quieres bloquear al usuario?</b>\n\n⭕️ ${escapeHtml(name)}\n🆔 <code>${u.telegram_id}</code>`,
+    `<b>¿Confirmar bloqueo del usuario?</b>\n\nUsuario: ${escapeHtml(name)}\nUID: <code>${u.telegram_id}</code>\n\nEsta acción impedirá que el usuario acceda al servicio.`,
     [
       [
-        { text: "🔘 Yes", callback_data: "usblockok" },
-        { text: "🔘 Nop", callback_data: "usu:back" },
+        { text: "Free Fire · Accept", callback_data: "usblockok" },
+        { text: "Free Fire · Cancel", callback_data: "usu:back" },
       ],
       [{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN],
     ],
@@ -2594,17 +2601,47 @@ async function usApplyBlock(chat_id: number, uid: number, flow: UsFlow, message_
   );
 }
 
-async function usDiscountProducts(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
+const US_DISC_CATS: { key: string; label: string; match: string[] }[] = [
+  { key: "ios", label: "Free Fire: iOS", match: ["iOS"] },
+  { key: "and", label: "Free Fire: Android", match: ["Android"] },
+  { key: "aux", label: "Free Fire: Auxiliar", match: ["Auxilio de Famosos", "Auxiliar de Famosos"] },
+];
+
+/** Paso 1: categorías para el descuento personal. */
+async function usDiscountCategories(chat_id: number, uid: number, flow: UsFlow, message_id?: number) {
+  const kb: AkKeyboard = US_DISC_CATS.map((c) => [
+    { text: c.label, callback_data: `usdc:${c.key}` },
+  ]);
+  kb.push([{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]);
+  await usRender(
+    chat_id,
+    uid,
+    `<b>Productos disponibles</b> · Selecciona uno para reducir su precio\n\n📋 Choose a category`,
+    kb,
+    message_id,
+    { page: flow.page, tg: flow.tg },
+  );
+}
+
+async function usDiscountProducts(
+  chat_id: number,
+  uid: number,
+  flow: UsFlow,
+  catKey: string,
+  message_id?: number,
+) {
+  const cat = US_DISC_CATS.find((c) => c.key === catKey) ?? US_DISC_CATS[0];
   const { data: products } = await sb
     .from("products")
-    .select("id, name")
+    .select("id, name, category")
     .eq("active", true)
+    .in("category", cat.match as never[])
     .order("sort_order");
   const kb: AkKeyboard = (products ?? []).map((p) => [
     { text: p.name, callback_data: `usdp:${p.id}` },
   ]);
-  kb.push([{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN]);
-  await usRender(chat_id, uid, `❇️ <b>Lista de productos disponibles</b>`, kb, message_id, {
+  kb.push([{ text: "🔚 Atrás", callback_data: "usdisc" }, US_HOME_BTN]);
+  await usRender(chat_id, uid, `<b>${escapeHtml(cat.label)}</b>\n\n📋 Choose a product`, kb, message_id, {
     page: flow.page,
     tg: flow.tg,
   });
@@ -2627,13 +2664,13 @@ async function usDiscountDurations(
       .order("sort_order"),
   ]);
   const kb: AkKeyboard = (prices ?? []).map((p) => [
-    { text: `💲 ${p.duration_label}`, callback_data: `usde:${p.id}` },
+    { text: p.duration_label, callback_data: `usde:${p.id}` },
   ]);
   kb.push([{ text: "🔚 Atrás", callback_data: "usdisc" }, US_HOME_BTN]);
   await usRender(
     chat_id,
     uid,
-    `⭕️ <b>Descuento personal</b>\n\n🔏 ${escapeHtml(prod?.name ?? "")}`,
+    `<b>Free Fire · ${escapeHtml(prod?.name ?? "")} Product Discount</b>`,
     kb,
     message_id,
     { page: flow.page, tg: flow.tg, product_id },
@@ -4520,7 +4557,13 @@ async function handleCallback(cb: TgCallback) {
   }
   if (data === "usdisc") {
     const flow = await getUsFlow(cb.from.id);
-    if (chat_id && flow?.tg) await usDiscountProducts(chat_id, cb.from.id, flow, cb.message?.message_id);
+    if (chat_id && flow?.tg) await usDiscountCategories(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usdc:")) {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg)
+      await usDiscountProducts(chat_id, cb.from.id, flow, data.slice(5), cb.message?.message_id);
     return;
   }
   if (data.startsWith("usdp:")) {
