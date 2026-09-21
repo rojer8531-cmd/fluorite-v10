@@ -4557,7 +4557,13 @@ async function handleCallback(cb: TgCallback) {
   }
   if (data === "usdisc") {
     const flow = await getUsFlow(cb.from.id);
-    if (chat_id && flow?.tg) await usDiscountProducts(chat_id, cb.from.id, flow, cb.message?.message_id);
+    if (chat_id && flow?.tg) await usDiscountCategories(chat_id, cb.from.id, flow, cb.message?.message_id);
+    return;
+  }
+  if (data.startsWith("usdc:")) {
+    const flow = await getUsFlow(cb.from.id);
+    if (chat_id && flow?.tg)
+      await usDiscountProducts(chat_id, cb.from.id, flow, data.slice(5), cb.message?.message_id);
     return;
   }
   if (data.startsWith("usdp:")) {
