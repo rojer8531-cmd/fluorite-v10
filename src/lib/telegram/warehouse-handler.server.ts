@@ -2558,11 +2558,11 @@ async function usConfirmBlock(chat_id: number, uid: number, flow: UsFlow, messag
   await usRender(
     chat_id,
     uid,
-    `⛔️ <b>¿Quieres bloquear al usuario?</b>\n\n⭕️ ${escapeHtml(name)}\n🆔 <code>${u.telegram_id}</code>`,
+    `<b>¿Confirmar bloqueo del usuario?</b>\n\nUsuario: ${escapeHtml(name)}\nUID: <code>${u.telegram_id}</code>\n\nEsta acción impedirá que el usuario acceda al servicio.`,
     [
       [
-        { text: "🔘 Yes", callback_data: "usblockok" },
-        { text: "🔘 Nop", callback_data: "usu:back" },
+        { text: "Free Fire · Accept", callback_data: "usblockok" },
+        { text: "Free Fire · Cancel", callback_data: "usu:back" },
       ],
       [{ text: "🔚 Atrás", callback_data: "usu:back" }, US_HOME_BTN],
     ],
