@@ -248,7 +248,7 @@ function DetailPane({
           Volver
         </button>
         <p className="usr-soft min-w-0 truncate px-1 text-[11px] uppercase tracking-[0.16em]">
-          {position ? `Perfil ${position}` : "Perfil"}
+          {position || "Perfil"}
         </p>
         <span className="flex shrink-0 gap-2">
           <button type="button" onClick={onPrev} className="usr-chip px-3.5 py-2 text-sm">
@@ -409,7 +409,7 @@ function Metric({
     <div className="usr-card p-5">
       <p className="usr-soft text-[11px] uppercase tracking-[0.14em]">{label}</p>
       <p className="mt-3 flex items-baseline gap-1.5">
-        <span className="truncate text-2xl font-semibold tabular-nums sm:text-3xl">{value}</span>
+        <span className="min-w-0 break-all text-xl font-semibold tabular-nums sm:text-2xl">{value}</span>
         <span className="usr-soft text-xs">{unit}</span>
       </p>
       <p className="usr-soft mt-1 truncate text-xs">{hint}</p>
