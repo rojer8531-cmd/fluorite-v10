@@ -181,3 +181,34 @@
 @utility neu-text-soft {
   color: var(--neu-text-soft);
 }
+
+/* Panel /user — superficie oscura premium */
+:root {
+  --usr-bg: oklch(0.16 0.004 260);
+  --usr-surface: oklch(0.216 0.005 260);
+  --usr-surface-2: oklch(0.255 0.005 260);
+  --usr-line: oklch(0.32 0.006 260);
+  --usr-text: oklch(0.97 0.003 260);
+  --usr-text-soft: oklch(0.68 0.008 260);
+}
+
+@utility usr-page {
+  background-color: var(--usr-bg);
+  color: var(--usr-text);
+}
+
+@utility usr-card {
+  background-color: var(--usr-surface);
+  border: 1px solid var(--usr-line);
+  border-radius: 1.5rem;
+}
+
+@utility usr-chip {
+  background-color: var(--usr-surface-2);
+  border: 1px solid var(--usr-line);
+  border-radius: 999px;
+}
+
+@utility usr-soft {
+  color: var(--usr-text-soft);
+}
