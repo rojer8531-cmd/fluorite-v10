@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState, type ReactNode } from "react";
 
@@ -9,6 +9,16 @@ import {
   type UserDetail,
   type UserListItem,
 } from "@/lib/api/users.functions";
+import {
+  sendUserMessage,
+  setUserBlock,
+  adjustUserBalance,
+  setUserRank,
+  getUserCatalog,
+  setUserPriceOverride,
+} from "@/lib/api/user-actions.functions";
+
+const RANKS = ["normal", "pro", "leyenda", "gold", "platinum", "diamond", "elite"];
 
 export const Route = createFileRoute("/user")({
   head: () => ({
