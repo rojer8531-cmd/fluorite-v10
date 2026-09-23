@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useMemo, useState, type ReactNode } from "react";
 
@@ -9,6 +9,16 @@ import {
   type UserDetail,
   type UserListItem,
 } from "@/lib/api/users.functions";
+import {
+  sendUserMessage,
+  setUserBlock,
+  adjustUserBalance,
+  setUserRank,
+  getUserCatalog,
+  setUserPriceOverride,
+} from "@/lib/api/user-actions.functions";
+
+const RANKS = ["normal", "pro", "leyenda", "gold", "platinum", "diamond", "elite"];
 
 export const Route = createFileRoute("/user")({
   head: () => ({
@@ -386,7 +396,325 @@ function Profile({ d }: { d: UserDetail }) {
           )}
         </div>
       </section>
+
+      <ActionsPanel d={d} />
     </div>
+  );
+}
+
+type ActionTab = "message" | "balance" | "rank" | "block" | "discount";
+
+const TABS: { key: ActionTab; label: string }[] = [
+  { key: "message", label: "Mensaje" },
+  { key: "balance", label: "Saldo" },
+  { key: "rank", label: "Rango" },
+  { key: "block", label: "Bloqueo" },
+  { key: "discount", label: "Descuentos" },
+];
+
+function ActionsPanel({ d }: { d: UserDetail }) {
+  const qc = useQueryClient();
+  const [tab, setTab] = useState<ActionTab>("message");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const [text, setText] = useState("");
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [rank, setRank] = useState(d.rank);
+  const [openProduct, setOpenProduct] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+
+  const sendMsg = useServerFn(sendUserMessage);
+  const doBlock = useServerFn(setUserBlock);
+  const doBalance = useServerFn(adjustUserBalance);
+  const doRank = useServerFn(setUserRank);
+  const fetchCatalog = useServerFn(getUserCatalog);
+  const doOverride = useServerFn(setUserPriceOverride);
+
+  const catalog = useQuery({
+    queryKey: ["user-catalog", d.telegramId],
+    queryFn: () => fetchCatalog({ data: { telegramId: d.telegramId } }),
+    enabled: tab === "discount",
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["user-detail", d.telegramId] });
+    qc.invalidateQueries({ queryKey: ["users-admin"] });
+  };
+
+  const run = async (fn: () => Promise<{ ok: boolean; message: string }>, after?: () => void) => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fn();
+      setNote(res.message);
+      if (res.ok) {
+        after?.();
+        refresh();
+      }
+    } catch {
+      setNote("No se pudo completar la acción");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="usr-card p-5">
+      <p className="usr-soft text-[11px] uppercase tracking-[0.16em]">Acciones</p>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => {
+              setTab(t.key);
+              setNote(null);
+            }}
+            className="usr-chip px-3.5 py-2 text-sm"
+            style={tab === t.key ? { borderColor: "var(--usr-text-soft)", opacity: 1 } : { opacity: 0.65 }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4 flex flex-col gap-3">
+        {tab === "message" ? (
+          <>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={4}
+              placeholder="Escribe el mensaje que recibirá el usuario en su chat"
+              className="usr-card w-full resize-none bg-transparent p-3 text-[16px] outline-none placeholder:opacity-45"
+            />
+            <ActionButton
+              label="Enviar mensaje"
+              busy={busy}
+              disabled={!text.trim()}
+              onClick={() => run(() => sendMsg({ data: { telegramId: d.telegramId, text } }), () => setText(""))}
+            />
+          </>
+        ) : null}
+
+        {tab === "balance" ? (
+          <>
+            <p className="usr-soft text-sm">Saldo actual {money(d.balance)} USD</p>
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              inputMode="decimal"
+              placeholder="Cantidad en USD"
+              className="usr-card w-full bg-transparent p-3 text-[16px] outline-none placeholder:opacity-45"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <ActionButton
+                label="Sumar saldo"
+                busy={busy}
+                disabled={!amount.trim()}
+                onClick={() =>
+                  run(
+                    () =>
+                      doBalance({
+                        data: { telegramId: d.telegramId, amount: Number(amount.replace(",", ".")), mode: "add" },
+                      }),
+                    () => setAmount(""),
+                  )
+                }
+              />
+              <ActionButton
+                label="Restar saldo"
+                busy={busy}
+                disabled={!amount.trim()}
+                onClick={() =>
+                  run(
+                    () =>
+                      doBalance({
+                        data: { telegramId: d.telegramId, amount: Number(amount.replace(",", ".")), mode: "sub" },
+                      }),
+                    () => setAmount(""),
+                  )
+                }
+              />
+            </div>
+          </>
+        ) : null}
+
+        {tab === "rank" ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {RANKS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRank(r)}
+                  className="usr-chip px-3 py-1.5 text-[11px] uppercase tracking-[0.12em]"
+                  style={rank === r ? { borderColor: "var(--usr-text-soft)", opacity: 1 } : { opacity: 0.6 }}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            <ActionButton
+              label="Guardar rango"
+              busy={busy}
+              disabled={rank === d.rank}
+              onClick={() => run(() => doRank({ data: { telegramId: d.telegramId, rank } }))}
+            />
+          </>
+        ) : null}
+
+        {tab === "block" ? (
+          <>
+            <p className="usr-soft text-sm">
+              {d.blocked
+                ? `Bloqueado${d.blockedReason ? ` · ${d.blockedReason}` : ""}`
+                : "El usuario tiene acceso normal al servicio."}
+            </p>
+            {!d.blocked ? (
+              <input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Motivo (opcional)"
+                className="usr-card w-full bg-transparent p-3 text-[16px] outline-none placeholder:opacity-45"
+              />
+            ) : null}
+            <ActionButton
+              label={d.blocked ? "Desbloquear usuario" : "Bloquear usuario"}
+              busy={busy}
+              onClick={() =>
+                run(
+                  () => doBlock({ data: { telegramId: d.telegramId, blocked: !d.blocked, reason } }),
+                  () => setReason(""),
+                )
+              }
+            />
+          </>
+        ) : null}
+
+        {tab === "discount" ? (
+          catalog.isPending ? (
+            <p className="usr-soft text-sm">Cargando productos</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {(catalog.data ?? []).map((p) => (
+                <div key={p.productId} className="usr-card px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setOpenProduct(openProduct === p.productId ? null : p.productId)}
+                    className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-left"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{p.name}</span>
+                      <span className="usr-soft block truncate text-xs">{p.category}</span>
+                    </span>
+                    <span className="usr-soft shrink-0 text-xs">
+                      {openProduct === p.productId ? "Cerrar" : "Ver precios"}
+                    </span>
+                  </button>
+
+                  {openProduct === p.productId ? (
+                    <div className="mt-3 flex flex-col gap-2.5">
+                      {p.prices.map((pr) => (
+                        <div key={pr.priceId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm">{pr.duration}</span>
+                            <span className="usr-soft block text-xs">
+                              {money(pr.price)} USD
+                              {pr.override !== null ? ` · personalizado ${money(pr.override)}` : ""}
+                            </span>
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            <input
+                              value={draft[pr.priceId] ?? (pr.override !== null ? String(pr.override) : "")}
+                              onChange={(e) => setDraft({ ...draft, [pr.priceId]: e.target.value })}
+                              inputMode="decimal"
+                              placeholder="USD"
+                              className="usr-card w-20 bg-transparent px-2 py-1.5 text-center text-[16px] outline-none placeholder:opacity-45"
+                            />
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                run(
+                                  () =>
+                                    doOverride({
+                                      data: {
+                                        telegramId: d.telegramId,
+                                        priceId: pr.priceId,
+                                        price: Number((draft[pr.priceId] ?? "").replace(",", ".")),
+                                      },
+                                    }),
+                                  () => catalog.refetch(),
+                                )
+                              }
+                              className="usr-chip px-3 py-1.5 text-xs"
+                            >
+                              Aplicar
+                            </button>
+                            {pr.override !== null ? (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() =>
+                                  run(
+                                    () =>
+                                      doOverride({
+                                        data: { telegramId: d.telegramId, priceId: pr.priceId, price: null },
+                                      }),
+                                    () => {
+                                      setDraft({ ...draft, [pr.priceId]: "" });
+                                      catalog.refetch();
+                                    },
+                                  )
+                                }
+                                className="usr-chip px-3 py-1.5 text-xs"
+                              >
+                                Quitar
+                              </button>
+                            ) : null}
+                          </span>
+                        </div>
+                      ))}
+                      {p.prices.length === 0 ? <p className="usr-soft text-sm">Sin precios activos</p> : null}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )
+        ) : null}
+
+        {note ? <p className="usr-soft text-sm">{note}</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function ActionButton({
+  label,
+  busy,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  busy: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy || disabled}
+      className="usr-chip px-4 py-2.5 text-sm font-medium"
+      style={busy || disabled ? { opacity: 0.5 } : undefined}
+    >
+      {busy ? "Procesando" : label}
+    </button>
   );
 }
 
