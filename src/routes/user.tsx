@@ -201,17 +201,20 @@ function UsersPage() {
                   </div>
                 ) : null}
               </div>
-              <div className="flex flex-col gap-2.5 lg:max-h-[70vh] lg:overflow-y-auto lg:pr-1">
-                {filtered.map((u) => (
-                  <UserRow
-                    key={u.telegramId}
-                    u={u}
-                    active={u.telegramId === selected}
-                    onSelect={() => setSelected(u.telegramId)}
-                  />
-                ))}
-                {filtered.length === 0 ? <Placeholder text="Sin resultados" /> : null}
-              </div>
+              {filtered.length === 0 ? (
+                <Placeholder text="Sin resultados" />
+              ) : (
+                <div className="usr-card overflow-hidden divide-y divide-[var(--usr-line)] lg:max-h-[70vh] lg:overflow-y-auto">
+                  {filtered.map((u) => (
+                    <UserRow
+                      key={u.telegramId}
+                      u={u}
+                      active={u.telegramId === selected}
+                      onSelect={() => setSelected(u.telegramId)}
+                    />
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className={selected ? "block" : "hidden lg:block"}>
@@ -356,30 +359,53 @@ function Placeholder({ text }: { text: string }) {
   );
 }
 
+function Avatar({ size }: { size: number }) {
+  return (
+    <img
+      src={avatarAsset.url}
+      alt=""
+      width={size}
+      height={size}
+      loading="lazy"
+      className="shrink-0 rounded-full object-cover"
+      style={{ width: size, height: size, border: "1px solid var(--usr-line)" }}
+    />
+  );
+}
+
 function UserRow({ u, active, onSelect }: { u: UserListItem; active: boolean; onSelect: () => void }) {
   return (
     <button
       type="button"
       onClick={onSelect}
-      className="usr-card w-full px-4 py-3.5 text-left transition"
-      style={active ? { borderColor: "var(--usr-text-soft)" } : undefined}
+      className="w-full px-4 py-3 text-left transition active:bg-[var(--usr-surface-2)]"
+      style={active ? { backgroundColor: "var(--usr-surface-2)" } : undefined}
     >
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
-        <span className="usr-chip grid h-11 w-11 shrink-0 place-items-center text-sm font-semibold">
-          {initials(u.name)}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3">
+        <span className="relative">
+          <Avatar size={44} />
+          {u.blocked ? (
+            <span
+              className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-destructive"
+              style={{ border: "2px solid var(--usr-surface)" }}
+            />
+          ) : null}
         </span>
         <span className="min-w-0">
           <span className="block truncate text-[15px] font-medium">{u.name}</span>
           <span className="usr-soft block truncate text-xs">
-            UID {u.telegramId} · {relative(u.lastSeenAt)}
+            {u.username ? `@${u.username}` : `UID ${u.telegramId}`} · {relative(u.lastSeenAt)}
           </span>
         </span>
         <span className="shrink-0 text-right">
           <span className="block text-[15px] font-semibold tabular-nums">{money(u.balance)}</span>
-          <span className="usr-soft block text-[11px] uppercase tracking-[0.1em]">
+          <span className="usr-soft block text-[11px] capitalize">
             {u.blocked ? "Bloqueado" : u.rank}
           </span>
         </span>
+        <svg width="8" height="14" viewBox="0 0 8 14" className="usr-soft shrink-0" aria-hidden>
+          <path d="M1 1l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </div>
     </button>
   );
@@ -441,9 +467,7 @@ function Profile({ d }: { d: UserDetail }) {
     <div className="mt-4 flex flex-col gap-4">
       <section className="usr-card p-5">
         <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4">
-          <span className="usr-chip grid h-16 w-16 shrink-0 place-items-center text-lg font-semibold">
-            {initials(d.name)}
-          </span>
+          <Avatar size={64} />
           <span className="min-w-0">
             <span className="block truncate text-2xl font-semibold tracking-tight">{d.name}</span>
             <span className="usr-soft mt-1 block truncate text-sm">
