@@ -93,6 +93,8 @@ function UsersPage() {
   const fetchUsers = useServerFn(listUsers);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [tab, setTab] = useState<NavTab>("users");
+  const [sort, setSort] = useState<SortKey>("recent");
 
   const { data, isPending, isError, refetch, isFetching } = useQuery({
     queryKey: ["users-admin"],
@@ -103,14 +105,31 @@ function UsersPage() {
   const users = data ?? [];
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return users;
-    return users.filter(
-      (u) =>
-        u.telegramId.includes(q) ||
-        u.name.toLowerCase().includes(q) ||
-        (u.username ?? "").toLowerCase().includes(q),
-    );
-  }, [users, query]);
+    let list = users;
+    if (tab === "blocked") list = list.filter((u) => u.blocked);
+    if (tab === "top") list = list.filter((u) => u.spent > 0);
+    if (q)
+      list = list.filter(
+        (u) =>
+          u.telegramId.includes(q) ||
+          u.name.toLowerCase().includes(q) ||
+          (u.username ?? "").toLowerCase().includes(q),
+      );
+    const key: SortKey = tab === "top" ? "spent" : sort;
+    const by: Record<SortKey, (a: UserListItem, b: UserListItem) => number> = {
+      recent: (a, b) => (b.lastSeenAt || "").localeCompare(a.lastSeenAt || ""),
+      newest: (a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""),
+      balance: (a, b) => b.balance - a.balance,
+      spent: (a, b) => b.spent - a.spent,
+    };
+    return [...list].sort(by[key]);
+  }, [users, query, tab, sort]);
+
+  const switchTab = (t: NavTab) => {
+    setTab(t);
+    setSelected(null);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  };
 
   const index = selected ? filtered.findIndex((u) => u.telegramId === selected) : -1;
   const go = (step: number) => {
@@ -120,12 +139,12 @@ function UsersPage() {
   };
 
   return (
-    <main className="usr-page min-h-screen w-full overflow-x-hidden px-4 pb-12 pt-8 sm:px-6">
+    <main className="usr-page min-h-screen w-full overflow-x-hidden px-4 pb-32 pt-8 sm:px-6">
       <div className="mx-auto w-full max-w-6xl">
         <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
           <div className="min-w-0">
             <p className="usr-soft text-[11px] font-medium uppercase tracking-[0.2em]">Administración</p>
-            <h1 className="mt-1 truncate text-3xl font-semibold tracking-tight sm:text-4xl">Usuarios</h1>
+            <h1 className="mt-1 truncate text-3xl font-semibold tracking-tight sm:text-4xl">{NAV.find((n) => n.id === tab)?.title}</h1>
           </div>
           <button
             type="button"
@@ -136,6 +155,10 @@ function UsersPage() {
           </button>
         </header>
 
+        {tab === "stats" ? (
+          isPending ? <Placeholder text="Cargando resumen" /> : <Stats users={users} onOpen={(id) => { setTab("users"); setSelected(id); }} />
+        ) : (
+        <>
         <div className="usr-card mt-6 flex items-center gap-3 px-4 py-3">
           <span className="usr-soft text-xs uppercase tracking-[0.14em]">Buscar</span>
           <input
@@ -159,9 +182,25 @@ function UsersPage() {
         ) : (
           <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
             <section className={selected ? "hidden lg:block" : "block"}>
-              <p className="usr-soft mb-3 px-1 text-[11px] uppercase tracking-[0.16em]">
-                {filtered.length} cuentas
-              </p>
+              <div className="mb-3 flex items-center justify-between gap-2 px-1">
+                <p className="usr-soft shrink-0 text-[11px] uppercase tracking-[0.16em]">
+                  {filtered.length} cuentas
+                </p>
+                {tab === "users" ? (
+                  <div className="flex min-w-0 gap-1 overflow-x-auto">
+                    {SORTS.map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => setSort(o.id)}
+                        className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${sort === o.id ? "bg-[var(--usr-text)] text-[var(--usr-bg)]" : "usr-soft"}`}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <div className="flex flex-col gap-2.5 lg:max-h-[70vh] lg:overflow-y-auto lg:pr-1">
                 {filtered.map((u) => (
                   <UserRow
@@ -190,8 +229,122 @@ function UsersPage() {
             </section>
           </div>
         )}
+        </>
+        )}
       </div>
+      <BottomNav tab={tab} onChange={switchTab} counts={{ users: users.length, top: users.filter((u) => u.spent > 0).length, blocked: users.filter((u) => u.blocked).length }} />
     </main>
+  );
+}
+
+type NavTab = "users" | "top" | "blocked" | "stats";
+type SortKey = "recent" | "newest" | "balance" | "spent";
+const NAV: { id: NavTab; label: string; title: string }[] = [
+  { id: "users", label: "Usuarios", title: "Usuarios" },
+  { id: "top", label: "Top", title: "Mejores clientes" },
+  { id: "blocked", label: "Bloqueados", title: "Bloqueados" },
+  { id: "stats", label: "Resumen", title: "Resumen" },
+];
+const SORTS: { id: SortKey; label: string }[] = [
+  { id: "recent", label: "Activos" },
+  { id: "newest", label: "Nuevos" },
+  { id: "balance", label: "Saldo" },
+  { id: "spent", label: "Gastado" },
+];
+
+function NavIcon({ id }: { id: NavTab }) {
+  const c = { width: 22, height: 22, fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, viewBox: "0 0 24 24" };
+  if (id === "users") return <svg {...c}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.8.8 3 2.6 3.5 5.2" /></svg>;
+  if (id === "top") return <svg {...c}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>;
+  if (id === "blocked") return <svg {...c}><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></svg>;
+  return <svg {...c}><rect x="3" y="3" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2" /></svg>;
+}
+
+function BottomNav({ tab, onChange, counts }: { tab: NavTab; onChange: (t: NavTab) => void; counts: Partial<Record<NavTab, number>> }) {
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[max(env(safe-area-inset-bottom),12px)]">
+      <div className="mx-auto grid max-w-md grid-cols-4 gap-1 rounded-[1.75rem] border border-[var(--usr-line)] bg-[var(--usr-surface)]/90 p-1.5 shadow-2xl backdrop-blur-xl">
+        {NAV.map((n) => {
+          const on = n.id === tab;
+          return (
+            <button
+              key={n.id}
+              type="button"
+              onClick={() => onChange(n.id)}
+              className={`relative flex flex-col items-center gap-0.5 rounded-[1.35rem] py-2 text-[10.5px] font-medium transition-colors ${on ? "bg-[var(--usr-surface-2)] text-[var(--usr-text)]" : "usr-soft"}`}
+            >
+              <NavIcon id={n.id} />
+              <span>{n.label}</span>
+              {counts[n.id] ? (
+                <span className="absolute right-3 top-1 rounded-full bg-[var(--usr-text)] px-1.5 text-[9px] font-semibold leading-4 text-[var(--usr-bg)]">
+                  {counts[n.id]! > 999 ? "999+" : counts[n.id]}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function Stats({ users, onOpen }: { users: UserListItem[]; onOpen: (id: string) => void }) {
+  const now = Date.now();
+  const day = 86_400_000;
+  const sum = (f: (u: UserListItem) => number) => users.reduce((s, u) => s + f(u), 0);
+  const active7 = users.filter((u) => u.lastSeenAt && now - new Date(u.lastSeenAt).getTime() < 7 * day).length;
+  const new7 = users.filter((u) => u.createdAt && now - new Date(u.createdAt).getTime() < 7 * day).length;
+  const buyers = users.filter((u) => u.orders > 0).length;
+  const top = [...users].sort((a, b) => b.balance - a.balance).slice(0, 5);
+  const ranks = new Map<string, number>();
+  for (const u of users) ranks.set(u.rank, (ranks.get(u.rank) ?? 0) + 1);
+  const cards: [string, string][] = [
+    ["Cuentas", String(users.length)],
+    ["Activos 7 días", String(active7)],
+    ["Nuevos 7 días", String(new7)],
+    ["Compradores", String(buyers)],
+    ["Saldo total USD", money(sum((u) => u.balance))],
+    ["Gastado total USD", money(sum((u) => u.spent))],
+    ["Recargado USD", money(sum((u) => u.recharged))],
+    ["Órdenes", String(sum((u) => u.orders))],
+  ];
+  return (
+    <div className="mt-6 flex flex-col gap-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {cards.map(([l, v]) => (
+          <div key={l} className="usr-card p-4">
+            <p className="usr-soft text-[11px] uppercase tracking-[0.14em]">{l}</p>
+            <p className="mt-2 break-all text-2xl font-semibold tracking-tight">{v}</p>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="usr-card p-5">
+          <p className="usr-soft text-[11px] uppercase tracking-[0.14em]">Mayor saldo</p>
+          <div className="mt-3 flex flex-col gap-1">
+            {top.map((u) => (
+              <button key={u.telegramId} type="button" onClick={() => onOpen(u.telegramId)} className="flex items-center justify-between gap-3 rounded-xl px-2 py-2 text-left hover:bg-[var(--usr-surface-2)]">
+                <span className="min-w-0 truncate text-sm">{u.name}</span>
+                <span className="shrink-0 text-sm font-semibold">{money(u.balance)} USD</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="usr-card p-5">
+          <p className="usr-soft text-[11px] uppercase tracking-[0.14em]">Rangos</p>
+          <div className="mt-3 flex flex-col gap-2.5">
+            {[...ranks.entries()].sort((a, b) => b[1] - a[1]).map(([r, n]) => (
+              <div key={r}>
+                <div className="flex justify-between text-sm capitalize"><span>{r}</span><span className="usr-soft">{n}</span></div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--usr-surface-2)]">
+                  <div className="h-full rounded-full bg-[var(--usr-text)]" style={{ width: `${(n / Math.max(users.length, 1)) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
