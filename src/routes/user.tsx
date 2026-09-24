@@ -17,6 +17,7 @@ import {
   getUserCatalog,
   setUserPriceOverride,
 } from "@/lib/api/user-actions.functions";
+import avatarAsset from "@/assets/user-avatar.png.asset.json";
 
 const RANKS = ["normal", "pro", "leyenda", "gold", "platinum", "diamond", "elite"];
 
