@@ -17,7 +17,7 @@ import {
   getUserCatalog,
   setUserPriceOverride,
 } from "@/lib/api/user-actions.functions";
-import avatarAsset from "@/assets/user-avatar.png.asset.json";
+import rechargedAvatar from "@/assets/recharged-avatar.jpeg.asset.json";
 
 const RANKS = ["normal", "pro", "leyenda", "gold", "platinum", "diamond", "elite"];
 
@@ -507,7 +507,7 @@ function UserRow({ u, active, onSelect }: { u: UserListItem; active: boolean; on
     >
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3">
         <span className="relative">
-          <Avatar size={44} />
+          <Avatar size={44} name={u.name} recharged={u.recharged} />
           {u.blocked ? (
             <span
               className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-destructive"
@@ -628,7 +628,7 @@ function Profile({ d }: { d: UserDetail }) {
             </span>
             <span className="mt-1 block text-sm capitalize opacity-75">{d.rank} · {d.lang.toUpperCase()} · {d.blocked ? "Bloqueado" : "Activo"}</span>
           </span>
-          <Avatar size={60} />
+          <Avatar size={60} name={d.name} recharged={d.recharged} />
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
           <button type="button" onClick={copy} className="rounded-full bg-[var(--usr-accent-ink)] px-4 py-2.5 text-sm font-semibold text-[var(--usr-accent)]">
@@ -746,9 +746,9 @@ function ActionsPanel({ d }: { d: UserDetail }) {
 
   return (
     <section className="usr-card p-5">
-      <p className="usr-soft text-[11px] uppercase tracking-[0.16em]">Acciones</p>
+      <p className="text-base font-semibold">Acciones</p>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -757,8 +757,7 @@ function ActionsPanel({ d }: { d: UserDetail }) {
               setTab(t.key);
               setNote(null);
             }}
-            className="usr-chip px-3.5 py-2 text-sm"
-            style={tab === t.key ? { borderColor: "var(--usr-text-soft)", opacity: 1 } : { opacity: 0.65 }}
+            className={`shrink-0 rounded-full px-4 py-2.5 text-sm font-semibold ${tab === t.key ? "usr-accent-bg" : "usr-chip usr-soft"}`}
           >
             {t.label}
           </button>
