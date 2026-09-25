@@ -144,15 +144,16 @@ function UsersPage() {
       <div className="mx-auto w-full max-w-6xl">
         <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
           <div className="min-w-0">
-            <p className="usr-soft text-[11px] font-medium uppercase tracking-[0.2em]">Administración</p>
-            <h1 className="mt-1 truncate text-3xl font-semibold tracking-tight sm:text-4xl">{NAV.find((n) => n.id === tab)?.title}</h1>
+            <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{NAV.find((n) => n.id === tab)?.title}</h1>
+            <p className="usr-soft mt-1 text-sm">Administra cada cuenta desde aquí</p>
           </div>
           <button
             type="button"
             onClick={() => refetch()}
-            className="usr-chip shrink-0 px-4 py-2 text-sm font-medium"
+            aria-label="Actualizar"
+            className={`usr-accent-bg grid h-11 w-11 shrink-0 place-items-center rounded-full ${isFetching ? "animate-spin" : ""}`}
           >
-            {isFetching ? "Actualizando" : "Actualizar"}
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" /></svg>
           </button>
         </header>
 
@@ -160,7 +161,32 @@ function UsersPage() {
           isPending ? <Placeholder text="Cargando resumen" /> : <Stats users={users} onOpen={(id) => { setTab("users"); setSelected(id); }} />
         ) : (
         <>
-        <div className="usr-card mt-6 flex items-center gap-3 px-4 py-3">
+        {!selected && !isPending && users.length > 0 ? (
+          <section className="mt-6 grid gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+            <div className="usr-accent-bg rounded-[1.75rem] p-5">
+              <p className="text-xs font-medium opacity-70">Saldo total en cuentas</p>
+              <p className="mt-1 truncate text-3xl font-bold tabular-nums">{money(users.reduce((s, u) => s + u.balance, 0))} USD</p>
+              <p className="mt-3 text-sm opacity-75">{users.filter((u) => u.balance > 0).length} usuarios con saldo</p>
+              <button type="button" onClick={() => { setSort("balance"); setTab("users"); }} className="mt-4 rounded-full bg-[var(--usr-accent-ink)] px-5 py-2.5 text-sm font-semibold text-[var(--usr-accent)]">
+                Ver por saldo
+              </button>
+            </div>
+            <div className="usr-card grid grid-cols-3 divide-x divide-[var(--usr-line)] py-4">
+              {[
+                ["Cuentas", String(users.length)],
+                ["Activos 24h", String(users.filter((u) => u.lastSeenAt && Date.now() - new Date(u.lastSeenAt).getTime() < 86_400_000).length)],
+                ["Compradores", String(users.filter((u) => u.orders > 0).length)],
+              ].map(([l, v]) => (
+                <div key={l} className="flex flex-col items-center justify-center px-2 text-center">
+                  <span className="usr-accent-text h-1.5 w-1.5 rounded-full bg-[var(--usr-accent)]" />
+                  <span className="usr-soft mt-2 text-[11px]">{l}</span>
+                  <span className="mt-1 text-xl font-bold tabular-nums">{v}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        <div className="usr-card mt-5 flex items-center gap-3 px-4 py-3">
           <span className="usr-soft text-xs uppercase tracking-[0.14em]">Buscar</span>
           <input
             value={query}
@@ -194,7 +220,7 @@ function UsersPage() {
                         key={o.id}
                         type="button"
                         onClick={() => setSort(o.id)}
-                        className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${sort === o.id ? "bg-[var(--usr-text)] text-[var(--usr-bg)]" : "usr-soft"}`}
+                        className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-semibold ${sort === o.id ? "usr-accent-bg" : "usr-soft"}`}
                       >
                         {o.label}
                       </button>
@@ -275,12 +301,12 @@ function BottomNav({ tab, onChange, counts }: { tab: NavTab; onChange: (t: NavTa
               key={n.id}
               type="button"
               onClick={() => onChange(n.id)}
-              className={`relative flex flex-col items-center gap-0.5 rounded-[1.35rem] py-2 text-[10.5px] font-medium transition-colors ${on ? "bg-[var(--usr-surface-2)] text-[var(--usr-text)]" : "usr-soft"}`}
+              className={`relative flex flex-col items-center gap-0.5 rounded-[1.35rem] py-2 text-[10.5px] font-medium transition-colors ${on ? "usr-accent-text" : "usr-soft"}`}
             >
               <NavIcon id={n.id} />
               <span>{n.label}</span>
               {counts[n.id] ? (
-                <span className="absolute right-3 top-1 rounded-full bg-[var(--usr-text)] px-1.5 text-[9px] font-semibold leading-4 text-[var(--usr-bg)]">
+                <span className="usr-accent-bg absolute right-3 top-1 rounded-full px-1.5 text-[9px] font-semibold leading-4">
                   {counts[n.id]! > 999 ? "999+" : counts[n.id]}
                 </span>
               ) : null}
@@ -461,47 +487,92 @@ function DetailPane({
   );
 }
 
+function Ring({ pct, big, label, sub }: { pct: number; big: string; label: string; sub: string }) {
+  const r = 70;
+  const c = 2 * Math.PI * r;
+  const p = Math.max(0, Math.min(1, pct));
+  return (
+    <div className="relative mx-auto h-[190px] w-[190px]">
+      <svg viewBox="0 0 170 170" className="h-full w-full -rotate-90">
+        <circle cx="85" cy="85" r={r} fill="none" stroke="var(--usr-surface-2)" strokeWidth="12" />
+        <circle cx="85" cy="85" r={r} fill="none" stroke="var(--usr-accent)" strokeWidth="12" strokeLinecap="round" strokeDasharray={`${c * p} ${c}`} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="usr-soft text-xs">{label}</span>
+        <span className="max-w-[140px] truncate text-3xl font-bold tabular-nums">{big}</span>
+        <span className="usr-soft text-xs">USD</span>
+      </div>
+      <span className="usr-chip absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1 text-[11px]">{sub}</span>
+    </div>
+  );
+}
+
 function Profile({ d }: { d: UserDetail }) {
   const maxMonth = Math.max(1, ...d.monthly.map((m) => m.total));
+  const [copied, setCopied] = useState(false);
+  const base = Math.max(d.recharged, d.spent + d.balance, 1);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(d.telegramId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* noop */ }
+  };
 
   return (
     <div className="mt-4 flex flex-col gap-4">
-      <section className="usr-card p-5">
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4">
-          <Avatar size={64} />
+      <section className="usr-accent-bg rounded-[1.75rem] p-5 shadow-[0_20px_50px_-20px_var(--usr-accent)]">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4">
           <span className="min-w-0">
-            <span className="block truncate text-2xl font-semibold tracking-tight">{d.name}</span>
-            <span className="usr-soft mt-1 block truncate text-sm">
+            <span className="block text-xs font-medium opacity-70">Perfil de usuario</span>
+            <span className="mt-1 block truncate text-2xl font-bold tracking-tight">{d.name}</span>
+            <span className="mt-2 block truncate text-sm opacity-75">
               {d.username ? `@${d.username} · ` : ""}UID {d.telegramId}
             </span>
+            <span className="mt-1 block text-sm capitalize opacity-75">{d.rank} · {d.lang.toUpperCase()} · {d.blocked ? "Bloqueado" : "Activo"}</span>
           </span>
+          <Avatar size={60} />
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Tag text={d.rank} />
-          <Tag text={d.lang.toUpperCase()} />
-          <Tag text={d.blocked ? "Bloqueado" : "Activo"} />
-          {d.authenticated ? <Tag text="Verificado" /> : null}
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button type="button" onClick={copy} className="rounded-full bg-[var(--usr-accent-ink)] px-4 py-2.5 text-sm font-semibold text-[var(--usr-accent)]">
+            {copied ? "UID copiado" : "Copiar UID"}
+          </button>
+          {d.username ? (
+            <a href={`https://t.me/${d.username}`} target="_blank" rel="noreferrer" className="rounded-full border border-[var(--usr-accent-ink)]/30 px-4 py-2.5 text-sm font-semibold">
+              Abrir chat
+            </a>
+          ) : null}
+          <a href="#acciones" className="rounded-full border border-[var(--usr-accent-ink)]/30 px-4 py-2.5 text-sm font-semibold">
+            Acciones
+          </a>
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Metric label="Saldo disponible" value={money(d.balance)} unit="USD" hint={`Recargado ${money(d.recharged)}`} />
-        <Metric label="Total gastado" value={money(d.spent)} unit="USD" hint={`${d.orders} órdenes`} />
+      <section className="usr-card p-5 pb-7">
+        <Ring pct={d.balance / base} big={money(d.balance)} label="Saldo disponible" sub={`Recargado ${money(d.recharged)}`} />
+      </section>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Small label="Gastado" value={money(d.spent)} />
+        <Small label="Órdenes" value={String(d.orders)} />
+        <Small label="Keys" value={String(d.keys)} />
       </div>
 
       <section className="usr-card p-5">
-        <p className="usr-soft text-[11px] uppercase tracking-[0.16em]">Actividad de compras</p>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold">Actividad de compras</p>
+          <span className="usr-accent-text text-xs font-medium">6 meses</span>
+        </div>
         <div className="mt-4 grid grid-cols-6 items-end gap-2">
           {d.monthly.map((m) => (
             <div key={m.label} className="flex flex-col items-center gap-2">
               <div className="flex h-24 w-full items-end">
                 <div
-                  className="usr-chip w-full"
+                  className="w-full"
                   style={{
                     height: `${Math.max(6, (m.total / maxMonth) * 100)}%`,
                     borderRadius: "0.6rem",
-                    backgroundColor: "var(--usr-text)",
-                    opacity: m.total > 0 ? 0.9 : 0.18,
+                    backgroundColor: m.total > 0 ? "var(--usr-accent)" : "var(--usr-surface-2)",
                   }}
                 />
               </div>
@@ -511,8 +582,7 @@ function Profile({ d }: { d: UserDetail }) {
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Small label="Keys" value={String(d.keys)} />
+      <div className="grid grid-cols-3 gap-3">
         <Small label="Pendientes" value={String(d.pendingOrders)} />
         <Small label="Comprobantes" value={String(d.receipts.total)} />
         <Small label="Aprobados" value={String(d.receipts.approved)} />
