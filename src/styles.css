@@ -212,3 +212,16 @@
 @utility usr-soft {
   color: var(--usr-text-soft);
 }
+
+/* Acento lima estilo app fitness para /user */
+:root {
+  --usr-accent: oklch(0.9 0.21 125);
+  --usr-accent-ink: oklch(0.16 0.004 260);
+}
+@utility usr-accent-bg {
+  background-color: var(--usr-accent);
+  color: var(--usr-accent-ink);
+}
+@utility usr-accent-text {
+  color: var(--usr-accent);
+}
