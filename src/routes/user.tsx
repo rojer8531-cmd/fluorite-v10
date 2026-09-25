@@ -17,7 +17,7 @@ import {
   getUserCatalog,
   setUserPriceOverride,
 } from "@/lib/api/user-actions.functions";
-import avatarAsset from "@/assets/user-avatar.png.asset.json";
+import rechargedAvatar from "@/assets/recharged-avatar.jpeg.asset.json";
 
 const RANKS = ["normal", "pro", "leyenda", "gold", "platinum", "diamond", "elite"];
 
@@ -386,17 +386,114 @@ function Placeholder({ text }: { text: string }) {
   );
 }
 
-function Avatar({ size }: { size: number }) {
+function Avatar({ size, name, recharged }: { size: number; name: string; recharged: number }) {
+  if (recharged > 0)
+    return (
+      <img
+        src={rechargedAvatar.url}
+        alt=""
+        width={size}
+        height={size}
+        loading="lazy"
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size, border: "2px solid var(--usr-accent)" }}
+      />
+    );
   return (
-    <img
-      src={avatarAsset.url}
-      alt=""
-      width={size}
-      height={size}
-      loading="lazy"
-      className="shrink-0 rounded-full object-cover"
-      style={{ width: size, height: size, border: "1px solid var(--usr-line)" }}
-    />
+    <span
+      className="grid shrink-0 place-items-center rounded-full bg-[var(--usr-surface-2)] font-semibold usr-soft"
+      style={{ width: size, height: size, fontSize: size * 0.36, border: "1px solid var(--usr-line)" }}
+    >
+      {initials(name) || "U"}
+    </span>
+  );
+}
+
+type PTab = "info" | "orders" | "keys";
+function ProfileTabs({ d }: { d: UserDetail }) {
+  const [t, setT] = useState<PTab>("info");
+  const [copied, setCopied] = useState<number | null>(null);
+  const tabs: [PTab, string][] = [["info", "Información"], ["orders", `Órdenes ${d.recentOrders.length}`], ["keys", `Keys ${d.recentKeys.length}`]];
+  const tone = (s: string) =>
+    s === "delivered" || s === "approved" || s === "completed"
+      ? "usr-accent-bg"
+      : s === "rejected" || s === "cancelled"
+        ? "bg-destructive/20 text-destructive"
+        : "bg-[var(--usr-surface-2)] usr-soft";
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="usr-card grid grid-cols-3 gap-1 rounded-full p-1">
+        {tabs.map(([id, l]) => (
+          <button key={id} type="button" onClick={() => setT(id)} className={`rounded-full py-2.5 text-[13px] font-semibold transition ${t === id ? "usr-accent-bg" : "usr-soft"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {t === "info" ? (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <Small label="Pendientes" value={String(d.pendingOrders)} />
+            <Small label="Comprobantes" value={String(d.receipts.total)} />
+            <Small label="Aprobados" value={String(d.receipts.approved)} />
+          </div>
+          <div className="usr-card divide-y divide-[var(--usr-line)] overflow-hidden">
+            <Line label="Registro" value={fullDate(d.createdAt)} />
+            <Line label="Última conexión" value={relative(d.lastSeenAt)} />
+            <Line label="Última compra" value={d.lastOrderAt ? fullDate(d.lastOrderAt) : "—"} />
+            <Line label="Referido por" value={d.referredBy ?? "—"} />
+            <Line label="Compartidos" value={String(d.sharesCount)} />
+            {d.blocked ? (
+              <Line label="Bloqueo" value={`${d.blockedReason ?? "sin motivo"}${d.blockedUntil ? ` · hasta ${fullDate(d.blockedUntil)}` : " · permanente"}`} />
+            ) : null}
+          </div>
+        </>
+      ) : t === "orders" ? (
+        <div className="flex flex-col gap-2.5">
+          {d.recentOrders.length === 0 ? (
+            <Placeholder text="Sin órdenes registradas" />
+          ) : (
+            d.recentOrders.map((o) => (
+              <div key={o.id} className="usr-card grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-3.5">
+                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--usr-surface-2)] usr-accent-text">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 7h12l-1 13H7L6 7zM9 7a3 3 0 0 1 6 0" /></svg>
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[15px] font-semibold">{o.product}</span>
+                  <span className="usr-soft block truncate text-xs">{o.duration} · {o.qty} key{o.qty === 1 ? "" : "s"} · {fullDate(o.createdAt)}</span>
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-[15px] font-bold tabular-nums">{money(o.total)}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${tone(o.status)}`}>{STATUS_LABEL[o.status] ?? o.status}</span>
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {d.recentKeys.length === 0 ? (
+            <Placeholder text="Sin keys entregadas" />
+          ) : (
+            d.recentKeys.map((k, i) => (
+              <div key={`${k.value}-${i}`} className="usr-card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-3.5">
+                <span className="min-w-0">
+                  <code className="block truncate font-mono text-sm">{k.value}</code>
+                  <span className="usr-soft block text-[11px]">{fullDate(k.deliveredAt)}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { navigator.clipboard?.writeText(k.value).catch(() => {}); setCopied(i); setTimeout(() => setCopied(null), 1400); }}
+                  className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold ${copied === i ? "usr-accent-bg" : "usr-chip"}`}
+                >
+                  {copied === i ? "Copiada" : "Copiar"}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -410,7 +507,7 @@ function UserRow({ u, active, onSelect }: { u: UserListItem; active: boolean; on
     >
       <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3">
         <span className="relative">
-          <Avatar size={44} />
+          <Avatar size={44} name={u.name} recharged={u.recharged} />
           {u.blocked ? (
             <span
               className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-destructive"
@@ -531,7 +628,7 @@ function Profile({ d }: { d: UserDetail }) {
             </span>
             <span className="mt-1 block text-sm capitalize opacity-75">{d.rank} · {d.lang.toUpperCase()} · {d.blocked ? "Bloqueado" : "Activo"}</span>
           </span>
-          <Avatar size={60} />
+          <Avatar size={60} name={d.name} recharged={d.recharged} />
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
           <button type="button" onClick={copy} className="rounded-full bg-[var(--usr-accent-ink)] px-4 py-2.5 text-sm font-semibold text-[var(--usr-accent)]">
@@ -582,68 +679,7 @@ function Profile({ d }: { d: UserDetail }) {
         </div>
       </section>
 
-      <div className="grid grid-cols-3 gap-3">
-        <Small label="Pendientes" value={String(d.pendingOrders)} />
-        <Small label="Comprobantes" value={String(d.receipts.total)} />
-        <Small label="Aprobados" value={String(d.receipts.approved)} />
-      </div>
-
-      <section className="usr-card divide-y" style={{ borderColor: "var(--usr-line)" }}>
-        <Line label="Registro" value={fullDate(d.createdAt)} />
-        <Line label="Última conexión" value={relative(d.lastSeenAt)} />
-        <Line label="Última compra" value={d.lastOrderAt ? fullDate(d.lastOrderAt) : "—"} />
-        <Line label="Referido por" value={d.referredBy ?? "—"} />
-        <Line label="Compartidos" value={String(d.sharesCount)} />
-        {d.blocked ? (
-          <Line
-            label="Bloqueo"
-            value={`${d.blockedReason ?? "sin motivo"}${d.blockedUntil ? ` · hasta ${fullDate(d.blockedUntil)}` : " · permanente"}`}
-          />
-        ) : null}
-      </section>
-
-      <section className="usr-card p-5">
-        <p className="usr-soft text-[11px] uppercase tracking-[0.16em]">Órdenes recientes</p>
-        <div className="mt-3 flex flex-col gap-2.5">
-          {d.recentOrders.length === 0 ? (
-            <p className="usr-soft text-sm">Sin órdenes registradas</p>
-          ) : (
-            d.recentOrders.map((o) => (
-              <div key={o.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-                <span className="min-w-0">
-                  <span className="block truncate text-sm">{o.product}</span>
-                  <span className="usr-soft block truncate text-xs">
-                    {o.duration} · {o.qty} key{o.qty === 1 ? "" : "s"} · {STATUS_LABEL[o.status] ?? o.status}
-                  </span>
-                </span>
-                <span className="shrink-0 text-right">
-                  <span className="block text-sm font-medium tabular-nums">{money(o.total)}</span>
-                  <span className="usr-soft block text-[11px]">{fullDate(o.createdAt)}</span>
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="usr-card p-5">
-        <p className="usr-soft text-[11px] uppercase tracking-[0.16em]">Keys entregadas</p>
-        <div className="mt-3 flex flex-col gap-2">
-          {d.recentKeys.length === 0 ? (
-            <p className="usr-soft text-sm">Sin keys entregadas</p>
-          ) : (
-            d.recentKeys.map((k, i) => (
-              <div
-                key={`${k.value}-${i}`}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
-              >
-                <code className="truncate font-mono text-sm">{k.value}</code>
-                <span className="usr-soft shrink-0 text-[11px]">{fullDate(k.deliveredAt)}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+      <ProfileTabs d={d} />
 
       <div id="acciones" className="scroll-mt-4"><ActionsPanel d={d} /></div>
     </div>
@@ -710,9 +746,9 @@ function ActionsPanel({ d }: { d: UserDetail }) {
 
   return (
     <section className="usr-card p-5">
-      <p className="usr-soft text-[11px] uppercase tracking-[0.16em]">Acciones</p>
+      <p className="text-base font-semibold">Acciones</p>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -721,8 +757,7 @@ function ActionsPanel({ d }: { d: UserDetail }) {
               setTab(t.key);
               setNote(null);
             }}
-            className="usr-chip px-3.5 py-2 text-sm"
-            style={tab === t.key ? { borderColor: "var(--usr-text-soft)", opacity: 1 } : { opacity: 0.65 }}
+            className={`shrink-0 rounded-full px-4 py-2.5 text-sm font-semibold ${tab === t.key ? "usr-accent-bg" : "usr-chip usr-soft"}`}
           >
             {t.label}
           </button>
