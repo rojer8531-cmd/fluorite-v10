@@ -367,7 +367,7 @@ function Stats({ users, onOpen }: { users: UserListItem[]; onOpen: (id: string) 
               <div key={r}>
                 <div className="flex justify-between text-sm capitalize"><span>{r}</span><span className="usr-soft">{n}</span></div>
                 <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--usr-surface-2)]">
-                  <div className="h-full rounded-full bg-[var(--usr-text)]" style={{ width: `${(n / Math.max(users.length, 1)) * 100}%` }} />
+                  <div className="h-full rounded-full bg-[var(--usr-accent)]" style={{ width: `${(n / Math.max(users.length, 1)) * 100}%` }} />
                 </div>
               </div>
             ))}
@@ -645,7 +645,7 @@ function Profile({ d }: { d: UserDetail }) {
         </div>
       </section>
 
-      <ActionsPanel d={d} />
+      <div id="acciones" className="scroll-mt-4"><ActionsPanel d={d} /></div>
     </div>
   );
 }
