@@ -775,7 +775,7 @@ function ActionsPanel({ d, tab, setTab }: { d: UserDetail; tab: ActionTab; setTa
               setTab(t.key);
               setNote(null);
             }}
-            className={`flex flex-col items-center gap-1.5 rounded-2xl py-3 text-[11px] font-semibold ${tab === t.key ? "usr-accent-bg" : "usr-chip usr-soft"}`}
+            className={`flex flex-col items-center gap-1.5 rounded-2xl py-3 text-[11px] font-semibold ${tab === t.key ? "usr-accent-bg" : "border border-[var(--usr-line)] bg-[var(--usr-surface-2)] usr-soft"}`}
           >
             <t.icon size={20} strokeWidth={1.5} />
             {t.label}
