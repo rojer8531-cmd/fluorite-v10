@@ -17,6 +17,7 @@ import {
   getUserCatalog,
   setUserPriceOverride,
 } from "@/lib/api/user-actions.functions";
+import { Users, Trophy, Ban, LayoutGrid, Wallet, RefreshCw, Download, Search, X, Copy, Check, Send, MessageCircle, Coins, Award, ShieldOff, Tag as TagIcon } from "lucide-react";
 import rechargedAvatar from "@/assets/recharged-avatar.jpeg.asset.json";
 
 const RANKS = ["normal", "pro", "leyenda", "gold", "platinum", "diamond", "elite"];
@@ -109,6 +110,7 @@ function UsersPage() {
     let list = users;
     if (tab === "blocked") list = list.filter((u) => u.blocked);
     if (tab === "top") list = list.filter((u) => u.spent > 0);
+    if (tab === "funds") list = list.filter((u) => u.balance > 0);
     if (q)
       list = list.filter(
         (u) =>
@@ -116,7 +118,7 @@ function UsersPage() {
           u.name.toLowerCase().includes(q) ||
           (u.username ?? "").toLowerCase().includes(q),
       );
-    const key: SortKey = tab === "top" ? "spent" : sort;
+    const key: SortKey = tab === "top" ? "spent" : tab === "funds" ? "balance" : sort;
     const by: Record<SortKey, (a: UserListItem, b: UserListItem) => number> = {
       recent: (a, b) => (b.lastSeenAt || "").localeCompare(a.lastSeenAt || ""),
       newest: (a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""),
@@ -147,14 +149,14 @@ function UsersPage() {
             <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{NAV.find((n) => n.id === tab)?.title}</h1>
             <p className="usr-soft mt-1 text-sm">Administra cada cuenta desde aquí</p>
           </div>
-          <button
-            type="button"
-            onClick={() => refetch()}
-            aria-label="Actualizar"
-            className={`usr-accent-bg grid h-11 w-11 shrink-0 place-items-center rounded-full ${isFetching ? "animate-spin" : ""}`}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" /></svg>
-          </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => exportCsv(filtered)} aria-label="Exportar" className="usr-chip grid h-11 w-11 place-items-center">
+              <Download size={19} strokeWidth={1.6} />
+            </button>
+            <button type="button" onClick={() => refetch()} aria-label="Actualizar" className="usr-accent-bg grid h-11 w-11 place-items-center rounded-full">
+              <RefreshCw size={19} strokeWidth={1.8} className={isFetching ? "animate-spin" : ""} />
+            </button>
+          </div>
         </header>
 
         {tab === "stats" ? (
@@ -187,7 +189,7 @@ function UsersPage() {
           </section>
         ) : null}
         <div className="usr-card mt-5 flex items-center gap-3 px-4 py-3">
-          <span className="usr-soft text-xs uppercase tracking-[0.14em]">Buscar</span>
+          <Search size={18} strokeWidth={1.6} className="usr-soft shrink-0" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -196,8 +198,8 @@ function UsersPage() {
             className="min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:opacity-45"
           />
           {query ? (
-            <button type="button" onClick={() => setQuery("")} className="usr-soft shrink-0 text-sm">
-              Limpiar
+            <button type="button" onClick={() => setQuery("")} aria-label="Limpiar" className="usr-soft shrink-0">
+              <X size={18} strokeWidth={1.6} />
             </button>
           ) : null}
         </div>
@@ -262,17 +264,18 @@ function UsersPage() {
         </>
         )}
       </div>
-      <BottomNav tab={tab} onChange={switchTab} counts={{ users: users.length, top: users.filter((u) => u.spent > 0).length, blocked: users.filter((u) => u.blocked).length }} />
+      <BottomNav tab={tab} onChange={switchTab} counts={{ users: users.length, top: users.filter((u) => u.spent > 0).length, blocked: users.filter((u) => u.blocked).length, funds: users.filter((u) => u.balance > 0).length }} />
     </main>
   );
 }
 
-type NavTab = "users" | "top" | "blocked" | "stats";
+type NavTab = "users" | "top" | "funds" | "blocked" | "stats";
 type SortKey = "recent" | "newest" | "balance" | "spent";
 const NAV: { id: NavTab; label: string; title: string }[] = [
   { id: "users", label: "Usuarios", title: "Usuarios" },
   { id: "top", label: "Top", title: "Mejores clientes" },
-  { id: "blocked", label: "Bloqueados", title: "Bloqueados" },
+  { id: "funds", label: "Saldo", title: "Con saldo" },
+  { id: "blocked", label: "Bloqueos", title: "Bloqueados" },
   { id: "stats", label: "Resumen", title: "Resumen" },
 ];
 const SORTS: { id: SortKey; label: string }[] = [
@@ -282,18 +285,26 @@ const SORTS: { id: SortKey; label: string }[] = [
   { id: "spent", label: "Gastado" },
 ];
 
+const NAV_ICONS = { users: Users, top: Trophy, funds: Wallet, blocked: Ban, stats: LayoutGrid } as const;
 function NavIcon({ id }: { id: NavTab }) {
-  const c = { width: 22, height: 22, fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, viewBox: "0 0 24 24" };
-  if (id === "users") return <svg {...c}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.8.8 3 2.6 3.5 5.2" /></svg>;
-  if (id === "top") return <svg {...c}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>;
-  if (id === "blocked") return <svg {...c}><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></svg>;
-  return <svg {...c}><rect x="3" y="3" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2" /></svg>;
+  const I = NAV_ICONS[id];
+  return <I size={22} strokeWidth={1.5} />;
+}
+
+function exportCsv(list: UserListItem[]) {
+  const rows = [["UID", "Nombre", "Usuario", "Rango", "Saldo", "Recargado", "Gastado", "Ordenes", "Bloqueado", "Registro"]];
+  for (const u of list) rows.push([u.telegramId, u.name, u.username ?? "", u.rank, u.balance.toFixed(2), u.recharged.toFixed(2), u.spent.toFixed(2), String(u.orders), u.blocked ? "si" : "no", u.createdAt]);
+  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  const el = document.createElement("a");
+  el.href = url; el.download = "usuarios.csv"; el.click();
+  URL.revokeObjectURL(url);
 }
 
 function BottomNav({ tab, onChange, counts }: { tab: NavTab; onChange: (t: NavTab) => void; counts: Partial<Record<NavTab, number>> }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 px-3 pb-[max(env(safe-area-inset-bottom),12px)]">
-      <div className="mx-auto grid max-w-md grid-cols-4 gap-1 rounded-[1.75rem] border border-[var(--usr-line)] bg-[var(--usr-surface)]/90 p-1.5 shadow-2xl backdrop-blur-xl">
+      <div className="mx-auto grid max-w-md grid-cols-5 gap-1 rounded-[1.75rem] border border-[var(--usr-line)] bg-[var(--usr-surface)]/90 p-1.5 shadow-2xl backdrop-blur-xl">
         {NAV.map((n) => {
           const on = n.id === tab;
           return (
@@ -306,7 +317,7 @@ function BottomNav({ tab, onChange, counts }: { tab: NavTab; onChange: (t: NavTa
               <NavIcon id={n.id} />
               <span>{n.label}</span>
               {counts[n.id] ? (
-                <span className="usr-accent-bg absolute right-3 top-1 rounded-full px-1.5 text-[9px] font-semibold leading-4">
+                <span className="usr-accent-bg absolute right-1 top-1 rounded-full px-1.5 text-[9px] font-semibold leading-4">
                   {counts[n.id]! > 999 ? "999+" : counts[n.id]}
                 </span>
               ) : null}
@@ -608,6 +619,11 @@ function Profile({ d }: { d: UserDetail }) {
   const maxMonth = Math.max(1, ...d.monthly.map((m) => m.total));
   const [copied, setCopied] = useState(false);
   const base = Math.max(d.recharged, d.spent + d.balance, 1);
+  const [actionTab, setActionTab] = useState<ActionTab>("message");
+  const jump = (t: ActionTab) => {
+    setActionTab(t);
+    setTimeout(() => document.getElementById("acciones")?.scrollIntoView({ behavior: "smooth" }), 30);
+  };
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(d.telegramId);
@@ -630,18 +646,21 @@ function Profile({ d }: { d: UserDetail }) {
           </span>
           <Avatar size={60} name={d.name} recharged={d.recharged} />
         </div>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <button type="button" onClick={copy} className="rounded-full bg-[var(--usr-accent-ink)] px-4 py-2.5 text-sm font-semibold text-[var(--usr-accent)]">
-            {copied ? "UID copiado" : "Copiar UID"}
-          </button>
-          {d.username ? (
-            <a href={`https://t.me/${d.username}`} target="_blank" rel="noreferrer" className="rounded-full border border-[var(--usr-accent-ink)]/30 px-4 py-2.5 text-sm font-semibold">
-              Abrir chat
-            </a>
-          ) : null}
-          <a href="#acciones" className="rounded-full border border-[var(--usr-accent-ink)]/30 px-4 py-2.5 text-sm font-semibold">
-            Acciones
-          </a>
+        <div className="mt-5 grid grid-cols-4 gap-2">
+          {([
+            ["UID", copied ? Check : Copy, copy],
+            ["Mensaje", Send, () => jump("message")],
+            ["Saldo", Coins, () => jump("balance")],
+            ["Rango", Award, () => jump("rank")],
+            ["Bloqueo", ShieldOff, () => jump("block")],
+            ["Precios", TagIcon, () => jump("discount")],
+            ...(d.username ? [["Chat", MessageCircle, () => window.open(`https://t.me/${d.username}`, "_blank")]] : []),
+          ] as [string, typeof Copy, () => void][]).map(([label, I, fn]) => (
+            <button key={label} type="button" onClick={fn} className="flex flex-col items-center gap-1.5 rounded-2xl bg-[var(--usr-accent-ink)]/10 py-3 text-[11px] font-semibold">
+              <I size={20} strokeWidth={1.6} />
+              {label}
+            </button>
+          ))}
         </div>
       </section>
 
@@ -681,24 +700,23 @@ function Profile({ d }: { d: UserDetail }) {
 
       <ProfileTabs d={d} />
 
-      <div id="acciones" className="scroll-mt-4"><ActionsPanel d={d} /></div>
+      <div id="acciones" className="scroll-mt-4"><ActionsPanel d={d} tab={actionTab} setTab={setActionTab} /></div>
     </div>
   );
 }
 
 type ActionTab = "message" | "balance" | "rank" | "block" | "discount";
 
-const TABS: { key: ActionTab; label: string }[] = [
-  { key: "message", label: "Mensaje" },
-  { key: "balance", label: "Saldo" },
-  { key: "rank", label: "Rango" },
-  { key: "block", label: "Bloqueo" },
-  { key: "discount", label: "Descuentos" },
+const TABS: { key: ActionTab; label: string; icon: typeof Send }[] = [
+  { key: "message", label: "Mensaje", icon: Send },
+  { key: "balance", label: "Saldo", icon: Coins },
+  { key: "rank", label: "Rango", icon: Award },
+  { key: "block", label: "Bloqueo", icon: ShieldOff },
+  { key: "discount", label: "Precios", icon: TagIcon },
 ];
 
-function ActionsPanel({ d }: { d: UserDetail }) {
+function ActionsPanel({ d, tab, setTab }: { d: UserDetail; tab: ActionTab; setTab: (t: ActionTab) => void }) {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<ActionTab>("message");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
@@ -748,7 +766,7 @@ function ActionsPanel({ d }: { d: UserDetail }) {
     <section className="usr-card p-5">
       <p className="text-base font-semibold">Acciones</p>
 
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+      <div className="mt-3 grid grid-cols-5 gap-2">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -757,8 +775,9 @@ function ActionsPanel({ d }: { d: UserDetail }) {
               setTab(t.key);
               setNote(null);
             }}
-            className={`shrink-0 rounded-full px-4 py-2.5 text-sm font-semibold ${tab === t.key ? "usr-accent-bg" : "usr-chip usr-soft"}`}
+            className={`flex flex-col items-center gap-1.5 rounded-2xl py-3 text-[11px] font-semibold ${tab === t.key ? "usr-accent-bg" : "usr-chip usr-soft"}`}
           >
+            <t.icon size={20} strokeWidth={1.5} />
             {t.label}
           </button>
         ))}
