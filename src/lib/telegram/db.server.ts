@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { supabaseAdmin } from "@/lib/neon/client.server";
 import { primeLang } from "./i18n.server";
 
 const sb = supabaseAdmin;
