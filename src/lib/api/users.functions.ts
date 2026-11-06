@@ -54,7 +54,7 @@ export type UserDetail = {
 };
 
 export const listUsers = createServerFn({ method: "GET" }).handler(async (): Promise<UserListItem[]> => {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { supabaseAdmin } = await import("@/lib/neon/client.server");
   const db = supabaseAdmin as never as { from: (t: string) => any };
 
   const [usersRes, ordersRes, blockedRes] = await Promise.all([
@@ -104,7 +104,7 @@ export const listUsers = createServerFn({ method: "GET" }).handler(async (): Pro
 export const getUserDetail = createServerFn({ method: "GET" })
   .inputValidator((data: { telegramId: string }) => data)
   .handler(async ({ data }): Promise<UserDetail | null> => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin } = await import("@/lib/neon/client.server");
     const db = supabaseAdmin as never as { from: (t: string) => any };
     const tid = Number(data.telegramId);
 

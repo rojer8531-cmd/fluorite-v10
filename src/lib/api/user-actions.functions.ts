@@ -4,7 +4,7 @@ type Db = { from: (t: string) => any };
 const num = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0) || 0);
 
 async function db(): Promise<Db> {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { supabaseAdmin } = await import("@/lib/neon/client.server");
   return supabaseAdmin as never as Db;
 }
 

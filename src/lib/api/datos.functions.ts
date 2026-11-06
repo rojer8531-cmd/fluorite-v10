@@ -112,7 +112,7 @@ const dayKey = (iso: string) => iso.slice(0, 10);
 const WEEKDAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
 export const getDatos = createServerFn({ method: "GET" }).handler(async (): Promise<DatosPayload> => {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { supabaseAdmin } = await import("@/lib/neon/client.server");
   const db = supabaseAdmin as never as { from: (t: string) => any };
 
   const now = new Date();
@@ -454,7 +454,7 @@ export const resendAnnouncement = createServerFn({ method: "POST" })
     return { id: data.id };
   })
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin } = await import("@/lib/neon/client.server");
     const { tg } = await import("@/lib/telegram/api.server");
     const db = supabaseAdmin as never as { from: (t: string) => any };
 

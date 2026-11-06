@@ -1,6 +1,6 @@
 // i18n del Bot de Compras — traducción en el borde de envío (sendMessage/editMessageText).
 // El texto base que produce el handler se traduce por segmentos según el idioma del usuario.
-import { supabaseAdmin as sb } from "@/integrations/supabase/client.server";
+import { supabaseAdmin as sb } from "@/lib/neon/client.server";
 
 export type Lang = "es" | "en" | "pt" | "hi";
 export const LANGS: Lang[] = ["en", "pt", "es", "hi"];
