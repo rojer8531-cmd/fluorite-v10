@@ -357,7 +357,10 @@ async function rpc(fn: string, args: Record<string, unknown> = {}): Promise<Resu
   return { data: r.json.rows?.[0]?.r ?? null, error: null };
 }
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
+
 export const supabaseAdmin = {
   from: (table: string) => new Query(table),
   rpc,
-} as any;
+} as unknown as SupabaseClient<Database>;
